@@ -1,0 +1,5 @@
+/* Adwaita: botões circulares cinza translúcidos. */
+.style-adwaita { gap: 6px; }
+.style-adwaita .wb-btn { width: 24px; height: 24px; border-radius: 50%; background: rgba(127, 127, 127, 0.2); }
+.style-adwaita .wb-btn:hover { background: rgba(127, 127, 127, 0.35); }
+.style-adwaita .wb-btn:active { background: rgba(127, 127, 127, 0.5); }

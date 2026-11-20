@@ -1,5 +1,13 @@
+import { TitleBar, WindowFrame } from "./chrome/TitleBar";
 import { Viewport } from "./viewer/Viewport";
 
 export default function App() {
-  return <Viewport />;
+  return (
+    <WindowFrame>
+      <TitleBar title="Gera View Image" />
+      <div className="app-body">
+        <Viewport />
+      </div>
+    </WindowFrame>
+  );
 }

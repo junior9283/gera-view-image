@@ -1,0 +1,5 @@
+/* elementary: sem fundo; o lado (fechar à esquerda) vem do layout. */
+.style-elementary { gap: 8px; }
+.style-elementary .wb-btn { width: 22px; height: 22px; border-radius: 50%; opacity: 0.75; }
+.style-elementary .wb-btn:hover { opacity: 1; }
+.style-elementary .wb-btn:active { opacity: 0.5; }
