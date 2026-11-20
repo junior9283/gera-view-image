@@ -2,7 +2,7 @@ import { browser, $, $$, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
 
 const scale = async () => Number(await $('[data-testid="zoom-level"]').getAttribute("data-scale"));
-const activeName = () => $(".titlebar-title").getText();
+const activeName = async () => String(await $('.sidebar-item[aria-current="true"] .sidebar-name').getProperty("textContent"));
 
 describe("visualizador", () => {
   before(async () => {
