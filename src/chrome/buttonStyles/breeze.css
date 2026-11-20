@@ -1,0 +1,5 @@
+/* Breeze: ícones finos, círculo no hover, fechar vermelho. */
+.style-breeze .wb-btn { width: 26px; height: 26px; border-radius: 50%; opacity: 0.85; }
+.style-breeze .wb-btn:hover { background: color-mix(in srgb, currentColor 16%, transparent); opacity: 1; }
+.style-breeze .wb-btn[data-button="close"]:hover { background: #da4453; color: #fff; }
+.style-breeze .wb-btn:active { background: color-mix(in srgb, var(--wm-accent, #3daee9) 40%, transparent); }

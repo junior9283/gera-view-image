@@ -1,0 +1,90 @@
+:root {
+  --chrome-bg: #ececec;
+  --chrome-fg: #2b2b2b;
+  --chrome-border: rgba(0, 0, 0, 0.12);
+}
+:root[data-theme="dark"] {
+  --chrome-bg: #2d2d2d;
+  --chrome-fg: #e6e6e6;
+  --chrome-border: rgba(255, 255, 255, 0.12);
+}
+.window-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--chrome-bg);
+}
+.window-frame.flat {
+  border-radius: 0;
+}
+.titlebar {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  color: var(--chrome-fg);
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--chrome-border);
+  user-select: none;
+  font: 13px/1 Inter, system-ui, sans-serif;
+}
+.titlebar-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resize-edge {
+  position: absolute;
+  z-index: 10;
+}
+.edge-North, .edge-South { left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.edge-East, .edge-West { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.edge-North { top: 0; }
+.edge-South { bottom: 0; }
+.edge-East { right: 0; }
+.edge-West { left: 0; }
+.edge-NorthEast, .edge-NorthWest, .edge-SouthEast, .edge-SouthWest { width: 8px; height: 8px; }
+.edge-NorthEast { top: 0; right: 0; cursor: nesw-resize; }
+.edge-SouthWest { bottom: 0; left: 0; cursor: nesw-resize; }
+.edge-NorthWest { top: 0; left: 0; cursor: nwse-resize; }
+.edge-SouthEast { bottom: 0; right: 0; cursor: nwse-resize; }
+.wm-backdrop { position: fixed; inset: 0; z-index: 99; }
+.wm-menu {
+  position: fixed;
+  z-index: 100;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 140px;
+  color: var(--chrome-fg);
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+.wm-menu li { padding: 6px 10px; border-radius: 5px; cursor: default; }
+.wm-menu li:hover { background: var(--wm-accent, #3daee9); color: #fff; }
+.window-buttons { display: flex; align-items: center; gap: 4px; flex: none; }
+.wb-btn {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: default;
+}
+.wb-img { width: 16px; height: 16px; }
+.window-buttons[data-dark="true"] .wb-img { filter: invert(1); }
