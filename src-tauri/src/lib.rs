@@ -42,6 +42,9 @@ pub fn run() {
             commands::edit::apply_op,
             commands::edit::undo,
             commands::edit::redo,
+            commands::edit::preview_adjust,
+            commands::edit::histogram,
+            commands::edit::auto_levels,
             commands::theme::window_theme,
             commands::theme::compositing_available
         ])

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DocId, DocInfo, Op, Rect, ViewBuffer } from "./types";
+import type { ColorAdjust, DocId, DocInfo, Histogram, Op, Rect, ViewBuffer } from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -38,3 +38,11 @@ export const applyOp = (id: DocId, op: Op) => invoke<DocInfo>("apply_op", { id, 
 export const undo = (id: DocId) => invoke<DocInfo>("undo", { id });
 
 export const redo = (id: DocId) => invoke<DocInfo>("redo", { id });
+
+/** Prévia de um ajuste de cor em resolução reduzida; não altera o documento. */
+export const previewAdjust = async (id: DocId, adjust: ColorAdjust, maxW: number, maxH: number) =>
+  decodeViewBuffer(await invoke<ArrayBuffer>("preview_adjust", { id, adjust, maxW, maxH }));
+
+export const histogram = (id: DocId) => invoke<Histogram>("histogram", { id });
+
+export const autoLevels = (id: DocId) => invoke<ColorAdjust>("auto_levels", { id });

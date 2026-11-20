@@ -53,5 +53,50 @@
     "repository": "GitHub repository",
     "logoAlt": "Gera View Image logo",
     "close": "Close"
+  },
+  "adjust": {
+    "title": "Adjust Color",
+    "preview": "Adjustment preview",
+    "histogram": "Histogram",
+    "levelBlack": "Black level",
+    "levelGamma": "Gamma",
+    "levelWhite": "White level",
+    "exposure": "Exposure",
+    "contrast": "Contrast",
+    "highlights": "Highlights",
+    "shadows": "Shadows",
+    "temperature": "Temperature",
+    "tint": "Tint",
+    "saturation": "Saturation",
+    "sepia": "Sepia",
+    "sharpness": "Sharpness",
+    "auto": "Auto Adjust",
+    "reset": "Reset All",
+    "ok": "OK",
+    "cancel": "Cancel",
+    "previewFailed": "Could not generate the preview.",
+    "autoFailed": "Could not compute the automatic adjustment.",
+    "applyFailed": "Could not apply the adjustment."
+  },
+  "resize": {
+    "title": "Adjust Size",
+    "preset": "Preset",
+    "custom": "Custom",
+    "width": "Width",
+    "height": "Height",
+    "unit": "Unit",
+    "resolution": "Resolution",
+    "dpi": "pixels/in",
+    "proportional": "Scale proportionally",
+    "resample": "Resample image",
+    "filter": "Filter",
+    "filters": {
+      "lanczos3": "Lanczos (best)",
+      "bilinear": "Bilinear",
+      "nearest": "Nearest neighbor"
+    },
+    "resultSize": "Resulting size: {{size}} MB",
+    "tooBig": "Size is too large.",
+    "failed": "Could not resize the image."
   }
 }

@@ -53,5 +53,50 @@
     "repository": "Repositório no GitHub",
     "logoAlt": "Logo do Gera View Image",
     "close": "Fechar"
+  },
+  "adjust": {
+    "title": "Ajustar Cor",
+    "preview": "Prévia do ajuste",
+    "histogram": "Histograma",
+    "levelBlack": "Nível de preto",
+    "levelGamma": "Gama",
+    "levelWhite": "Nível de branco",
+    "exposure": "Exposição",
+    "contrast": "Contraste",
+    "highlights": "Realces",
+    "shadows": "Sombras",
+    "temperature": "Temperatura",
+    "tint": "Matiz",
+    "saturation": "Saturação",
+    "sepia": "Sépia",
+    "sharpness": "Nitidez",
+    "auto": "Ajuste Automático",
+    "reset": "Redefinir Tudo",
+    "ok": "OK",
+    "cancel": "Cancelar",
+    "previewFailed": "Não foi possível gerar a prévia.",
+    "autoFailed": "Não foi possível calcular o ajuste automático.",
+    "applyFailed": "Não foi possível aplicar o ajuste."
+  },
+  "resize": {
+    "title": "Ajustar Tamanho",
+    "preset": "Predefinição",
+    "custom": "Personalizado",
+    "width": "Largura",
+    "height": "Altura",
+    "unit": "Unidade",
+    "resolution": "Resolução",
+    "dpi": "pixels/pol.",
+    "proportional": "Redimensionar proporcionalmente",
+    "resample": "Reamostrar imagem",
+    "filter": "Filtro",
+    "filters": {
+      "lanczos3": "Lanczos (melhor)",
+      "bilinear": "Bilinear",
+      "nearest": "Vizinho mais próximo"
+    },
+    "resultSize": "Tamanho resultante: {{size}} MB",
+    "tooBig": "Tamanho grande demais.",
+    "failed": "Não foi possível redimensionar a imagem."
   }
 }

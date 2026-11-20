@@ -1,0 +1,92 @@
+.adjust-panel,
+.adjust-dialog {
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #2b2b2b;
+  color: #eee;
+  font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.5);
+}
+.adjust-panel {
+  position: fixed;
+  top: 56px;
+  right: 16px;
+  width: 340px;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+  z-index: 900;
+}
+.adjust-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.5);
+  z-index: 1000;
+}
+.adjust-dialog {
+  width: min(420px, calc(100% - 32px));
+}
+.adjust-panel h3,
+.adjust-dialog h3 {
+  margin: 0 0 8px;
+}
+.adjust-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+  background: #111;
+  border-radius: 4px;
+}
+.adjust-hist {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0;
+}
+.adjust-hist canvas {
+  width: 100%;
+  height: 64px;
+  background: #111;
+  border-radius: 4px;
+}
+.adjust-row {
+  display: grid;
+  grid-template-columns: 6.5em 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.adjust-row output {
+  min-width: 3em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.adjust-dialog .adjust-row {
+  grid-template-columns: 9em 1fr auto;
+}
+.adjust-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.adjust-size {
+  margin: 8px 0 0;
+}
+.adjust-error {
+  margin: 6px 0 0;
+  color: #ff8a80;
+}
+.adjust-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.adjust-spacer {
+  flex: 1;
+}
+.adjust-ok {
+  font-weight: 600;
+}
