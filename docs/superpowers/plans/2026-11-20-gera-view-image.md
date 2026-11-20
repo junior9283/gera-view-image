@@ -125,7 +125,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 
 ---
 
-### Tarefa 0: Esqueleto + validação WebKitGTK na máquina do usuário (marco 0, bloqueante)
+### Task 0: Esqueleto + validação WebKitGTK na máquina do usuário (marco 0, bloqueante)
 
 **Arquivos:** criar a raiz do projeto (Vite React-TS + `src-tauri`), `src-tauri/src/main.rs`, `src-tauri/src/platform/webkit.rs`, `src/viewer/Viewport.tsx` (versão mínima), `vitest.config.ts`, `eslint.config.js`, `docs/testes/guia.md`, `.gitignore` (incluir `*.key`, `target/`, `node_modules/`, `dist/`).
 
@@ -146,7 +146,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 5: validação manual (critério da spec §13.2).** Gerar `npm run tauri build -- --bundles appimage,rpm`. Abrir uma imagem de 24 MP na GPU integrada e com Nvidia (`prime-run` ou `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia`). Conferir que não há tela branca nem pisca, e que zoom/pan ficam fluidos. Medir o tempo de abertura. Registrar o resultado em `docs/testes/guia.md`. **Se falhar com os dois contornos: parar e levar ao usuário a proposta de trocar para Electron.**
 - [ ] **Passo 6:** `git init` já existe. Fazer commit `chore: esqueleto Tauri e contorno WebKitGTK`.
 
-### Tarefa 1: Logo e ícones
+### Task 1: Logo e ícones
 
 **Arquivos:** `assets/logo/logo.svg`, `src-tauri/icons/*` (via `npm run tauri icon assets/logo/logo.svg`), `public/logo.svg`.
 
@@ -154,7 +154,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 2:** gerar os ícones e conferir 16, 32, 128 e 512 px renderizados (`rsvg-convert` ou o próprio PNG gerado), em fundo claro e escuro.
 - [ ] **Passo 3:** mostrar o logo ao usuário (Read do PNG de 512 px no chat) e pedir ok antes de seguir. Commit `feat: logo e ícones`.
 
-### Tarefa 2: Pipeline de versão, release e atualização automática **[PUSH]**
+### Task 2: Pipeline de versão, release e atualização automática **[PUSH]**
 
 **Arquivos:** `scripts/release.mjs`, `scripts/release.test.mjs`, `CHANGELOG.md`, `LICENSE`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `src-tauri/tauri.conf.json` (bundle + updater), `src-tauri/linux/gera-view-image.desktop.hbs`, `src/updater/updater.ts`, `src/updater/UpdateDialog.tsx`, `src/updater/updater.test.ts`.
 
@@ -172,7 +172,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 8:** commit, `git push -u origin main`, `npm run release 0.1.0` e `git push --follow-tags`. Acompanhar o Actions até o release existir com `.deb`, `.rpm`, `.AppImage`, `.sig` e `latest.json` contendo as chaves `linux-x86_64`, `linux-x86_64-deb`, `linux-x86_64-rpm` e `linux-x86_64-appimage`, ou as que a action gerar (registrar quais).
 - [ ] **Passo 9: teste de atualização ponta a ponta.** Instalar o `.rpm` 0.1.0 nesta máquina e publicar `0.1.1` (entrada no CHANGELOG "Teste do atualizador"). Abrir o app, conferir que o diálogo aparece, instalar, reiniciar e ver a versão 0.1.1 em Sobre. Repetir com o AppImage. Registrar em `docs/testes/guia.md`.
 
-### Tarefa 3: Barra de título unificada e botões que seguem o tema do Linux
+### Task 3: Barra de título unificada e botões que seguem o tema do Linux
 
 **Arquivos:** `src-tauri/src/theme/{layout.rs,detect.rs,watch.rs}`, `src-tauri/src/commands/theme.rs`, `src/chrome/{TitleBar.tsx,WindowButtons.tsx,windowTheme.ts,buttonStyles/breeze.css,adwaita.css,elementary.css,generic.css}`, `src/chrome/windowTheme.test.ts`.
 
@@ -196,7 +196,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 6: testes que falham** em `windowTheme.test.ts` (Vitest + Testing Library): `renderiza botões na ordem do layout`, `esconde botão ausente`, `atualiza ao receber window-theme-changed` (mock de `listen`), `botão maximizar vira restaurar quando maximizado`. Implementar e rodar → PASS.
 - [ ] **Passo 7: verificação ao vivo** nesta máquina: trocar no Plasma (Configurações ▸ Decorações de janela) a posição dos botões e o esquema claro/escuro, com o app aberto. Os botões devem mudar em ≤ 1 s. Registrar. Commit `feat: barra de título com botões do tema do sistema`.
 
-### Tarefa 4: Núcleo de imagem no Rust (decodificar, documento, prévias, cache)
+### Task 4: Núcleo de imagem no Rust (decodificar, documento, prévias, cache)
 
 **Arquivos:** `src-tauri/src/image/{decode.rs,ops.rs,thumb.rs}`, `src-tauri/src/doc/{model.rs,store.rs,cache.rs}`, `src-tauri/src/commands/{docs.rs,view.rs,edit.rs}`, `src-tauri/tests/make_fixtures.rs`, `src-tauri/tests/core.rs`, `src/ipc/{commands.ts,types.ts}`, `src/store/docs.ts`.
 
@@ -223,7 +223,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 
 > A partir daqui, as Tarefas 5, 7, 9 e 10 dependem só da 4 e podem rodar **em paralelo em worktrees** (`isolation: "worktree"`). Cada uma registra seus comandos em `commands/mod.rs`/`lib.rs` e itens de menu em `menus.ts`. Conflitos nesses dois arquivos se resolvem no merge (só acrescentam linhas). A 6 depende da 5. A 8 depende da 5 e da 7. A 11 depende da 8 e da 9. A 12 depende da 6.
 
-### Tarefa 5: Visualizador, barra lateral, navegação, tela cheia e apresentação
+### Task 5: Visualizador, barra lateral, navegação, tela cheia e apresentação
 
 **Arquivos:** `src/viewer/{Viewport.tsx,zoom.ts,zoom.test.ts,Slideshow.tsx}`, `src/sidebar/{Sidebar.tsx,ContactSheet.tsx}`, `src/app/App.tsx`, `src/store/ui.ts`.
 
@@ -239,7 +239,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 6:** tela cheia (F11 e Ctrl+Meta+F) via `getCurrentWindow().setFullscreen`. Apresentação (Ctrl+Shift+F) com fundo preto, transição *fade* de 300 ms, avanço automático (5 s, configurável), barra de controles que aparece ao mover o mouse (anterior, pausa, próxima, índice, sair) e Esc para sair. GIF animado toca na apresentação e no viewport.
 - [ ] **Passo 7: E2E** (`e2e/specs/viewer.e2e.ts`, criado com `wdio.conf.ts` apontando para o binário release via `tauri-driver`): abrir 3 fixtures, incluindo `truncado.jpg`; → navega; o erro aparece só no item ruim; Ctrl+0 / Ctrl+9 mudam a escala exibida. Commit.
 
-### Tarefa 6: Barra de menus, atalhos e barra de ferramentas do Preview
+### Task 6: Barra de menus, atalhos e barra de ferramentas do Preview
 
 **Arquivos:** `src/chrome/{MenuBar.tsx,menus.ts}`, `src/shortcuts/{keymap.ts,useShortcuts.ts,keymap.test.ts}`, `src/chrome/Toolbar.tsx`.
 
@@ -251,7 +251,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 1: testes que falham** (`keymap.test.ts`): `matchShortcut(Ctrl+K) === 'tools.crop'`, `Ctrl+Shift+Z === 'edit.redo'`, `não há dois comandos com o mesmo atalho` (verifica todo o KEYMAP), `ignora atalhos quando o foco está num input de texto`.
 - [ ] **Passo 2:** implementar e rodar → PASS. MenuBar acessível por teclado (Alt abre, setas navegam). Commit.
 
-### Tarefa 7: Ferramentas de seleção e Alfa Instantâneo
+### Task 7: Ferramentas de seleção e Alfa Instantâneo
 
 **Arquivos:** `src-tauri/src/image/select.rs`, `src-tauri/src/commands/edit.rs` (acrescentar), `src/select/{tools.ts,lasso.ts,lasso.test.ts,SelectionLayer.tsx}`.
 
@@ -264,7 +264,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 2: testes TS que falham:** `simplifyPath` reduz uma linha reta de 100 pontos a 2; `invertMask(Rect)` → Bitmap com a contagem de pixels complementar.
 - [ ] **Passo 3:** implementar. SelectionLayer com formigas marchando (`lineDashOffset` animado) e alças para redimensionar a seleção retangular/elíptica. Recortar (Ctrl+K) usa o *bounding box* da seleção (e, numa seleção não retangular, também aplica `MakeTransparent` fora da máscara). Copiar/Recortar/Apagar/Colar: Colar cria uma anotação de imagem móvel (precisa da Tarefa 8; até lá, desabilitado). Rodar → PASS. Commit.
 
-### Tarefa 8: Marcação (anotações vetoriais)
+### Task 8: Marcação (anotações vetoriais)
 
 **Arquivos:** `src/markup/{model.ts,history.ts,render.ts,sketch.ts,MarkupBar.tsx,SignaturePanel.tsx,tools/*.ts}`, `src/markup/*.test.ts`.
 
@@ -279,7 +279,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 3:** implementar o modelo, os tools, o render e a MarkupBar (ferramentas na ordem do Preview: seleção, esboço, desenho, formas ▸, texto, assinatura ▸, espessura, borda, preenchimento, estilo de texto, girar, recortar). Rodar → PASS.
 - [ ] **Passo 4: E2E** `markup.e2e.ts`: desenhar uma seta, um texto e uma lupa, desfazer, refazer, exportar PNG e conferir que o pixel no centro da seta tem a cor do traço. Commit.
 
-### Tarefa 9: Ajustar Cor e Ajustar Tamanho
+### Task 9: Ajustar Cor e Ajustar Tamanho
 
 **Arquivos:** `src-tauri/src/image/color.rs`, `src-tauri/src/commands/edit.rs` (acrescentar `preview_adjust`, `histogram`, `auto_levels`), `src/adjust/{AdjustColorPanel.tsx,ResizeDialog.tsx,units.ts,units.test.ts}`.
 
@@ -293,7 +293,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 2: testes TS que falham:** `toPixels(2.54,'cm',300) === 300`, `toPixels(50,'%',_,1000) === 500`, `fromPixels(300,'in',150) === 2`, `proporcional mantém razão` (função `linkDims`).
 - [ ] **Passo 3:** implementar e rodar → PASS. Commit.
 
-### Tarefa 10: Inspetor de informações
+### Task 10: Inspetor de informações
 
 **Arquivos:** `src-tauri/src/image/metadata.rs`, `src-tauri/src/commands/meta.rs`, `src/inspector/Inspector.tsx`.
 
@@ -304,7 +304,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 1: testes que falham:** `metadata_jpeg_exif` (fixture com Make/Model/GPS conhecidos → valores e `gps.lat` ± 1e-5); `png_sem_exif_retorna_vazio`; `perfil_icc_nome` (fixture com sRGB embutido → `"sRGB IEC61966-2.1"`).
 - [ ] **Passo 2:** implementar e rodar → PASS. Commit.
 
-### Tarefa 11: Arquivo — salvar, exportar, reverter, imprimir, capturar
+### Task 11: Arquivo — salvar, exportar, reverter, imprimir, capturar
 
 **Arquivos:** `src-tauri/src/image/encode.rs`, `src-tauri/src/commands/{file.rs,capture.rs}`, `src/file/{ExportDialog.tsx,fileActions.ts,unsaved.ts,unsaved.test.ts}`.
 
@@ -324,7 +324,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 3:** implementar. Duplicar abre uma cópia em memória sem caminho, e Salvar pede o nome. Renomear e Mover Para… usam `rename`, com fallback de copiar+remover entre discos. "Abrir com…" e "Mostrar na Pasta" usam `plugin-opener` (`revealItemInDir`). Rodar → PASS.
 - [ ] **Passo 4: E2E** `file.e2e.ts`: girar, fechar, ver o diálogo de não salvo, Cancelar; Salvar; reabrir girado; Exportar para WebP; o arquivo existe. Commit.
 
-### Tarefa 12: Preferências, idiomas e Sobre
+### Task 12: Preferências, idiomas e Sobre
 
 **Arquivos:** `src/prefs/PreferencesDialog.tsx`, `src/store/prefs.ts`, `src/store/prefs.test.ts`, `src/i18n/{index.ts,pt-BR.json,en.json}`, `src/i18n/i18n.test.ts`.
 
@@ -335,7 +335,7 @@ Erros: todos os comandos retornam `Result<_, AppError>`, serializado como `{ cod
 - [ ] **Passo 1: testes que falham:** `prefs carrega padrões quando arquivo ausente`, `ignora chave inválida mantendo padrão`, `recent sem duplicatas e máx 20`, `i18n: pt-BR e en têm exatamente as mesmas chaves` (recursivo), `nenhuma string visível hardcoded` (lint customizado simples: regex em `src/**/*.tsx` por texto JSX literal com letras, com lista de exceções).
 - [ ] **Passo 2:** implementar e rodar → PASS. Commit.
 
-### Tarefa 13: Fechamento de etapa — suíte completa, E2E no CI e README com prints **[PUSH]**
+### Task 13: Fechamento de etapa — suíte completa, E2E no CI e README com prints **[PUSH]**
 
 **Arquivos:** `.github/workflows/ci.yml` (job E2E), `scripts/screenshots.mjs`, `docs/screenshots/*.png`, `README.md`, `docs/testes/{guia.md,armadilhas.md,bugs.md}`, `CHANGELOG.md`.
 
