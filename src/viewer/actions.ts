@@ -101,8 +101,9 @@ async function goFolder(doc: DocInfo, dir: Dir, wrap: boolean): Promise<void> {
   await closeDocs([doc.id]);
 }
 
-function activate(id: DocId): void {
-  useUi.getState().setPage(null);
+/** Ativa o documento (e volta à página padrão dele). */
+export function activate(id: DocId, page: number | null = null): void {
+  useUi.getState().setPage(page);
   useDocs.getState().setActive(id);
 }
 
