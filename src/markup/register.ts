@@ -1,6 +1,7 @@
 // Liga a Marcação ao app sem editar os arquivos que a hospedam: camada no Viewport,
 // barra abaixo da barra de ferramentas, desfazer unificado, comandos de menu e lista do Inspetor.
 // Importado uma vez no `main.tsx`.
+import { registerDirtySource } from "../file/dirty";
 import i18n from "../i18n";
 import { setAnnotationSource } from "../inspector/annotations";
 import { registerSlot } from "../lib/slots";
@@ -17,6 +18,11 @@ import { getItems, toggleMarkupBar, useMarkup } from "./store";
 installHistory();
 registerMarkupCommands();
 registerSlot("viewport-overlay", "markup", MarkupLayer);
+// Anotações não achatadas são alteração não salva (pergunta ao fechar, habilita o Salvar).
+registerDirtySource(
+  (id) => getItems(id).length > 0,
+  (cb) => useMarkup.subscribe((s, prev) => s.docs !== prev.docs && cb()),
+);
 registerSlot("below-toolbar", "markup-bar", MarkupBar);
 // Ouvinte de módulo (não de componente): a Toolbar e o Ctrl+Shift+M (Task 6) alternam a
 // barra mesmo que nenhum slot esteja montado no momento.

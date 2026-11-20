@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const targetDir = process.env.CARGO_TARGET_DIR ?? path.join(root, "src-tauri", "target");
@@ -46,7 +46,16 @@ export const config: WebdriverIO.Config = {
   mochaOpts: { ui: "bdd", timeout: 60000 },
   logLevel: "warn",
 
-  beforeSession: () => {
+  beforeSession: (_config, capabilities, specs) => {
+    // file.e2e regrava o arquivo: abre uma cópia numa pasta com espaço e acento.
+    if (specs.some((s) => s.includes("file.e2e"))) {
+      const dir = path.join(mkdtempSync(path.join(os.tmpdir(), "gvi-e2e-")), "Pasta com ação");
+      mkdirSync(dir);
+      const file = path.join(dir, "Ação 1.jpg");
+      copyFileSync(path.join(fixtures, "Ação com espaço", "Ação 1.jpg"), file);
+      process.env.GVI_E2E_FILE = file;
+      (capabilities as { "tauri:options": { args: string[] } })["tauri:options"].args = [file];
+    }
     driver = spawn(driverPath, ["--port", String(PORT), "--native-port", String(NATIVE_PORT)], {
       stdio: [null, process.stdout, process.stderr],
     });
@@ -64,6 +73,8 @@ export const config: WebdriverIO.Config = {
   afterSession: () => {
     exiting = true;
     driver?.kill();
+    const file = process.env.GVI_E2E_FILE;
+    if (file) rmSync(path.dirname(path.dirname(file)), { recursive: true, force: true });
   },
 };
 

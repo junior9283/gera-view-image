@@ -94,10 +94,11 @@ export const unifiedHistory: HistoryProvider = {
   },
 };
 
-/** Esquece a pilha (documento fechado). */
-function forget(id: DocId): void {
+/** Esquece a pilha do documento (fechado, ou revertido: as `Op` do Rust já sumiram). */
+export function forgetHistory(id: DocId): void {
   stacks.delete(id);
   chains.delete(id);
+  notify();
 }
 
 /**
@@ -125,7 +126,7 @@ export function installHistory(): () => void {
     const open = new Set(s.docs.map((d) => d.id));
     for (const d of prev.docs) {
       if (open.has(d.id)) continue;
-      forget(d.id);
+      forgetHistory(d.id);
       if (getItems(d.id).length) useMarkup.getState().drop(d.id);
     }
   });

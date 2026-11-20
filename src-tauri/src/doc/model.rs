@@ -26,13 +26,12 @@ pub enum SourceFormat {
 }
 
 impl SourceFormat {
-    /// Formatos que o Salvar grava no próprio arquivo (spec §13.7). RAW, PSD, SVG e ICO
-    /// vão para Exportar; GIF animado também (decidido por documento em `DocStore`).
+    /// Formatos que o Salvar grava no próprio arquivo (spec §13.7). RAW, PSD, SVG, ICO, GIF
+    /// e TGA vão para Exportar. HEIC também: gravar exige o x265, proibido no binário.
+    /// Documentos de várias páginas/quadros são decididos em `Document::can_save`.
     pub fn writable(self) -> bool {
-        !matches!(
-            self,
-            SourceFormat::Raw | SourceFormat::Psd | SourceFormat::Svg | SourceFormat::Ico
-        )
+        use SourceFormat::*;
+        matches!(self, Jpeg | Png | Tiff | Webp | Avif | Bmp)
     }
 }
 

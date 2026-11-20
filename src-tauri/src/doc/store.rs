@@ -101,20 +101,46 @@ pub struct Document {
     pub redo: Vec<Op>,
     /// `ops.len()` no último salvar (`usize::MAX` se esse estado ficou inalcançável).
     pub saved_len: usize,
-    error: Option<AppError>,
+    pub(super) error: Option<AppError>,
     /// Muda quando resultados em cache deixam de valer (refazer descartado, original trocado).
-    generation: u64,
+    pub(super) generation: u64,
+    /// Tamanho e mtime do arquivo como o app o conhece (abertura ou último salvar).
+    pub(super) disk: Option<DiskStamp>,
+    /// Carimbo da abertura: o disco ainda tem o original?
+    pub(super) opened_disk: Option<DiskStamp>,
+    /// Decodificação da abertura, guardada quando "Reverter para o Último Salvo" troca `source`.
+    pub(super) original: Option<Arc<Decoded>>,
+}
+
+/// Identidade do arquivo em disco para detectar alteração externa.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiskStamp {
+    pub len: u64,
+    pub mtime: std::time::SystemTime,
+}
+
+impl DiskStamp {
+    pub fn of(path: &Path) -> Option<Self> {
+        let m = std::fs::metadata(path).ok()?;
+        Some(DiskStamp {
+            len: m.len(),
+            mtime: m.modified().ok()?,
+        })
+    }
 }
 
 impl Document {
-    fn new(id: DocId, path: &str, source: Decoded, full_size: (u32, u32), loading: bool) -> Self {
+    pub(super) fn new(
+        id: DocId,
+        path: &str,
+        source: impl Into<Arc<Decoded>>,
+        full_size: (u32, u32),
+        loading: bool,
+    ) -> Self {
+        let source = source.into();
         let p = Path::new(path);
-        let read_only = std::fs::metadata(p)
-            .map(|m| m.permissions().readonly())
-            .unwrap_or(false);
-        let writable = source.format.writable()
-            && !(source.format == SourceFormat::Gif && source.frames.len() > 1)
-            && !read_only;
+        let disk = DiskStamp::of(p);
+        let writable = Self::can_save(path, source.format, source.frames.len());
         let info = DocInfo {
             id,
             path: path.to_string(),
@@ -135,7 +161,7 @@ impl Document {
         };
         Document {
             info,
-            source: Arc::new(source),
+            source,
             loading,
             full_size,
             ops: vec![],
@@ -143,7 +169,19 @@ impl Document {
             saved_len: 0,
             error: None,
             generation: 0,
+            disk,
+            opened_disk: disk,
+            original: None,
         }
+    }
+
+    /// Salvar grava no próprio arquivo: há caminho, o formato é gravável, uma só página/quadro
+    /// (TIFF de várias páginas e GIF animado perderiam conteúdo) e o arquivo não é só leitura.
+    pub(super) fn can_save(path: &str, format: SourceFormat, frames: usize) -> bool {
+        let read_only = std::fs::metadata(path)
+            .map(|m| m.permissions().readonly())
+            .unwrap_or(false);
+        !path.is_empty() && format.writable() && frames <= 1 && !read_only
     }
 
     fn failed(id: DocId, path: &str, err: AppError) -> Self {
@@ -177,7 +215,7 @@ impl Document {
     }
 
     /// Recalcula os campos derivados do `DocInfo` e avança `rev`.
-    fn refresh(&mut self) {
+    pub(super) fn refresh(&mut self) {
         let (w, h) = self.size_after_ops();
         let i = &mut self.info;
         i.width = w;
@@ -329,19 +367,19 @@ impl DocStore {
         self.inner.pipeline_runs.load(Ordering::Relaxed)
     }
 
-    fn lock(&self) -> MutexGuard<'_, HashMap<DocId, Document>> {
+    pub(super) fn lock(&self) -> MutexGuard<'_, HashMap<DocId, Document>> {
         self.inner.docs.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Trava esperando o documento sair do estado de prévia.
-    fn lock_loaded(&self, id: DocId) -> MutexGuard<'_, HashMap<DocId, Document>> {
+    pub(super) fn lock_loaded(&self, id: DocId) -> MutexGuard<'_, HashMap<DocId, Document>> {
         self.inner
             .ready
             .wait_while(self.lock(), |m| m.get(&id).is_some_and(|d| d.loading))
             .unwrap_or_else(|e| e.into_inner())
     }
 
-    fn next_id(&self) -> DocId {
+    pub(super) fn next_id(&self) -> DocId {
         DocId(self.inner.next_id.fetch_add(1, Ordering::Relaxed))
     }
 
@@ -438,15 +476,20 @@ impl DocStore {
 
     pub fn close(&self, id: DocId) -> AppResult<()> {
         let removed = self.lock().remove(&id);
+        self.inner.ready.notify_all();
+        self.invalidate(id);
+        removed.map(|_| ()).ok_or_else(|| not_found(id))
+    }
+
+    /// Descarta renders em cache do documento (o original ou a lista de operações mudou).
+    pub(super) fn invalidate(&self, id: DocId) {
         {
             let mut preview = self.inner.preview.lock().unwrap_or_else(|e| e.into_inner());
             if preview.as_ref().is_some_and(|((d, ..), _)| *d == id) {
                 *preview = None;
             }
         }
-        self.inner.ready.notify_all();
         self.inner.cache.remove_doc(id);
-        removed.map(|_| ()).ok_or_else(|| not_found(id))
     }
 
     pub fn info(&self, id: DocId) -> AppResult<DocInfo> {
@@ -553,7 +596,12 @@ impl DocStore {
         let state = (n, generation);
         if doc.loading {
             let scale = doc.source.frames[0].width() as f64 / doc.full_size.0.max(1) as f64;
-            return Ok((Pixels::Source(doc.source.clone(), 0), doc.full_size, scale, state));
+            return Ok((
+                Pixels::Source(doc.source.clone(), 0),
+                doc.full_size,
+                scale,
+                state,
+            ));
         }
         let size = doc.size_after_ops();
         if n == 0 {
@@ -569,7 +617,12 @@ impl DocStore {
             k -= 1;
         }
         if k == n {
-            return Ok((Pixels::Owned(base.expect("encontrado no cache")), size, 1.0, state));
+            return Ok((
+                Pixels::Owned(base.expect("encontrado no cache")),
+                size,
+                1.0,
+                state,
+            ));
         }
         let tail = doc.ops[k..n].to_vec();
         let source = doc.source.clone();
@@ -682,7 +735,7 @@ impl DocStore {
     }
 }
 
-fn not_found(id: DocId) -> AppError {
+pub(super) fn not_found(id: DocId) -> AppError {
     AppError::NotFound(format!("documento {} não está aberto", id.0))
 }
 
@@ -699,9 +752,10 @@ mod tests {
         let id = store.next_id();
         let preview = RgbaImage::from_fn(100, 75, |x, y| Rgba([x as u8, y as u8, 7, 255]));
         let decoded = Decoded::single(preview, SourceFormat::Jpeg);
-        store
-            .lock()
-            .insert(id, Document::new(id, "/tmp/previa.jpg", decoded, (400, 300), true));
+        store.lock().insert(
+            id,
+            Document::new(id, "/tmp/previa.jpg", decoded, (400, 300), true),
+        );
         let px = |x, y| {
             let r = Rect { x, y, w: 1, h: 1 };
             let buf = store.render_view(id, 0, 64, 64, Some(r)).unwrap();
@@ -730,7 +784,10 @@ mod tests {
             .open_documents(&[path.to_string_lossy().into_owned()])
             .remove(0);
         assert_eq!(info.error, None);
-        assert!(store.with_doc(info.id, |d| d.loading).unwrap(), "abre pela prévia");
+        assert!(
+            store.with_doc(info.id, |d| d.loading).unwrap(),
+            "abre pela prévia"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
         drop(cheio);
         assert!(store.wait_ready(info.id).is_err());

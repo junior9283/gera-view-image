@@ -13,6 +13,7 @@ export const KEYMAP: Record<CommandId, string> = {
   "file.duplicate": "Ctrl+Shift+S",
   "file.rename": "",
   "file.moveTo": "",
+  "file.showInFolder": "",
   "file.revertLastSaved": "",
   "file.revertOriginal": "",
   "file.export": "",

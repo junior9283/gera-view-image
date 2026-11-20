@@ -21,6 +21,9 @@ pub enum AppError {
     /// A ação precisa de uma seleção não vazia; a interface traduz pelo código.
     #[error("empty selection")]
     EmptySelection,
+    /// Colar/Novo da Área de Transferência sem imagem nela.
+    #[error("clipboard has no image")]
+    ClipboardEmpty,
 }
 
 impl AppError {
@@ -35,6 +38,7 @@ impl AppError {
             AppError::ChangedOnDisk(_) => "changed_on_disk",
             AppError::HeicDecoderMissing(_) => "heic_decoder_missing",
             AppError::EmptySelection => "empty_selection",
+            AppError::ClipboardEmpty => "clipboard_empty",
         }
     }
 

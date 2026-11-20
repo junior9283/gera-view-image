@@ -31,6 +31,7 @@ export const MENUS: Menu[] = [
       item("file", "duplicate"),
       item("file", "rename"),
       item("file", "moveTo"),
+      item("file", "showInFolder"),
       { label: "menu.file.revert", submenu: [item("file", "revertLastSaved"), item("file", "revertOriginal")] },
       SEP,
       item("file", "export"),
