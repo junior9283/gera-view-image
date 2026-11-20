@@ -81,7 +81,7 @@ export function Viewport() {
   const view = useUi((s) => s.view);
   const viewSize = useUi((s) => s.viewSize);
   const page = useUi((s) => s.page);
-  const prefs = usePrefs();
+  const background = usePrefs((p) => (p.background === "custom" ? p.customBg : BACKGROUNDS[p.background]));
   const animFrame = useAnimatedFrame(doc, page === null);
   const frame = page ?? animFrame;
 
@@ -243,7 +243,6 @@ export function Viewport() {
     };
   }, []);
 
-  const background = prefs.background === "custom" ? prefs.customBg : BACKGROUNDS[prefs.background];
 
   return (
     <div ref={box} className="viewport" data-testid="viewport" aria-label={t("viewer.label")} style={{ background }}>

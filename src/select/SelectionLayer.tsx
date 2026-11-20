@@ -3,6 +3,8 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import * as ipc from "../ipc/commands";
 import type { Mask, Rect, SourceFormat } from "../ipc/types";
+import { throttle } from "../lib/throttle";
+import { dpr } from "../viewer/paint";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { sampleBitmap, simplifyPath, type Point } from "./lasso";
@@ -15,7 +17,6 @@ import {
   latestOnly,
   rectFromPoints,
   resizeRect,
-  throttle,
   toImage,
   toleranceFromDistance,
   toScreen,
@@ -120,8 +121,8 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
       const cv = canvasRef.current;
       const ctx = cv?.getContext("2d");
       if (!cv || !ctx) return;
-      const dpr = window.devicePixelRatio || 1;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const k = dpr();
+      ctx.setTransform(k, 0, 0, k, 0, 0);
       ctx.clearRect(0, 0, size.w, size.h);
       if (alphaSprite) {
         const [x, y] = toScreen(view, 0, 0);
@@ -325,8 +326,8 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
       <canvas
         ref={canvasRef}
         aria-label={t("select.layer")}
-        width={Math.round(size.w * (window.devicePixelRatio || 1))}
-        height={Math.round(size.h * (window.devicePixelRatio || 1))}
+        width={Math.round(size.w * dpr())}
+        height={Math.round(size.h * dpr())}
         style={{ width: size.w, height: size.h, pointerEvents: tool ? "auto" : "none", cursor: tool ? "crosshair" : "default", touchAction: "none" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

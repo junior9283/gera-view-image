@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { subscribe } from "../lib/events";
 import { useDocs } from "../store/docs";
 import { activate } from "./actions";
 
@@ -14,23 +15,16 @@ export async function openDropped(paths: string[]): Promise<void> {
 export function useFileDrop(): boolean {
   const [over, setOver] = useState(false);
   useEffect(() => {
-    let alive = true;
-    let unlisten: (() => void) | undefined;
-    getCurrentWebview()
-      .onDragDropEvent(({ payload }) => {
+    return subscribe(
+      getCurrentWebview().onDragDropEvent(({ payload }) => {
         if (payload.type === "enter") setOver(payload.paths.length > 0);
         else if (payload.type === "leave") setOver(false);
         else if (payload.type === "drop") {
           setOver(false);
           openDropped(payload.paths).catch((e) => console.error("falha ao abrir arquivos soltos:", e));
         }
-      })
-      .then((u) => (alive ? (unlisten = u) : u()))
-      .catch(() => {});
-    return () => {
-      alive = false;
-      unlisten?.();
-    };
+      }),
+    );
   }, []);
   return over;
 }

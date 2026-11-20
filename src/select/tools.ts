@@ -46,7 +46,7 @@ const HANDLE_POS: Record<Handle, [number, number]> = {
   nw: [0, 0], n: [0.5, 0], ne: [1, 0], e: [1, 0.5], se: [1, 1], s: [0.5, 1], sw: [0, 1], w: [0, 0.5],
 };
 export const HANDLES = Object.keys(HANDLE_POS) as Handle[];
-export const HANDLE_HIT_PX = 7;
+const HANDLE_HIT_PX = 7;
 
 export function handlePosition(r: Rect, v: ViewTransform, h: Handle): [number, number] {
   const [fx, fy] = HANDLE_POS[h];
@@ -72,37 +72,10 @@ export function resizeRect(r: Rect, h: Handle, dx: number, dy: number, w: number
   return { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
 }
 
-export const TOLERANCE_MAX_DRAG_PX = 300;
+const TOLERANCE_MAX_DRAG_PX = 300;
 
 /** Distância arrastada (0–300 px) → tolerância (0–1). */
 export const toleranceFromDistance = (px: number) => Math.min(1, Math.max(0, px / TOLERANCE_MAX_DRAG_PX));
-
-/** Executa já na primeira chamada e, no fim da janela, com o último argumento recebido. */
-export function throttle<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
-  let last = -Infinity;
-  let pending: A | null = null;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const run = (a: A) => {
-    last = Date.now();
-    fn(...a);
-  };
-  const t = (...a: A) => {
-    const wait = last + ms - Date.now();
-    if (wait <= 0) return run(a);
-    pending = a;
-    timer ??= setTimeout(() => {
-      timer = null;
-      if (pending) run(pending);
-      pending = null;
-    }, wait);
-  };
-  t.cancel = () => {
-    if (timer) clearTimeout(timer);
-    timer = null;
-    pending = null;
-  };
-  return t;
-}
 
 /** No máximo uma chamada em andamento: pedidos que chegam nesse meio-tempo se reduzem ao
  *  último, disparado quando a atual termina. `onDone(resultado, arg, ultimo)`: `ultimo` é

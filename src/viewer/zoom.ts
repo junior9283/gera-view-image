@@ -22,8 +22,8 @@ export interface ViewState {
 }
 
 export const ZOOM_STEPS = [0.05, 0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12, 16, 32];
-export const MIN_SCALE = ZOOM_STEPS[0];
-export const MAX_SCALE = ZOOM_STEPS[ZOOM_STEPS.length - 1];
+const MIN_SCALE = ZOOM_STEPS[0];
+const MAX_SCALE = ZOOM_STEPS[ZOOM_STEPS.length - 1];
 
 const EPS = 1e-9;
 const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));

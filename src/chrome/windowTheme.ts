@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { subscribe } from "../lib/events";
 
 export type WinButton = "minimize" | "maximize" | "close";
 export type DecorationStyle = "breeze" | "adwaita" | "elementary" | "generic";
@@ -15,7 +16,7 @@ export interface WindowTheme {
   colors: { activeBg: string; activeFg: string; inactiveBg: string; inactiveFg: string } | null;
 }
 
-export const FALLBACK_THEME: WindowTheme = {
+const FALLBACK_THEME: WindowTheme = {
   layout: { left: [], right: ["minimize", "maximize", "close"] },
   style: "generic",
   dark: false,
@@ -34,17 +35,14 @@ export function useWindowTheme(): WindowTheme {
 
   useEffect(() => {
     let alive = true;
-    let unlisten: (() => void) | undefined;
     // Registra o ouvinte antes de ler, para não perder uma mudança entre as duas etapas.
-    listen<WindowTheme>("window-theme-changed", (e) => alive && setTheme(e.payload))
-      .then((u) => (alive ? (unlisten = u) : u()))
-      .catch(() => {});
+    const off = subscribe(listen<WindowTheme>("window-theme-changed", (e) => alive && setTheme(e.payload)));
     invoke<WindowTheme>("window_theme")
       .then((t) => alive && setTheme(t))
       .catch(() => {});
     return () => {
       alive = false;
-      unlisten?.();
+      off();
     };
   }, []);
 

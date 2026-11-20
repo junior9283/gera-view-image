@@ -33,7 +33,7 @@ export function checkerPattern(ctx: CanvasRenderingContext2D, size: number): Can
 }
 
 /** O formato não traz a duração dos quadros; 100 ms é o padrão usual dos navegadores. */
-export const GIF_FRAME_MS = 100;
+const GIF_FRAME_MS = 100;
 
 export const isAnimated = (d: DocInfo | null | undefined): boolean => !!d && d.format === "gif" && d.frames > 1 && !d.error;
 

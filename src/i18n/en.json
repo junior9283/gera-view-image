@@ -62,7 +62,18 @@
     "permission": "No permission to access the file",
     "changed_on_disk": "The file changed on disk",
     "heic_decoder_missing": "To open HEIC, install libde265 (on Fedora: RPM Fusion)",
-    "empty_selection": "Make a selection first"
+    "empty_selection": "Make a selection first",
+    "doc": {
+      "title": "This image could not be opened",
+      "corrupt": "The file is corrupted or incomplete.",
+      "unsupported": "This format is not supported.",
+      "not_found": "The file was not found.",
+      "io": "Error reading the file.",
+      "permission": "No permission to read the file.",
+      "changed_on_disk": "The file was changed by another program.",
+      "heic_decoder_missing": "To open HEIC, install the libde265 library.",
+      "generic": "Unknown error opening the file."
+    }
   },
   "viewer": {
     "label": "Image view",
@@ -70,17 +81,6 @@
     "zoomLevel": "Zoom {{pct}}%",
     "zoomPercent": "{{pct}}%",
     "dropHere": "Drop to open"
-  },
-  "error": {
-    "title": "This image could not be opened",
-    "corrupt": "The file is corrupted or incomplete.",
-    "unsupported": "This format is not supported.",
-    "not_found": "The file was not found.",
-    "io": "Error reading the file.",
-    "permission": "No permission to read the file.",
-    "changed_on_disk": "The file was changed by another program.",
-    "heic_decoder_missing": "To open HEIC, install the libde265 library.",
-    "generic": "Unknown error opening the file."
   },
   "sidebar": {
     "label": "Thumbnails",

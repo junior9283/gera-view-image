@@ -9,6 +9,7 @@ import { formatBytes, formatCoord, formatDate, mapUrl } from "./format";
 import { addKeyword, removeKeyword, seedKeywords, useKeywords } from "./keywords";
 import { TOGGLE_INSPECTOR_EVENT } from "./toggle";
 import "./inspector.css";
+import { useWindowEvent } from "../lib/events";
 
 const TABS = ["general", "exif", "iptc", "gps", "keywords", "annotations"] as const;
 type Tab = (typeof TABS)[number];
@@ -18,11 +19,7 @@ type Load = { state: "loading" } | { state: "error" } | { state: "ok"; meta: Met
 /** Painel flutuante de informações; abre e fecha com `toggleInspector()`. */
 export function InspectorHost() {
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const toggle = () => setOpen((o) => !o);
-    window.addEventListener(TOGGLE_INSPECTOR_EVENT, toggle);
-    return () => window.removeEventListener(TOGGLE_INSPECTOR_EVENT, toggle);
-  }, []);
+  useWindowEvent(TOGGLE_INSPECTOR_EVENT, () => setOpen((o) => !o));
   return open ? <Inspector onClose={() => setOpen(false)} /> : null;
 }
 

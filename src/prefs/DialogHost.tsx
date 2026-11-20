@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AboutDialog } from "./AboutDialog";
 import { OPEN_ABOUT_EVENT, OPEN_PREFERENCES_EVENT } from "./dialogs";
 import { PreferencesDialog } from "./PreferencesDialog";
+import { useWindowEvent } from "../lib/events";
 
 type Open = "preferences" | "about" | null;
 
@@ -9,19 +10,9 @@ type Open = "preferences" | "about" | null;
 export function DialogHost() {
   const [open, setOpen] = useState<Open>(null);
 
-  useEffect(() => {
-    const prefs = () => setOpen("preferences");
-    const about = () => setOpen("about");
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
-    window.addEventListener(OPEN_PREFERENCES_EVENT, prefs);
-    window.addEventListener(OPEN_ABOUT_EVENT, about);
-    window.addEventListener("keydown", esc);
-    return () => {
-      window.removeEventListener(OPEN_PREFERENCES_EVENT, prefs);
-      window.removeEventListener(OPEN_ABOUT_EVENT, about);
-      window.removeEventListener("keydown", esc);
-    };
-  }, []);
+  useWindowEvent(OPEN_PREFERENCES_EVENT, () => setOpen("preferences"));
+  useWindowEvent(OPEN_ABOUT_EVENT, () => setOpen("about"));
+  useWindowEvent("keydown", (e) => e.key === "Escape" && setOpen(null));
 
   const close = () => setOpen(null);
   if (open === "preferences") return <PreferencesDialog onClose={close} />;

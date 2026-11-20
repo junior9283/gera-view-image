@@ -79,8 +79,11 @@ export function subscribePrefs(l: () => void): () => void {
   return () => listeners.delete(l);
 }
 
-export function usePrefs(): Prefs {
-  return useSyncExternalStore(subscribePrefs, getPrefs);
+/** Sem seletor devolve todas as prefs; com seletor, só re-renderiza quando o valor escolhido muda. */
+export function usePrefs(): Prefs;
+export function usePrefs<T>(select: (p: Prefs) => T): T;
+export function usePrefs<T>(select?: (p: Prefs) => T): Prefs | T {
+  return useSyncExternalStore(subscribePrefs, () => (select ? select(state) : state));
 }
 
 /**

@@ -29,7 +29,11 @@ subscribePrefs(() => {
   if (i18n.language !== lng) void i18n.changeLanguage(lng);
 });
 
-/** Mensagem traduzida de um código de erro do núcleo (`DocInfo.error`, `AppError.code`). */
-export const errorMessage = (code: ErrorCode): string => i18n.t(`errors.${code}`);
+/** Mensagem traduzida de um código de erro do núcleo (`DocInfo.error`, `AppError.code`).
+ *  Com `"doc"`, a versão longa da tela de documento que não abriu (genérica se o código for desconhecido). */
+export const errorMessage = (code: ErrorCode | string, variant?: "doc"): string =>
+  variant === "doc"
+    ? i18n.t(`errors.doc.${code}`, { defaultValue: i18n.t("errors.doc.generic") })
+    : i18n.t(`errors.${code}`);
 
 export default i18n;

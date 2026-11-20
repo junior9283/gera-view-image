@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo, ResizeFilter } from "../ipc/types";
 import { useDocs } from "../store/docs";
@@ -32,7 +32,7 @@ export function ResizeDialog({ doc, onClose, estimate = rawSizeBytes }: Props) {
   const [filter, setFilter] = useState<ResizeFilter>("lanczos3");
   const [error, setError] = useState<string | null>(null);
 
-  const orig = useMemo(() => ({ w: doc.width, h: doc.height }), [doc.width, doc.height]);
+  const orig = { w: doc.width, h: doc.height };
   const physical = unit !== "px" && unit !== "%";
   // Sem reamostrar, as dimensões em pixels ficam fixas e a medida física só altera o DPI.
   const sizeLocked = !resample && !physical;
@@ -50,15 +50,14 @@ export function ResizeDialog({ doc, onClose, estimate = rawSizeBytes }: Props) {
     setSize(link ? linkDims(orig, axis, px) : { ...size, [axis]: Math.max(1, Math.round(px)) });
   };
 
-  const bytes = estimate(resample ? size.w : orig.w, resample ? size.h : orig.h);
+  const eff = resample ? size : orig;
+  const bytes = estimate(eff.w, eff.h);
   const tooBig = resample && size.w * size.h > MAX_PIXELS;
   const unchanged = resample ? size.w === orig.w && size.h === orig.h : dpi === DEFAULT_DPI;
 
   const ok = async () => {
-    const w = resample ? size.w : orig.w;
-    const h = resample ? size.h : orig.h;
     try {
-      await useDocs.getState().applyOp(doc.id, { type: "resize", data: { w, h, filter, dpi } });
+      await useDocs.getState().applyOp(doc.id, { type: "resize", data: { w: eff.w, h: eff.h, filter, dpi } });
       onClose();
     } catch {
       setError(t("resize.failed"));

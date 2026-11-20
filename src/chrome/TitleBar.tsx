@@ -5,6 +5,7 @@ import { WindowButtons, type WindowAction } from "./WindowButtons";
 import { enableNativeDecorations, useApplyNativeDecorations, useCompositingProbe, useNativeDecorations } from "./nativeDecorations";
 import { useWindowTheme } from "./windowTheme";
 import "./chrome.css";
+import { subscribe } from "../lib/events";
 
 interface Props {
   /** Nome do arquivo, mostrado ao centro. */
@@ -19,7 +20,6 @@ export function useMaximized(): boolean {
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
     let alive = true;
-    let unlisten: (() => void) | undefined;
     const win = getCurrentWindow();
     const sync = () =>
       win
@@ -27,13 +27,10 @@ export function useMaximized(): boolean {
         .then((m) => alive && setMaximized(m))
         .catch(() => {});
     sync();
-    win
-      .onResized(sync)
-      .then((u) => (alive ? (unlisten = u) : u()))
-      .catch(() => {});
+    const off = subscribe(win.onResized(sync));
     return () => {
       alive = false;
-      unlisten?.();
+      off();
     };
   }, []);
   return maximized;

@@ -8,7 +8,7 @@ import { FitImage } from "./FitImage";
 import "./viewer.css";
 
 /** Duração do fade entre imagens (igual à transição do CSS). */
-export const FADE_MS = 300;
+const FADE_MS = 300;
 const CONTROLS_MS = 2500;
 
 /** A imagem anterior continua por FADE_MS para o fade cruzado. */
@@ -29,7 +29,7 @@ export function Slideshow() {
   const { t } = useTranslation();
   const docs = useDocs((s) => s.docs);
   const activeId = useDocs((s) => s.activeId);
-  const seconds = usePrefs().slideshowSeconds;
+  const seconds = usePrefs((p) => p.slideshowSeconds);
   const doc = docs.find((d) => d.id === activeId) ?? null;
   const outgoing = useOutgoing(doc);
   const [playing, setPlaying] = useState(true);

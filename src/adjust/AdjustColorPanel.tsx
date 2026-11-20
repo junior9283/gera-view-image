@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import * as ipc from "../ipc/commands";
 import { NEUTRAL_ADJUST, type ColorAdjust, type DocId, type Histogram, type Levels } from "../ipc/types";
 import { useDocs } from "../store/docs";
+import { bufferToCanvas } from "../viewer/paint";
 import "./adjust.css";
 
 /** Intervalo mínimo entre chamadas de `preview_adjust`. */
@@ -23,7 +24,12 @@ const SLIDERS: { key: SliderKey; min: number; max: number; step: number }[] = [
   { key: "sharpness", min: 0, max: 1, step: 0.01 },
 ];
 
-const isNeutral = (a: ColorAdjust) => JSON.stringify(a) === JSON.stringify(NEUTRAL_ADJUST);
+const NEUTRAL_KEYS = Object.keys(NEUTRAL_ADJUST).filter((k) => k !== "levels") as SliderKey[];
+const isNeutral = (a: ColorAdjust) =>
+  NEUTRAL_KEYS.every((k) => a[k] === NEUTRAL_ADJUST[k]) &&
+  a.levels.black === NEUTRAL_ADJUST.levels.black &&
+  a.levels.gamma === NEUTRAL_ADJUST.levels.gamma &&
+  a.levels.white === NEUTRAL_ADJUST.levels.white;
 
 function drawHistogram(canvas: HTMLCanvasElement, h: Histogram) {
   const ctx = canvas.getContext("2d");
@@ -43,14 +49,6 @@ function drawHistogram(canvas: HTMLCanvasElement, h: Histogram) {
       ctx.fillRect(i, canvas.height - bh, 1, bh);
     });
   }
-}
-
-function paint(canvas: HTMLCanvasElement | null, view: { width: number; height: number; data: Uint8ClampedArray<ArrayBuffer> }) {
-  const ctx = canvas?.getContext("2d");
-  if (!canvas || !ctx) return;
-  canvas.width = view.width;
-  canvas.height = view.height;
-  ctx.putImageData(new ImageData(view.data, view.width, view.height), 0, 0);
 }
 
 interface Props {
@@ -80,7 +78,7 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
       const mine = ++seq.current;
       ipc
         .previewAdjust(docId, a, PREVIEW_W, PREVIEW_H)
-        .then((v) => mine === seq.current && paint(previewRef.current, v))
+        .then((v) => mine === seq.current && previewRef.current && bufferToCanvas(v, previewRef.current))
         .catch(() => mine === seq.current && setError(t("adjust.previewFailed")));
     },
     [docId, t],

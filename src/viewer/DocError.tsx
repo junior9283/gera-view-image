@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { errorMessage } from "../i18n";
 import type { DocInfo } from "../ipc/types";
 
 /** Ícone de arquivo com erro (também usado como miniatura de erro). */
@@ -18,8 +19,8 @@ export function DocError({ doc }: { doc: DocInfo }) {
   return (
     <div className="doc-error" role="alert" data-testid="doc-error">
       <ErrorIcon />
-      <strong>{t("error.title")}</strong>
-      <span>{t(`error.${doc.error}`, { defaultValue: t("error.generic") })}</span>
+      <strong>{t("errors.doc.title")}</strong>
+      <span>{errorMessage(doc.error ?? "", "doc")}</span>
       <span className="doc-error-name">{doc.name}</span>
     </div>
   );

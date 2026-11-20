@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import logo from "../../assets/logo/preview/logo-128.png";
 import "./prefs.css";
 
-export const REPOSITORY_URL = "https://github.com/junior9283/gera-view-image/";
+const REPOSITORY_URL = "https://github.com/junior9283/gera-view-image/";
 
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();

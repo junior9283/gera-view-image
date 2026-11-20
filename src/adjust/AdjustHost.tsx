@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useDocs } from "../store/docs";
 import { OPEN_ADJUST_COLOR_EVENT, OPEN_RESIZE_EVENT } from "./actions";
 import { AdjustColorPanel } from "./AdjustColorPanel";
 import { ResizeDialog } from "./ResizeDialog";
+import { useWindowEvent } from "../lib/events";
 
 type Open = "color" | "resize" | null;
 
@@ -11,16 +12,8 @@ export function AdjustHost() {
   const [open, setOpen] = useState<Open>(null);
   const doc = useDocs((s) => s.docs.find((d) => d.id === s.activeId) ?? null);
 
-  useEffect(() => {
-    const color = () => setOpen("color");
-    const resize = () => setOpen("resize");
-    window.addEventListener(OPEN_ADJUST_COLOR_EVENT, color);
-    window.addEventListener(OPEN_RESIZE_EVENT, resize);
-    return () => {
-      window.removeEventListener(OPEN_ADJUST_COLOR_EVENT, color);
-      window.removeEventListener(OPEN_RESIZE_EVENT, resize);
-    };
-  }, []);
+  useWindowEvent(OPEN_ADJUST_COLOR_EVENT, () => setOpen("color"));
+  useWindowEvent(OPEN_RESIZE_EVENT, () => setOpen("resize"));
 
   const close = () => setOpen(null);
   if (!doc || doc.error) return null;

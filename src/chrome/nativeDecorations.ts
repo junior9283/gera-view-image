@@ -32,7 +32,7 @@ export function useForcedNative(): boolean {
 /** `override` é o ajuste manual (prop); a preferência do usuário e o fallback da sessão também ligam o modo nativo. */
 export function useNativeDecorations(override = false): boolean {
   const forced = useForcedNative();
-  return usePrefs().nativeDecorations || forced || override;
+  return usePrefs((p) => p.nativeDecorations) || forced || override;
 }
 
 /** Na inicialização: sem compositor/visual RGBA a janela transparente não funciona. */
