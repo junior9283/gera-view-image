@@ -88,3 +88,4 @@
 }
 .wb-img { width: 16px; height: 16px; }
 .window-buttons[data-dark="true"] .wb-img { filter: invert(1); }
+.titlebar-slot { display: flex; align-items: center; gap: 8px; flex: none; }

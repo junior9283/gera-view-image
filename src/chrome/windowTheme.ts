@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -26,7 +26,11 @@ export const FALLBACK_THEME: WindowTheme = {
 
 /** Tema do sistema, ao vivo: comando `window_theme` + evento `window-theme-changed`. */
 export function useWindowTheme(): WindowTheme {
-  const [theme, setTheme] = useState<WindowTheme>(FALLBACK_THEME);
+  // Antes da primeira resposta do backend, segue o prefers-color-scheme (evita o flash claro).
+  const [theme, setTheme] = useState<WindowTheme>(() => ({
+    ...FALLBACK_THEME,
+    dark: window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
+  }));
 
   useEffect(() => {
     let alive = true;
@@ -44,7 +48,7 @@ export function useWindowTheme(): WindowTheme {
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme.dark ? "dark" : "light";
   }, [theme.dark]);
 

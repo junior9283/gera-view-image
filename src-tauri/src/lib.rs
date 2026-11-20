@@ -19,9 +19,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             provisional::render_view,
             provisional::mark_shown,
-            commands::theme::window_theme
+            commands::theme::window_theme,
+            commands::theme::compositing_available
         ])
         .setup(|app| {
+            use tauri::Manager;
+            app.manage(commands::theme::Compositing(commands::theme::probe_compositing(app.handle())));
             theme::watch::start(app.handle().clone());
             Ok(())
         })

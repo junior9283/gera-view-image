@@ -1,4 +1,5 @@
 /* Outros temas: ícones do tema de ícones ativo, na cor do texto (invertidos no escuro, via chrome.css). */
 .style-generic .wb-btn { width: 26px; height: 26px; border-radius: 4px; }
 .style-generic .wb-btn:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
-.style-generic .wb-btn[data-button="close"]:hover { background: var(--wm-active-bg, #da4453); }
+.style-generic .wb-btn[data-button="close"]:hover { background: #da4453;
+  color: #fff; }

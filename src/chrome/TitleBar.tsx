@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WindowButtons, type WindowAction } from "./WindowButtons";
+import { enableNativeDecorations, useApplyNativeDecorations, useCompositingProbe, useNativeDecorations } from "./nativeDecorations";
 import { useWindowTheme } from "./windowTheme";
 import "./chrome.css";
 
@@ -37,14 +38,13 @@ export function useMaximized(): boolean {
   return maximized;
 }
 
-export function TitleBar({ title, children, nativeDecorations = false }: Props) {
+export function TitleBar({ title, children, nativeDecorations: override = false }: Props) {
+  const nativeDecorations = useNativeDecorations(override);
+  useCompositingProbe();
+  useApplyNativeDecorations(nativeDecorations);
   const theme = useWindowTheme();
   const maximized = useMaximized();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    if (nativeDecorations) getCurrentWindow().setDecorations(true).catch(() => {});
-  }, [nativeDecorations]);
 
   const run = useCallback((a: WindowAction) => {
     const win = getCurrentWindow();
@@ -62,13 +62,16 @@ export function TitleBar({ title, children, nativeDecorations = false }: Props) 
   const buttons = (side: "left" | "right") =>
     nativeDecorations ? null : <WindowButtons side={side} theme={theme} maximized={maximized} onAction={run} />;
 
+  // Duplo clique para maximizar: o drag.js do Tauri já trata (e.detail === 2) quando o alvo tem
+  // data-tauri-drag-region. Por isso não há onDoubleClick aqui, e só o header e o título levam o
+  // atributo; botões e o slot de ferramentas (children) ficam fora da região de arrasto.
   return (
-    <header className="titlebar" data-tauri-drag-region onDoubleClick={() => run("maximize")} onContextMenu={onContext}>
+    <header className="titlebar" data-tauri-drag-region onContextMenu={onContext}>
       {buttons("left")}
       <div className="titlebar-title" data-tauri-drag-region>
         {title}
       </div>
-      {children}
+      {children && <div className="titlebar-slot">{children}</div>}
       {buttons("right")}
       {menu && (
         <>
@@ -95,7 +98,8 @@ type Dir = "North" | "South" | "East" | "West" | "NorthEast" | "NorthWest" | "So
 const EDGES: Dir[] = ["North", "South", "East", "West", "NorthEast", "NorthWest", "SouthEast", "SouthWest"];
 
 /** Moldura da janela: cantos de 8 px e bordas de 6 px para redimensionar (janela sem decoração). */
-export function WindowFrame({ children, nativeDecorations = false }: { children: ReactNode; nativeDecorations?: boolean }) {
+export function WindowFrame({ children, nativeDecorations: override = false }: { children: ReactNode; nativeDecorations?: boolean }) {
+  const nativeDecorations = useNativeDecorations(override);
   const maximized = useMaximized();
   const flat = maximized || nativeDecorations;
   return (
@@ -107,7 +111,7 @@ export function WindowFrame({ children, nativeDecorations = false }: { children:
             key={d}
             className={`resize-edge edge-${d}`}
             onMouseDown={(e) => {
-              if (e.button === 0) void getCurrentWindow().startResizeDragging(d);
+              if (e.button === 0) getCurrentWindow().startResizeDragging(d).catch(enableNativeDecorations);
             }}
           />
         ))}
