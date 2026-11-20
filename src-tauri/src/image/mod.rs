@@ -2,6 +2,7 @@
 pub mod color;
 pub mod decode;
 pub mod heic;
+pub mod metadata;
 pub mod ops;
 pub mod select;
 pub mod thumb;

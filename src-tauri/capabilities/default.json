@@ -24,7 +24,10 @@
     "store:allow-save",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://github.com/junior9283/gera-view-image/*" }]
+      "allow": [
+        { "url": "https://github.com/junior9283/gera-view-image/*" },
+        { "url": "https://www.openstreetmap.org/*" }
+      ]
     }
   ]
 }

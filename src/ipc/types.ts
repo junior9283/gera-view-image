@@ -87,3 +87,28 @@ export interface ViewBuffer {
 
 /** Evento emitido pelo Rust quando um documento muda sozinho (ex.: decodificação completa). */
 export const DOC_UPDATED_EVENT = "doc-updated";
+
+/** Espelho de `src-tauri/src/image/metadata.rs`. */
+export interface GeneralInfo {
+  width: number;
+  height: number;
+  dpi: [number, number] | null;
+  colorModel: string;
+  profile: string | null;
+  depth: number;
+  hasAlpha: boolean;
+  fileSize: number;
+  /** ISO 8601 em UTC. */
+  created: string | null;
+  modified: string;
+}
+
+export interface Gps { lat: number; lon: number; alt: number | null }
+
+export interface Metadata {
+  general: GeneralInfo;
+  exif: [string, string][];
+  iptc: [string, string][];
+  gps: Gps | null;
+  keywords: string[];
+}

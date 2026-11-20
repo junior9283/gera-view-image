@@ -10,6 +10,7 @@ import { useFileDrop } from "./viewer/fileDrop";
 import { UpdateHost } from "./updater/UpdateDialog";
 import { DialogHost } from "./prefs/DialogHost";
 import { AdjustHost } from "./adjust/AdjustHost";
+import { InspectorHost } from "./inspector/Inspector";
 import { initDocs, useDocs } from "./store/docs";
 import { useUi } from "./store/ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -73,6 +74,7 @@ export default function App() {
       <UpdateHost />
       <DialogHost />
       <AdjustHost />
+      <InspectorHost />
     </WindowFrame>
   );
 }
