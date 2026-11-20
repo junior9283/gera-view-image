@@ -2,6 +2,7 @@
 use crate::doc::model::{Mask, Rect};
 use crate::image::ops::mask_coverage;
 use ::image::{GrayImage, RgbaImage};
+use std::sync::LazyLock;
 
 /// Raio (px) da busca da borda no laço magnético.
 const SNAP_RADIUS: i32 = 8;
@@ -78,16 +79,21 @@ pub fn extract_region(img: &RgbaImage, mask: Option<&Mask>) -> Option<RgbaImage>
     Some(out)
 }
 
-fn lab([r, g, b]: [u8; 3]) -> [f32; 3] {
-    let lin = |c: u8| {
-        let c = c as f32 / 255.0;
+/// sRGB (u8) -> linear, pré-calculado para os 256 valores.
+static SRGB_LINEAR: LazyLock<[f32; 256]> = LazyLock::new(|| {
+    std::array::from_fn(|i| {
+        let c = i as f32 / 255.0;
         if c <= 0.04045 {
             c / 12.92
         } else {
             ((c + 0.055) / 1.055).powf(2.4)
         }
-    };
-    let (r, g, b) = (lin(r), lin(g), lin(b));
+    })
+});
+
+fn lab([r, g, b]: [u8; 3]) -> [f32; 3] {
+    let lin = &*SRGB_LINEAR;
+    let (r, g, b) = (lin[r as usize], lin[g as usize], lin[b as usize]);
     let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
     let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
@@ -161,23 +167,38 @@ pub fn instant_alpha_counted(img: &RgbaImage, seed: (u32, u32), tolerance: f32) 
     (mask, converted)
 }
 
-/// Magnitude do gradiente de Sobel sobre a luminância.
-fn sobel(img: &RgbaImage) -> Vec<f32> {
-    let (w, h) = img.dimensions();
-    let luma: Vec<f32> = img
-        .pixels()
-        .map(|p| 0.299 * p.0[0] as f32 + 0.587 * p.0[1] as f32 + 0.114 * p.0[2] as f32)
-        .collect();
+/// Caixa `[x0, x1) x [y0, y1)` em pixels.
+#[derive(Clone, Copy)]
+struct Area {
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+}
+
+/// Magnitude do gradiente de Sobel sobre a luminância, só dentro de `a` (indexada a partir
+/// do canto de `a`). As bordas usam os vizinhos reais da imagem (presos às bordas dela),
+/// então o valor é o mesmo do Sobel da imagem inteira.
+fn sobel(img: &RgbaImage, a: Area) -> Vec<f32> {
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    // Luminância da caixa com 1 px de margem (o alcance do Sobel), presa à imagem.
+    let (lx0, ly0) = ((a.x0 - 1).max(0), (a.y0 - 1).max(0));
+    let (lx1, ly1) = ((a.x1 + 1).min(w), (a.y1 + 1).min(h));
+    let lw = (lx1 - lx0).max(0) as usize;
+    let mut luma = Vec::with_capacity(lw * (ly1 - ly0).max(0) as usize);
+    for y in ly0..ly1 {
+        for x in lx0..lx1 {
+            let p = img.get_pixel(x as u32, y as u32).0;
+            luma.push(0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32);
+        }
+    }
     let at = |x: i32, y: i32| {
-        let (x, y) = (
-            x.clamp(0, w as i32 - 1) as usize,
-            y.clamp(0, h as i32 - 1) as usize,
-        );
-        luma[y * w as usize + x]
+        let (x, y) = (x.clamp(0, w - 1), y.clamp(0, h - 1));
+        luma[(y - ly0) as usize * lw + (x - lx0) as usize]
     };
-    let mut g = vec![0.0; (w * h) as usize];
-    for y in 0..h as i32 {
-        for x in 0..w as i32 {
+    let mut g = Vec::with_capacity((a.x1 - a.x0).max(0) as usize * (a.y1 - a.y0).max(0) as usize);
+    for y in a.y0..a.y1 {
+        for x in a.x0..a.x1 {
             let gx = at(x + 1, y - 1) + 2.0 * at(x + 1, y) + at(x + 1, y + 1)
                 - at(x - 1, y - 1)
                 - 2.0 * at(x - 1, y)
@@ -186,7 +207,7 @@ fn sobel(img: &RgbaImage) -> Vec<f32> {
                 - at(x - 1, y - 1)
                 - 2.0 * at(x, y - 1)
                 - at(x + 1, y - 1);
-            g[(y as u32 * w + x as u32) as usize] = (gx * gx + gy * gy).sqrt();
+            g.push((gx * gx + gy * gy).sqrt());
         }
     }
     g
@@ -223,22 +244,43 @@ fn resample(points: &[(f32, f32)], step: f32) -> Vec<(f32, f32)> {
 /// Laço magnético: reamostra o caminho a cada 4 px e move cada ponto ao máximo do gradiente
 /// de Sobel num raio de 8 px (empate: o mais próximo do ponto original).
 pub fn snap_lasso(img: &RgbaImage, points: &[(f32, f32)]) -> Vec<(f32, f32)> {
-    let (w, h) = img.dimensions();
-    let grad = sobel(img);
+    let pts = resample(points, SNAP_STEP);
+    // O Sobel só é calculado na caixa que os raios de busca alcançam.
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
+    for &(px, py) in &pts {
+        let (cx, cy) = (px.floor() as i32, py.floor() as i32);
+        x0 = x0.min(cx - SNAP_RADIUS);
+        y0 = y0.min(cy - SNAP_RADIUS);
+        x1 = x1.max(cx + SNAP_RADIUS + 1);
+        y1 = y1.max(cy + SNAP_RADIUS + 1);
+    }
+    let area = Area {
+        x0: x0.max(0),
+        y0: y0.max(0),
+        x1: x1.min(w),
+        y1: y1.min(h),
+    };
+    snap_in(&pts, &sobel(img, area), area)
+}
+
+/// Gruda os pontos usando o gradiente `grad` da caixa `a` (que cobre os raios de busca
+/// dentro da imagem).
+fn snap_in(pts: &[(f32, f32)], grad: &[f32], a: Area) -> Vec<(f32, f32)> {
     let r2 = (SNAP_RADIUS * SNAP_RADIUS) as f32;
-    resample(points, SNAP_STEP)
-        .into_iter()
-        .map(|(px, py)| {
+    let aw = (a.x1 - a.x0).max(0) as usize;
+    pts.iter()
+        .map(|&(px, py)| {
             let (cx, cy) = (px.floor() as i32, py.floor() as i32);
             let mut best = (f32::MIN, f32::MAX, (px, py));
             for dy in -SNAP_RADIUS..=SNAP_RADIUS {
                 for dx in -SNAP_RADIUS..=SNAP_RADIUS {
                     let d2 = (dx * dx + dy * dy) as f32;
                     let (x, y) = (cx + dx, cy + dy);
-                    if d2 > r2 || x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+                    if d2 > r2 || x < a.x0 || y < a.y0 || x >= a.x1 || y >= a.y1 {
                         continue;
                     }
-                    let g = grad[(y as u32 * w + x as u32) as usize];
+                    let g = grad[(y - a.y0) as usize * aw + (x - a.x0) as usize];
                     let better = g > best.0 + 1e-3 || ((g - best.0).abs() <= 1e-3 && d2 < best.1);
                     if better {
                         best = (g, d2, (x as f32 + 0.5, y as f32 + 0.5));
@@ -345,6 +387,35 @@ mod tests {
         assert!(snapped.len() >= pts.len());
         for (x, _) in snapped {
             assert!((49.0..=51.0).contains(&x), "x = {x}");
+        }
+    }
+
+    #[test]
+    fn snap_na_caixa_igual_ao_da_imagem_inteira() {
+        let img = RgbaImage::from_fn(90, 70, |x, y| {
+            let v = ((x * 37 + y * 91) ^ (x * y)) as u8;
+            Rgba([v, v.wrapping_mul(3), 255 - v, 255])
+        });
+        let inteira = Area { x0: 0, y0: 0, x1: 90, y1: 70 };
+        let grad = sobel(&img, inteira);
+        for caminho in [
+            vec![(30.2, 20.7), (55.0, 40.1), (40.5, 60.0)],
+            vec![(1.0, 1.0), (88.5, 3.0), (89.9, 69.9)],
+            vec![(-20.0, 10.0), (5.0, -3.0)],
+            vec![(200.0, 200.0), (210.0, 205.0)],
+        ] {
+            let pts = resample(&caminho, SNAP_STEP);
+            assert_eq!(snap_lasso(&img, &caminho), snap_in(&pts, &grad, inteira), "{caminho:?}");
+        }
+        assert!(snap_lasso(&img, &[]).is_empty());
+    }
+
+    #[test]
+    fn lut_srgb_linear_igual_a_formula() {
+        for i in 0..=255u8 {
+            let c = i as f32 / 255.0;
+            let f = if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
+            assert_eq!(SRGB_LINEAR[i as usize], f);
         }
     }
 
