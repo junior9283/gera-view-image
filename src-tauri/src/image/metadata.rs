@@ -188,6 +188,46 @@ fn jpeg_segments(b: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {
     })
 }
 
+/// Blocos crus de um JPEG para levar ao arquivo salvo: IPTC-IIM (recurso 0x0404 do APP13)
+/// e o pacote XMP (APP1). Fora de JPEG, `(None, None)`.
+pub fn jpeg_iim_xmp(file: &[u8]) -> (Option<Vec<u8>>, Option<String>) {
+    if !file.starts_with(&[0xFF, 0xD8]) {
+        return (None, None);
+    }
+    let (mut iim, mut xmp) = (None, None);
+    for (marker, seg) in jpeg_segments(file) {
+        if marker == 0xE1
+            && let Some(x) = seg.strip_prefix(b"http://ns.adobe.com/xap/1.0/\0")
+        {
+            xmp = Some(String::from_utf8_lossy(x).into_owned());
+        }
+        if marker == 0xED
+            && let Some(rest) = seg.strip_prefix(b"Photoshop 3.0\0")
+        {
+            iim = photoshop_resource(rest, 0x0404).map(<[u8]>::to_vec).or(iim);
+        }
+    }
+    (iim, xmp)
+}
+
+/// Dados do recurso `id` numa sequência de recursos `8BIM`.
+fn photoshop_resource(mut rest: &[u8], want: u16) -> Option<&[u8]> {
+    // Recursos: "8BIM" id(2) nome-pascal(par) tamanho(4) dados(par).
+    while let Some(r) = rest.strip_prefix(b"8BIM") {
+        let id = u16::from_be_bytes([*r.first()?, *r.get(1)?]);
+        let name_total = (1 + *r.get(2)? as usize).next_multiple_of(2);
+        let size = u32::from_be_bytes(r.get(2 + name_total..6 + name_total)?.try_into().ok()?)
+            as usize;
+        let start = 6 + name_total;
+        let data = r.get(start..start + size)?;
+        if id == want {
+            return Some(data);
+        }
+        rest = r.get(start + size.next_multiple_of(2)..).unwrap_or(&[]);
+    }
+    None
+}
+
 fn iptc_label(dataset: u8) -> Option<&'static str> {
     Some(match dataset {
         5 => "Title",
@@ -215,33 +255,12 @@ fn iptc_label(dataset: u8) -> Option<&'static str> {
 fn iptc_of(file: &[u8]) -> (Vec<(String, String)>, Vec<String>) {
     let (mut fields, mut keywords) = (vec![], vec![]);
     for (marker, seg) in jpeg_segments(file) {
-        let Some(mut rest) = (marker == 0xED)
+        if let Some(data) = (marker == 0xED)
             .then(|| seg.strip_prefix(b"Photoshop 3.0\0"))
             .flatten()
-        else {
-            continue;
-        };
-        // Recursos: "8BIM" id(2) nome-pascal(par) tamanho(4) dados(par).
-        while let Some(r) = rest.strip_prefix(b"8BIM") {
-            let Some(id) = r.get(..2).map(|x| u16::from_be_bytes([x[0], x[1]])) else {
-                break;
-            };
-            let name_len = r.get(2).copied().unwrap_or(0) as usize;
-            let name_total = (1 + name_len).next_multiple_of(2);
-            let Some(size) = r
-                .get(2 + name_total..6 + name_total)
-                .map(|x| u32::from_be_bytes([x[0], x[1], x[2], x[3]]) as usize)
-            else {
-                break;
-            };
-            let start = 6 + name_total;
-            let Some(data) = r.get(start..start + size) else {
-                break;
-            };
-            if id == 0x0404 {
-                parse_iim(data, &mut fields, &mut keywords);
-            }
-            rest = r.get(start + size.next_multiple_of(2)..).unwrap_or(&[]);
+            .and_then(|rest| photoshop_resource(rest, 0x0404))
+        {
+            parse_iim(data, &mut fields, &mut keywords);
         }
     }
     (fields, keywords)

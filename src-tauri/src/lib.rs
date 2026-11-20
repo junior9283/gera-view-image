@@ -34,6 +34,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(store)
         .manage(startup)
+        .manage(commands::file::PrintJob::default())
         .invoke_handler(tauri::generate_handler![
             commands::docs::open_documents,
             commands::docs::close_document,
@@ -51,6 +52,23 @@ pub fn run() {
             commands::edit::histogram,
             commands::edit::auto_levels,
             commands::meta::metadata,
+            commands::file::save,
+            commands::file::export,
+            commands::file::estimate_size,
+            commands::file::revert,
+            commands::file::rename,
+            commands::file::move_to,
+            commands::file::duplicate,
+            commands::file::document_dpi,
+            commands::file::ignore_disk_change,
+            commands::file::open_with,
+            commands::file::reveal,
+            commands::file::print_document,
+            commands::file::print_image,
+            commands::file::print_page,
+            commands::file::print_close,
+            commands::capture::new_from_clipboard,
+            commands::capture::capture_screen,
             commands::theme::window_theme,
             commands::theme::compositing_available
         ])
@@ -64,6 +82,10 @@ pub fn run() {
                 commands::theme::probe_compositing(app.handle()),
             ));
             theme::watch::start(app.handle().clone());
+            commands::file::start_watch(
+                app.handle().clone(),
+                app.state::<doc::store::DocStore>().inner().clone(),
+            );
             Ok(())
         })
         .run(tauri::generate_context!())
