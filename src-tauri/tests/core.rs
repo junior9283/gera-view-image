@@ -11,6 +11,7 @@ use gera_view_image_lib::{
     error::AppError,
     image::{
         decode::{Decoded, decode, folder_images},
+        heic,
         ops::apply,
     },
 };
@@ -73,6 +74,13 @@ fn decodifica_cada_formato() {
         ("img.dng", SourceFormat::Raw, 64, 48),
     ];
     for (nome, formato, w, h) in casos {
+        // HEIC é opcional: sem a libde265 no sistema, o contrato é `heic_decoder_missing`
+        // (o caso com o decoder ausente à força fica em tests/heic_ausente.rs).
+        if formato == SourceFormat::Heic && !heic::hevc_available() {
+            let e = decode(&fx(nome)).unwrap_err();
+            assert_eq!(e.code(), "heic_decoder_missing", "{nome}: {e:?}");
+            continue;
+        }
         let d = decode(&fx(nome)).unwrap_or_else(|e| panic!("{nome}: {e:?}"));
         assert_eq!(d.format, formato, "{nome}");
         assert_eq!(d.frames[0].dimensions(), (w, h), "{nome}");
