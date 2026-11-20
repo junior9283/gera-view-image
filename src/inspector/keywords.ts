@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { registerDirtySource } from "../file/dirty";
 import type { DocId } from "../ipc/types";
 
 /**
@@ -54,6 +55,14 @@ export function clearKeywords(id: DocId) {
   if (had) emit();
 }
 
+function subscribeKeywords(l: () => void): () => void {
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
+
+// Palavras-chave editadas e ainda não gravadas contam como alteração (Salvar, diálogo de não salvo).
+registerDirtySource((id) => lists.has(id), subscribeKeywords);
+
 export function resetKeywordsForTests() {
   lists.clear();
   originals.clear();
@@ -61,12 +70,6 @@ export function resetKeywordsForTests() {
 }
 
 export function useKeywords(id: DocId): string[] {
-  useSyncExternalStore(
-    (cb) => {
-      listeners.add(cb);
-      return () => listeners.delete(cb);
-    },
-    () => version,
-  );
+  useSyncExternalStore(subscribeKeywords, () => version);
   return currentKeywords(id);
 }

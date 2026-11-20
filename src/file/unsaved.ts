@@ -1,4 +1,5 @@
 import type { DocInfo } from "../ipc/types";
+import { hasUnsaved } from "./dirty";
 
 export type CloseChoice = "save" | "discard" | "cancel";
 
@@ -17,7 +18,7 @@ const emit = () => listeners.forEach((l) => l());
  * pela pasta, fechar a janela). Sem nenhum sujo, resolve `'discard'` sem diálogo.
  */
 export function confirmClose(docs: DocInfo[]): Promise<CloseChoice> {
-  const dirty = docs.filter((d) => d.dirty);
+  const dirty = docs.filter(hasUnsaved);
   if (!dirty.length) return Promise.resolve("discard");
   return new Promise((resolve) => {
     queue = [...queue, { docs: dirty, resolve }];
@@ -57,7 +58,7 @@ export function setSaveHandler(fn: SaveHandler): void {
 export async function confirmAndSave(docs: DocInfo[]): Promise<boolean> {
   const choice = await confirmClose(docs);
   if (choice !== "save") return choice === "discard";
-  for (const d of docs.filter((x) => x.dirty)) {
+  for (const d of docs.filter(hasUnsaved)) {
     if (!(await saveHandler(d))) return false;
   }
   return true;

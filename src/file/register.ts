@@ -10,6 +10,7 @@ import { registerCommand, type CommandId } from "../shortcuts/commands";
 import { useDocs } from "../store/docs";
 import { addRecent, getPrefs } from "../store/prefs";
 import { registerBeforeSave } from "./beforeSave";
+import { hasUnsaved } from "./dirty";
 import * as file from "./fileActions";
 import { DiskBanner } from "./DiskBanner";
 import { confirmAndSave, setSaveHandler } from "./unsaved";
@@ -33,14 +34,17 @@ const ENTRIES: Entry[] = [
     return d && file.saveDoc(d);
   }, () => {
     const d = file.current();
-    return !!d && (d.dirty || !d.writable);
+    return !!d && (hasUnsaved(d) || !d.writable);
   }],
   ["file.duplicate", file.duplicateActive, hasDoc],
   ["file.rename", withDoc((id) => file.openFileDialog({ kind: "rename", id })), hasFile],
   ["file.moveTo", file.moveActive, hasFile],
   ["file.showInFolder", file.showInFolder, hasFile],
   ["file.openWith", file.openWith, hasFile],
-  ["file.revertLastSaved", () => file.revert("lastSaved"), () => hasFile() && !!file.current()?.dirty],
+  ["file.revertLastSaved", () => file.revert("lastSaved"), () => {
+    const d = file.current();
+    return !!d?.path && hasUnsaved(d);
+  }],
   ["file.revertOriginal", () => file.revert("original"), () => hasFile() && !!(file.current()?.canUndo || file.current()?.dirty)],
   ["file.export", withDoc((id) => file.openFileDialog({ kind: "export", id, mode: "export" })), hasDoc],
   ["file.exportSelected", () => file.openFileDialog({ kind: "exportSelected" }), exportable],

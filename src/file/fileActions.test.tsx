@@ -17,7 +17,7 @@ import { setPrefs } from "../store/prefs";
 import { addKeyword, getPendingKeywords, resetKeywordsForTests } from "../inspector/keywords";
 import { registerBeforeSave } from "./beforeSave";
 import { saveDoc, useFileUi } from "./fileActions";
-import { ExportDialog } from "./ExportDialog";
+import { ExportDialog, ExportSelectedDialog } from "./ExportDialog";
 
 const doc: DocInfo = {
   id: 1, path: "/fotos/Ação 1.jpg", name: "Ação 1.jpg", format: "jpeg", width: 40, height: 20, frames: 1,
@@ -86,5 +86,20 @@ describe("ExportDialog", () => {
     render(createElement(ExportDialog, { doc, mode: "export", onClose: () => {} }));
     expect(screen.getByTestId("export-estimate").textContent).toContain("Calculando");
     await vi.waitFor(() => expect(screen.getByTestId("export-estimate").textContent).toContain("2 KB"));
+  });
+});
+
+describe("ExportSelectedDialog", () => {
+  it("Esc durante a exportação não fecha o diálogo", async () => {
+    let finish!: () => void;
+    ipc.pathExists.mockResolvedValue(false);
+    ipc.exportDoc.mockImplementation(() => new Promise((r) => (finish = () => r(doc))));
+    const onClose = vi.fn();
+    render(createElement(ExportSelectedDialog, { onClose }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Exportar" })));
+    await act(async () => fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" }));
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => finish());
+    expect(onClose).toHaveBeenCalled();
   });
 });

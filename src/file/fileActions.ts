@@ -5,6 +5,8 @@ import { notify } from "../chrome/notify";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
 import * as ipc from "../ipc/commands";
+import { forgetHistory } from "../markup/history";
+import { useMarkup } from "../markup/store";
 import type { CaptureMode, DocId, DocInfo, ExportOptions, RevertTarget } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { addRecent, getPrefs, setPrefs } from "../store/prefs";
@@ -59,7 +61,7 @@ export async function saveDoc(d: DocInfo): Promise<boolean> {
     return false;
   }
   update(out.data);
-  clearKeywords(d.id);
+  settleKeywords(d.id, out.data.format);
   markChanged(d.id, null);
   notify(t("file.saved", { name: out.data.name }));
   return true;
@@ -70,12 +72,28 @@ export async function exportDoc(id: DocId, dest: string, opts: ExportOptions): P
   await runBeforeSave(id);
   const info = await ipc.exportDoc(id, dest, opts, getPendingKeywords(id));
   update(info);
-  if (info.path === dest) clearKeywords(id);
+  if (info.path === dest) settleKeywords(id, opts.stripMetadata ? null : opts.format);
   return info;
+}
+
+/** Formatos cujo codificador grava IPTC/XMP (`dc:subject`); os outros perdem as palavras-chave. */
+const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "png", "webp"]);
+
+/**
+ * Depois de gravar no próprio arquivo: palavras-chave pendentes saem da fila só se o formato as
+ * grava; senão continuam pendentes e o usuário é avisado (`format` nulo = metadados removidos).
+ */
+function settleKeywords(id: DocId, format: string | null): void {
+  if (!getPendingKeywords(id)) return;
+  if (format && KEYWORD_FORMATS.has(format)) clearKeywords(id);
+  else notify(t("file.keywordsNotSaved"));
 }
 
 async function revertDoc(id: DocId, to: RevertTarget): Promise<void> {
   update(await ipc.revert(id, to));
+  // Volta ao arquivo: as anotações não achatadas e a pilha de desfazer do JS não valem mais.
+  useMarkup.getState().drop(id);
+  forgetHistory(id);
   clearKeywords(id);
   markChanged(id, null);
 }

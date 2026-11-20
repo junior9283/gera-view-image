@@ -248,7 +248,8 @@ export function ExportSelectedDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Frame title={t("file.export.titleSelected")} onClose={onClose}>
+    // Durante a exportação o Esc não fecha (o laço continuaria sem diálogo nem progresso).
+    <Frame title={t("file.export.titleSelected")} onClose={progress ? () => {} : onClose}>
       <fieldset className="file-names" aria-label={t("file.export.images")}>
         {docs.map((d) => (
           <label key={d.id} className="file-check">
