@@ -9,6 +9,7 @@ import { useViewerShortcuts } from "./viewer/shortcuts";
 import { useFileDrop } from "./viewer/fileDrop";
 import { UpdateHost } from "./updater/UpdateDialog";
 import { DialogHost } from "./prefs/DialogHost";
+import { AdjustHost } from "./adjust/AdjustHost";
 import { initDocs, useDocs } from "./store/docs";
 import { useUi } from "./store/ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -71,6 +72,7 @@ export default function App() {
       {slideshow && <Slideshow />}
       <UpdateHost />
       <DialogHost />
+      <AdjustHost />
     </WindowFrame>
   );
 }

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DocId, DocInfo, Mask, Op, Rect, ViewBuffer } from "./types";
+import type { ColorAdjust, DocId, DocInfo, Histogram, Mask, Op, Rect, ViewBuffer } from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -49,3 +49,11 @@ export const snapLasso = (id: DocId, points: [number, number][]) =>
 
 /** Copia a região (ou a imagem toda, sem máscara) para a área de transferência como PNG. */
 export const copyRegion = (id: DocId, mask: Mask | null) => invoke<void>("copy_region", { id, mask });
+
+/** Prévia de um ajuste de cor em resolução reduzida; não altera o documento. */
+export const previewAdjust = async (id: DocId, adjust: ColorAdjust, maxW: number, maxH: number) =>
+  decodeViewBuffer(await invoke<ArrayBuffer>("preview_adjust", { id, adjust, maxW, maxH }));
+
+export const histogram = (id: DocId) => invoke<Histogram>("histogram", { id });
+
+export const autoLevels = (id: DocId) => invoke<ColorAdjust>("auto_levels", { id });

@@ -51,6 +51,9 @@ export interface ColorAdjust {
   levels: Levels;
 }
 
+/** 256 faixas por canal e luminância (`histogram`). */
+export interface Histogram { r: number[]; g: number[]; b: number[]; l: number[] }
+
 export const NEUTRAL_ADJUST: ColorAdjust = {
   exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0,
   temperature: 0, tint: 0, sepia: 0, sharpness: 0, levels: { black: 0, gamma: 1, white: 255 },

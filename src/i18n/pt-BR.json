@@ -101,5 +101,50 @@
     "instantAlphaHint": "Arraste para ajustar a tolerância. Enter ou Delete torna transparente.",
     "noAlphaNotice": "Este formato não tem transparência: o resultado será salvo como PNG ou exportado.",
     "pasteUnavailable": "Colar ainda não está disponível."
+  },
+  "adjust": {
+    "title": "Ajustar Cor",
+    "preview": "Prévia do ajuste",
+    "histogram": "Histograma",
+    "levelBlack": "Nível de preto",
+    "levelGamma": "Gama",
+    "levelWhite": "Nível de branco",
+    "exposure": "Exposição",
+    "contrast": "Contraste",
+    "highlights": "Realces",
+    "shadows": "Sombras",
+    "temperature": "Temperatura",
+    "tint": "Matiz",
+    "saturation": "Saturação",
+    "sepia": "Sépia",
+    "sharpness": "Nitidez",
+    "auto": "Ajuste Automático",
+    "reset": "Redefinir Tudo",
+    "ok": "OK",
+    "cancel": "Cancelar",
+    "previewFailed": "Não foi possível gerar a prévia.",
+    "autoFailed": "Não foi possível calcular o ajuste automático.",
+    "applyFailed": "Não foi possível aplicar o ajuste."
+  },
+  "resize": {
+    "title": "Ajustar Tamanho",
+    "preset": "Predefinição",
+    "custom": "Personalizado",
+    "width": "Largura",
+    "height": "Altura",
+    "unit": "Unidade",
+    "resolution": "Resolução",
+    "dpi": "pixels/pol.",
+    "proportional": "Redimensionar proporcionalmente",
+    "resample": "Reamostrar imagem",
+    "filter": "Filtro",
+    "filters": {
+      "lanczos3": "Lanczos (melhor)",
+      "bilinear": "Bilinear",
+      "nearest": "Vizinho mais próximo"
+    },
+    "resultSize": "Tamanho resultante: {{size}} MB",
+    "tooBig": "Tamanho grande demais.",
+    "failed": "Não foi possível redimensionar a imagem."
   }
 }

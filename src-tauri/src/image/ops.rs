@@ -1,9 +1,9 @@
 //! Operações não destrutivas: cada `Op` gera uma imagem nova a partir da anterior.
-use crate::doc::model::{ColorAdjust, CropSpec, Mask, Op, Rect, ResizeFilter};
+use crate::doc::model::{CropSpec, Mask, Op, Rect, ResizeFilter};
 use ::image::{RgbaImage, imageops};
 use rayon::prelude::*;
 
-/// Aplica uma operação. `Adjust` é a extensão da Tarefa 9 (por enquanto, identidade).
+/// Aplica uma operação.
 pub fn apply(img: &RgbaImage, op: &Op) -> RgbaImage {
     match op {
         Op::Rotate { quarter_turns } => match quarter_turns.rem_euclid(4) {
@@ -16,7 +16,7 @@ pub fn apply(img: &RgbaImage, op: &Op) -> RgbaImage {
         Op::FlipV => imageops::flip_vertical(img),
         Op::Crop(c) => crop(img, c),
         Op::Resize { w, h, filter, .. } => resize(img, *w, *h, *filter),
-        Op::Adjust(adj) => adjust(img, adj),
+        Op::Adjust(adj) => crate::image::color::adjust(img, adj),
         Op::Erase(mask) => masked(img, mask, |p, cov| {
             if cov {
                 *p = [0, 0, 0, 0];
@@ -45,12 +45,6 @@ fn crop(img: &RgbaImage, c: &CropSpec) -> RgbaImage {
         }
     }
     out
-}
-
-/// Ponto de extensão da Tarefa 9 (`color::adjust`). Até lá, não altera a imagem.
-fn adjust(img: &RgbaImage, _adj: &ColorAdjust) -> RgbaImage {
-    // TODO(Tarefa 9): substituir por `crate::image::color::adjust(img, adj)`.
-    img.clone()
 }
 
 /// Dimensões depois da operação, sem calcular pixels.
