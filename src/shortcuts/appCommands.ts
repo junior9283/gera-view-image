@@ -21,7 +21,7 @@ const fire = (name: string) => () => window.dispatchEvent(new Event(name));
 /** Documento ativo que dá para editar e mostrar (sem erro e com tamanho). */
 function editable() {
   const d = view.activeDoc();
-  return d && !d.error && d.width > 0 && d.height > 0 ? d : null;
+  return view.viewable(d) ? d : null;
 }
 const hasDoc = () => !!editable();
 const hasDocs = () => useDocs.getState().docs.length > 0;

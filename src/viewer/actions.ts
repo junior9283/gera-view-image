@@ -16,7 +16,7 @@ export function activeDoc(): DocInfo | null {
 const imgSize = (d: DocInfo): Size => ({ w: d.width, h: d.height });
 
 /** Documento que dá para mostrar no Viewport (sem erro e com tamanho). */
-const viewable = (d: DocInfo | null): d is DocInfo => !!d && !d.error && d.width > 0 && d.height > 0;
+export const viewable = (d: DocInfo | null): d is DocInfo => !!d && !d.error && d.width > 0 && d.height > 0;
 
 /**
  * Recalcula a view do ativo para o tamanho atual da área. `reset` (troca de documento) aplica

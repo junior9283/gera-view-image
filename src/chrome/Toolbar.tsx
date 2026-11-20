@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useWindowEvent } from "../lib/events";
 import { runCommand, type CommandId } from "../shortcuts/commands";
 import { useEnabled } from "../shortcuts/useEnabled";
 import { InspectorIcon, MarkupIcon, RotateIcon, ShareIcon, SidebarIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
@@ -34,12 +35,9 @@ function ShareButton() {
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => box.current?.contains(e.target as Node) || setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  useWindowEvent("mousedown", (e) => {
+    if (open && !box.current?.contains(e.target as Node)) setOpen(false);
+  });
 
   const close = () => {
     setOpen(false);
