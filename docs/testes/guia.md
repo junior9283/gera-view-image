@@ -1,8 +1,8 @@
 # Guia de testes
 
 ## Comandos
-- `npm run lint`, `npm run typecheck`, `npm test` (Vitest/jsdom, `vmThreads`), `npm run test:rust`.
-- Build: `npm run tauri build -- --bundles appimage,rpm` (não usar `tauri dev` em paralelo: porta 1420).
+- `npm run test:release` (script de versão, `node --test`), `npm run lint`, `npm run typecheck`, `npm test` (Vitest/jsdom, `vmThreads`), `npm run test:rust`.
+- Build: `npm run tauri build -- --bundles deb,rpm,appimage` (exporte `TAURI_SIGNING_PRIVATE_KEY` e `_PASSWORD` a partir de `~/.tauri/gera-view-image.*` para gerar os `.sig`) (não usar `tauri dev` em paralelo: porta 1420).
 
 ## Marco 0: validação WebKitGTK (spec §13.2)
 Máquina: KDE Plasma Wayland, Intel UHD + Nvidia GTX 1650 (híbrida). Binário release, JPEG 24 MP (6000x4000, 6,1 MiB, plasma ImageMagick).
@@ -21,9 +21,15 @@ Contorno aplicado por padrão: `WEBKIT_DISABLE_DMABUF_RENDERER=1` (desligar com 
 - Núcleo isolado (`GVI_PERF_JPEG=... cargo test --release --test perf -- --ignored --nocapture`): prévia DCT 1/2 (3000x2000) aberta em 173-187 ms, 1º `render_view` em 184-200 ms, decode completo em segundo plano termina em 366-384 ms. Decode completo isolado (crate `image`/zune-jpeg): 196 ms.
 - App inteiro (`GVI_TIMING=1 gera-view-image foto.jpg`, 3 execuções): argv aberto em 166-268 ms; 1º `render_view` (prévia) servido em **283-404 ms**; buffer em resolução cheia (evento `doc-updated`) em 405-531 ms. Antes (Tarefa 0): 1170 ms.
 - O que domina agora é a subida do WebView (o decode roda em paralelo desde o `main`).
+- **Leitura honesta:** 2 das 3 execuções deram 404 ms, ou seja, a meta de < 400 ms foi atingida só no limite e não com folga. O núcleo (prévia + 1º render em ~200 ms) não é mais o gargalo; o resto é a subida do GTK/WebKit até o JS chamar `startup_documents`. Ganhar mais exige mexer na subida do WebView (pintar a prévia antes do React, por exemplo), não no decode.
 
 ## Armadilhas
 - `cargo fmt` e `cargo clippy --all-targets` sem avisos são esperados no Rust.
 - O perfil release usa `panic = "unwind"`: pânico de decodificador vira erro `corrupt` só naquele documento (`decode::guarded`).
+- `bundle.category` do Tauri usa nomes do enum (`GraphicsAndDesign`), não da freedesktop; `Categories=` do `.desktop` vem do template próprio.
+- Build release com LTO leva ~14 min com a máquina carregada; só o bundling falha ao final se a config estiver inválida.
 - `npm create tauri-app` exige diretório vazio: gerar em pasta temporária e mover.
 - `spectacle -a` no Wayland captura a janela ativa, que pode não ser o app testado.
+- libheif é compilada estática (`embedded-libheif`, cmake). Precisa dos headers de libde265, aom e x265 (`*-devel`/`*-dev`). O `libheif.pc` gerado quebra o `-L` num caminho com espaço ("GERA VIEW IMAGE"): localmente use `CARGO_TARGET_DIR` por um symlink sem espaços. No CI o caminho não tem espaço.
+- Os pacotes dependem só de codecs com soname estável (`libde265-0`/`libde265`, `libaom3`/`libaom`). Conferir com `ldd` no binário release antes de mexer em `bundle.linux.*.depends`; o smoke do release roda `gera-view-image --version` depois de instalar em ubuntu:22.04, ubuntu:24.04 e fedora:41.
+- Testes de memória (`tests/robustez.rs`) usam `DocStore::with_limits` com orçamento pequeno e contam reservas/execuções do pipeline em vez de medir RSS.

@@ -4,6 +4,12 @@ body,
   margin: 0;
   height: 100%;
   overflow: hidden;
+  background: transparent; /* janela transparente: o WindowFrame desenha os cantos */
+}
+.app-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
   background: #1e1e1e;
 }
 .viewport {

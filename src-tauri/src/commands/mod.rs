@@ -1,6 +1,7 @@
 //! Comandos Tauri. Cada tarefa acrescenta seus módulos aqui e registra em `lib.rs`.
 pub mod docs;
 pub mod edit;
+pub mod theme;
 pub mod view;
 
 use crate::error::{AppError, AppResult};
