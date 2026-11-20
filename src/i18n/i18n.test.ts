@@ -36,7 +36,7 @@ describe("i18n", () => {
     expect(errorMessage("corrupt")).not.toBe("errors.corrupt");
     await i18n.changeLanguage("en");
     expect(errorMessage("heic_decoder_missing")).toBe("To open HEIC, install libde265 (on Fedora: RPM Fusion)");
-    for (const code of ["not_found", "unsupported", "corrupt", "io", "permission", "changed_on_disk"] as const) {
+    for (const code of ["not_found", "unsupported", "corrupt", "io", "permission", "changed_on_disk", "empty_selection"] as const) {
       expect(errorMessage(code)).not.toBe(`errors.${code}`);
     }
     await i18n.changeLanguage("pt-BR");

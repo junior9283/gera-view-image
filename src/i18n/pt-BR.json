@@ -61,7 +61,8 @@
     "io": "Não foi possível ler o arquivo",
     "permission": "Sem permissão para acessar o arquivo",
     "changed_on_disk": "O arquivo mudou no disco",
-    "heic_decoder_missing": "Para abrir HEIC, instale a libde265 (no Fedora: RPM Fusion)"
+    "heic_decoder_missing": "Para abrir HEIC, instale a libde265 (no Fedora: RPM Fusion)",
+    "empty_selection": "Faça uma seleção primeiro"
   },
   "viewer": {
     "label": "Visualização da imagem",
