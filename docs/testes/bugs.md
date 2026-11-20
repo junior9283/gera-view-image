@@ -15,3 +15,9 @@ Formato: sintoma, causa, correção, teste, lição.
 - **Correção:** `moveItems` devolve o mesmo array quando o deslocamento é zero.
 - **Teste:** `deslocamento zero devolve o mesmo array` (`src/markup/model.test.ts`).
 - **Lição:** em histórico por snapshot, transformações neutras devem preservar a identidade.
+
+## Mover/Renomear podia substituir um arquivo e abrir as permissões
+- **Sintoma (revisão):** `move_file` checava `exists()` e depois fazia `rename`, que sobrescreve em silêncio um destino criado nesse intervalo. Na cópia entre discos, o destino nascia com a umask (podia ficar legível por outros) e recebia o modo por caminho (TOCTOU). O temporário da gravação atômica tinha o mesmo padrão.
+- **Correção:** `hard_link` (falha se o destino existir) e, sem ele, `copy_no_replace` com `create_new` + `mode(0o600)` + `File::set_permissions` pelo handle. O temporário do `write_atomic` nasce 0o600 quando regrava.
+- **Teste:** `copia_entre_discos_nao_abre_permissoes`, `salvar_arquivo_privado_continua_privado`, `renomear_e_mover` (`src-tauri/tests/file.rs`).
+- **Lição:** nunca “checar e depois agir” em caminhos; criar com `create_new` e o modo mais restrito e ajustar pelo descritor.

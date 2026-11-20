@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const targetDir = process.env.CARGO_TARGET_DIR ?? path.join(root, "src-tauri", "target");
@@ -73,6 +73,8 @@ export const config: WebdriverIO.Config = {
   afterSession: () => {
     exiting = true;
     driver?.kill();
+    const file = process.env.GVI_E2E_FILE;
+    if (file) rmSync(path.dirname(path.dirname(file)), { recursive: true, force: true });
   },
 };
 
