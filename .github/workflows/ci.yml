@@ -34,7 +34,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm test
-      - run: node --test scripts/release.test.mjs scripts/check-needed.test.mjs
+      - run: node --test scripts/release.test.mjs scripts/check-needed.test.mjs scripts/fix-latest-json.test.mjs
 
   cargo-test:
     runs-on: ubuntu-22.04

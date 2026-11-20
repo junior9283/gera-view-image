@@ -109,6 +109,17 @@ jobs:
     permissions:
       contents: write # só aqui o rascunho vira release público (e o latest.json fica visível)
     steps:
+      - uses: actions/checkout@v4
+      # Com releaseDraft, o latest.json pode sair com URLs .../download/untagged-<hash>/,
+      # que quebram o updater depois de publicado: reescreve para a tag antes de publicar.
+      - name: Corrigir as URLs do latest.json do rascunho
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir latest
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" -p latest.json -D latest
+          scripts/fix-latest-json.sh latest/latest.json "$GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber latest/latest.json
       - name: Publicar o rascunho
         env:
           GH_TOKEN: ${{ github.token }}
