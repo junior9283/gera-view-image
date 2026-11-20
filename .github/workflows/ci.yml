@@ -9,7 +9,11 @@ permissions:
   contents: read
 
 env:
-  APT_DEPS: libwebkit2gtk-4.1-dev libheif-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+  # libheif 1.23 é compilada estática (embedded-libheif); o AVIF usa libaom do sistema.
+  # Os demais codecs ficam fora pelo toolchain src-tauri/cmake/libheif-codecs.cmake
+  # (.cargo/config.toml), mesmo que algum -dev venha como dependência transitiva.
+  # Sem libheif-dev (o linker pegaria a 1.12 dinâmica). libde265-0 (runtime) é para os testes de HEIC.
+  APT_DEPS: libwebkit2gtk-4.1-dev cmake libaom-dev libde265-0 libayatana-appindicator3-dev librsvg2-dev patchelf
 
 jobs:
   lint-typecheck:
@@ -30,7 +34,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm test
-      - run: node --test scripts/release.test.mjs
+      - run: node --test scripts/release.test.mjs scripts/check-needed.test.mjs
 
   cargo-test:
     runs-on: ubuntu-22.04
@@ -47,3 +51,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Bibliotecas NEEDED do binário (allowlist; sem libde265/libjpeg/libopenjp2)
+        run: |
+          cargo build --manifest-path src-tauri/Cargo.toml --bin gera-view-image
+          scripts/check-needed.sh src-tauri/target/debug/gera-view-image

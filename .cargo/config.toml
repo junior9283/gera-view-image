@@ -1,0 +1,3 @@
+[env]
+# Build determinístico da libheif embutida: só AOM entre os codecs (ver o arquivo).
+CMAKE_TOOLCHAIN_FILE = { value = "src-tauri/cmake/libheif-codecs.cmake", relative = true }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import en from "./en.json";
 import ptBR from "./pt-BR.json";
-import i18n, { resolveLanguage } from "./index";
+import i18n, { errorMessage, resolveLanguage } from "./index";
 
 function keys(o: Record<string, unknown>, prefix = ""): string[] {
   return Object.entries(o).flatMap(([k, v]) =>
@@ -28,6 +28,18 @@ describe("i18n", () => {
     expect(i18n.t("window.close")).toBe("Close");
     await i18n.changeLanguage("pt-BR");
     expect(i18n.t("window.close")).toBe("Fechar");
+  });
+
+  it("traduz códigos de erro do núcleo, com mensagem própria para HEIC sem libde265", async () => {
+    await i18n.changeLanguage("pt-BR");
+    expect(errorMessage("heic_decoder_missing")).toBe("Para abrir HEIC, instale a libde265 (no Fedora: RPM Fusion)");
+    expect(errorMessage("corrupt")).not.toBe("errors.corrupt");
+    await i18n.changeLanguage("en");
+    expect(errorMessage("heic_decoder_missing")).toBe("To open HEIC, install libde265 (on Fedora: RPM Fusion)");
+    for (const code of ["not_found", "unsupported", "corrupt", "io", "permission", "changed_on_disk"] as const) {
+      expect(errorMessage(code)).not.toBe(`errors.${code}`);
+    }
+    await i18n.changeLanguage("pt-BR");
   });
 });
 

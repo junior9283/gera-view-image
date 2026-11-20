@@ -1,34 +1,59 @@
 pub mod commands;
+pub mod doc;
+pub mod error;
+pub mod image;
 pub mod platform;
 pub mod theme;
-mod provisional;
 
-use std::time::Instant;
+use tauri::{Emitter, Manager};
 
 pub fn run() {
-    let t0 = Instant::now();
+    commands::mark_start();
     // Antes de qualquer thread/janela: o WebKitGTK lê estas variáveis ao iniciar.
     platform::webkit::apply_webkit_workarounds(&|k| std::env::var(k).ok(), &mut |k, v| {
         // SAFETY: processo ainda single-thread, nada leu o ambiente em paralelo.
         unsafe { std::env::set_var(k, v) }
     });
 
-    let path = std::env::args_os().nth(1).map(std::path::PathBuf::from);
+    let store = doc::store::DocStore::new();
+    // A decodificação de argv[1..] começa já, em paralelo com a subida do WebView.
+    let startup = commands::docs::Startup::spawn(
+        store.clone(),
+        commands::docs::Startup::paths_from_args(
+            std::env::args_os().skip(1),
+            &std::env::current_dir().unwrap_or_default(),
+        ),
+    );
+
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .manage(provisional::Provisional::new(t0, path))
+        .manage(store)
+        .manage(startup)
         .invoke_handler(tauri::generate_handler![
-            provisional::render_view,
-            provisional::mark_shown,
+            commands::docs::open_documents,
+            commands::docs::close_document,
+            commands::docs::folder_images,
+            commands::docs::startup_documents,
+            commands::view::render_view,
+            commands::view::thumbnail,
+            commands::edit::apply_op,
+            commands::edit::undo,
+            commands::edit::redo,
             commands::theme::window_theme,
             commands::theme::compositing_available
         ])
         .setup(|app| {
-            use tauri::Manager;
-            app.manage(commands::theme::Compositing(commands::theme::probe_compositing(app.handle())));
+            let handle = app.handle().clone();
+            app.state::<doc::store::DocStore>()
+                .set_listener(move |info| {
+                    let _ = handle.emit("doc-updated", info);
+                });
+            app.manage(commands::theme::Compositing(
+                commands::theme::probe_compositing(app.handle()),
+            ));
             theme::watch::start(app.handle().clone());
             Ok(())
         })

@@ -24,7 +24,8 @@
     "i18next": "^27.2.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-i18next": "^18.0.3"
+    "react-i18next": "^18.0.3",
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

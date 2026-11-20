@@ -1,41 +1,64 @@
-import { useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { listen } from "@tauri-apps/api/event";
 import { fitView, zoomAt, type View } from "./transform";
+import { renderView, startupDocuments } from "../ipc/commands";
+import { DOC_UPDATED_EVENT, type DocInfo, type ErrorCode } from "../ipc/types";
+import { useDocs } from "../store/docs";
+import { errorMessage } from "../i18n";
 
-/** Viewport mínimo (Tarefa 0): desenha o buffer de `render_view`, zoom Ctrl+roda e pan por arraste. */
+/**
+ * Viewport mínimo: mostra o primeiro documento de `argv` via `render_view`, com zoom
+ * Ctrl+roda e pan por arraste. A versão completa (navegação, erros, região) é da Tarefa 5.
+ */
 export function Viewport() {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [error, setError] = useState<ErrorCode | null>(null);
+  useTranslation(); // re-renderiza a mensagem de erro quando o idioma muda
 
   useEffect(() => {
     const el = box.current!;
     const cv = canvas.current!;
     let view: View = { scale: 1, x: 0, y: 0 };
     let drag: { x: number; y: number } | null = null;
+    let shown: DocInfo | null = null;
 
     const apply = () => {
       cv.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
     };
 
-    const load = async () => {
+    // Desenha o buffer ajustado à janela em pixels físicos (1 px do canvas = 1/dpr px CSS).
+    const draw = async (info: DocInfo) => {
+      setError(info.error);
+      if (info.error) return;
       const dpr = window.devicePixelRatio || 1;
-      const buf = await invoke<ArrayBuffer>("render_view", {
-        maxW: Math.round(el.clientWidth * dpr),
-        maxH: Math.round(el.clientHeight * dpr),
-      });
-      const [w, h] = new Uint32Array(buf.slice(0, 8));
-      const data = new Uint8ClampedArray(buf, 8, w * h * 4);
-      cv.width = w;
-      cv.height = h;
-      cv.getContext("2d")!.putImageData(new ImageData(data, w, h), 0, 0);
-      // O buffer já vem ajustado à janela em pixels físicos: 1 px do canvas = 1/dpr px CSS.
-      cv.style.width = `${w / dpr}px`;
-      cv.style.height = `${h / dpr}px`;
-      view = fitView(w / dpr, h / dpr, el.clientWidth, el.clientHeight);
-      apply();
-      await invoke("mark_shown");
+      const v = await renderView(info.id, 0, Math.round(el.clientWidth * dpr), Math.round(el.clientHeight * dpr));
+      cv.width = v.width;
+      cv.height = v.height;
+      cv.getContext("2d")!.putImageData(new ImageData(v.data, v.width, v.height), 0, 0);
+      cv.style.width = `${v.width / dpr}px`;
+      cv.style.height = `${v.height / dpr}px`;
+      if (shown?.id !== info.id) {
+        view = fitView(v.width / dpr, v.height / dpr, el.clientWidth, el.clientHeight);
+        apply();
+      }
+      shown = info;
     };
-    load().catch((e) => console.error("falha ao abrir imagem:", e));
+
+    const start = async () => {
+      const infos = await startupDocuments();
+      useDocs.getState().add(infos);
+      const first = infos.find((d) => !d.error) ?? infos[0];
+      if (first) await draw(first);
+    };
+    start().catch((e) => console.error("falha ao abrir imagem:", e));
+
+    // A decodificação completa (ou outra mudança feita no Rust) chega por evento.
+    const unlisten = listen<DocInfo>(DOC_UPDATED_EVENT, (e) => {
+      useDocs.getState().update(e.payload);
+      if (shown?.id === e.payload.id) draw(e.payload).catch((err) => console.error(err));
+    });
 
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
@@ -61,6 +84,7 @@ export function Viewport() {
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);
     return () => {
+      unlisten.then((f) => f());
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("pointerdown", onDown);
       el.removeEventListener("pointermove", onMove);
@@ -71,6 +95,11 @@ export function Viewport() {
   return (
     <div ref={box} className="viewport">
       <canvas ref={canvas} className="viewport-canvas" />
+      {error && (
+        <p className="viewport-error" role="alert">
+          {errorMessage(error)}
+        </p>
+      )}
     </div>
   );
 }

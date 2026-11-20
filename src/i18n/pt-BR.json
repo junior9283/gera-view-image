@@ -53,5 +53,14 @@
     "repository": "Repositório no GitHub",
     "logoAlt": "Logo do Gera View Image",
     "close": "Fechar"
+  },
+  "errors": {
+    "not_found": "Arquivo não encontrado",
+    "unsupported": "Formato não suportado",
+    "corrupt": "Arquivo danificado ou incompleto",
+    "io": "Não foi possível ler o arquivo",
+    "permission": "Sem permissão para acessar o arquivo",
+    "changed_on_disk": "O arquivo mudou no disco",
+    "heic_decoder_missing": "Para abrir HEIC, instale a libde265 (no Fedora: RPM Fusion)"
   }
 }
