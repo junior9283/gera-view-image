@@ -3,6 +3,25 @@ use crate::doc::model::Rect;
 use ::image::RgbaImage;
 use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::Image};
 
+/// Bytes do cabeçalho do buffer do IPC (`u32 LE w`, `u32 LE h`) antes do RGBA.
+pub const HEADER_LEN: usize = 8;
+
+/// Buffer do IPC `w`x`h` com o cabeçalho escrito e o RGBA zerado.
+pub fn new_view_buffer(w: u32, h: u32) -> Vec<u8> {
+    let mut buf = vec![0u8; HEADER_LEN + w as usize * h as usize * 4];
+    buf[0..4].copy_from_slice(&w.to_le_bytes());
+    buf[4..8].copy_from_slice(&h.to_le_bytes());
+    buf
+}
+
+/// Dimensões de um buffer do IPC; `None` se o RGBA não tiver o tamanho do cabeçalho.
+pub fn view_buffer_size(buf: &[u8]) -> Option<(u32, u32)> {
+    let w = u32::from_le_bytes(buf.get(0..4)?.try_into().ok()?);
+    let h = u32::from_le_bytes(buf.get(4..8)?.try_into().ok()?);
+    let len = (w as usize).checked_mul(h as usize)?.checked_mul(4)?;
+    (buf.len() - HEADER_LEN == len).then_some((w, h))
+}
+
 /// Maior tamanho que cabe em `max_w`x`max_h` mantendo a proporção, sem ampliar (mínimo 1x1).
 pub fn fit_size(w: u32, h: u32, max_w: u32, max_h: u32) -> (u32, u32) {
     if w == 0 || h == 0 {
@@ -44,16 +63,14 @@ pub fn resize_into(img: &RgbaImage, src: Rect, w: u32, h: u32, alg: ResizeAlg, o
 
 /// Buffer do IPC com o trecho `src` de `img` escalado para `out_w`x`out_h`.
 pub fn view_buffer(img: &RgbaImage, src: Rect, out_w: u32, out_h: u32) -> Vec<u8> {
-    let mut buf = vec![0u8; 8 + out_w as usize * out_h as usize * 4];
-    buf[0..4].copy_from_slice(&out_w.to_le_bytes());
-    buf[4..8].copy_from_slice(&out_h.to_le_bytes());
+    let mut buf = new_view_buffer(out_w, out_h);
     resize_into(
         img,
         src,
         out_w,
         out_h,
         ResizeAlg::Convolution(FilterType::Bilinear),
-        &mut buf[8..],
+        &mut buf[HEADER_LEN..],
     );
     buf
 }

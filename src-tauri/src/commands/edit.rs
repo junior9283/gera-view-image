@@ -6,8 +6,9 @@ use crate::{
         store::DocStore,
     },
     error::{AppError, AppResult},
-    image::{color, select},
+    image::{color, select, thumb},
 };
+use std::sync::Arc;
 use tauri::{AppHandle, State, image::Image, ipc::Response};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -92,7 +93,7 @@ pub async fn preview_adjust(
 ) -> AppResult<Response> {
     let store = store.inner().clone();
     blocking(move || {
-        let mut buf = store.render_view(id, 0, max_w, max_h, None)?;
+        let mut buf = store.preview_base(id, max_w, max_h)?.to_vec();
         color::adjust_view_buffer(&mut buf, &adjust);
         Ok(buf)
     })
@@ -103,18 +104,22 @@ pub async fn preview_adjust(
 /// Lado máximo da amostra usada para histograma e níveis automáticos.
 const SAMPLE: u32 = 1024;
 
-fn sample(store: &DocStore, id: DocId) -> AppResult<::image::RgbaImage> {
-    color::view_buffer_image(&store.render_view(id, 0, SAMPLE, SAMPLE, None)?)
+/// Amostra reduzida (compartilha o cache de `preview_base`); o RGBA começa em
+/// `thumb::HEADER_LEN`.
+fn sample(store: &DocStore, id: DocId) -> AppResult<Arc<Vec<u8>>> {
+    let buf = store.preview_base(id, SAMPLE, SAMPLE)?;
+    thumb::view_buffer_size(&buf).ok_or_else(|| AppError::Io("buffer de prévia inválido".into()))?;
+    Ok(buf)
 }
 
 #[tauri::command]
 pub async fn histogram(store: State<'_, DocStore>, id: DocId) -> AppResult<color::Histogram> {
     let store = store.inner().clone();
-    blocking(move || Ok(color::histogram(&sample(&store, id)?))).await
+    blocking(move || Ok(color::histogram(&sample(&store, id)?[thumb::HEADER_LEN..]))).await
 }
 
 #[tauri::command]
 pub async fn auto_levels(store: State<'_, DocStore>, id: DocId) -> AppResult<ColorAdjust> {
     let store = store.inner().clone();
-    blocking(move || Ok(color::auto_levels(&sample(&store, id)?))).await
+    blocking(move || Ok(color::auto_levels(&sample(&store, id)?[thumb::HEADER_LEN..]))).await
 }

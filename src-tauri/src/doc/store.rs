@@ -80,6 +80,11 @@ impl Drop for Reservation<'_> {
 type InflightKey = (DocId, usize, u32, u64);
 type Inflight = Arc<OnceLock<Arc<RgbaImage>>>;
 
+/// Estado do documento que um render reflete: `(ops.len(), generation)`.
+type RenderState = (usize, u64);
+/// Base da prévia de ajuste: `(doc, estado, max_w, max_h)`.
+type PreviewKey = (DocId, RenderState, u32, u32);
+
 /// JPEG acima disto (em pixels) abre com prévia reduzida e completa em segundo plano.
 pub const PREVIEW_MIN_PIXELS: u64 = 4_000_000;
 /// A prévia tem pelo menos este lado maior (cobre uma tela 2K sem ampliar).
@@ -214,6 +219,8 @@ struct Inner {
     budget: DecodeBudget,
     inflight: Mutex<HashMap<InflightKey, Inflight>>,
     pipeline_runs: AtomicUsize,
+    /// Cache de 1 entrada da base reduzida da prévia de ajuste (`preview_base`).
+    preview: Mutex<Option<(PreviewKey, Arc<Vec<u8>>)>>,
 }
 
 /// Documentos abertos (`Mutex<HashMap<DocId, Document>>`), compartilhável entre threads.
@@ -292,6 +299,7 @@ impl DocStore {
                 budget: DecodeBudget::new(decode_budget),
                 inflight: Mutex::new(HashMap::new()),
                 pipeline_runs: AtomicUsize::new(0),
+                preview: Mutex::new(None),
             }),
         }
     }
@@ -430,6 +438,12 @@ impl DocStore {
 
     pub fn close(&self, id: DocId) -> AppResult<()> {
         let removed = self.lock().remove(&id);
+        {
+            let mut preview = self.inner.preview.lock().unwrap_or_else(|e| e.into_inner());
+            if preview.as_ref().is_some_and(|((d, ..), _)| *d == id) {
+                *preview = None;
+            }
+        }
         self.inner.ready.notify_all();
         self.inner.cache.remove_doc(id);
         removed.map(|_| ()).ok_or_else(|| not_found(id))
@@ -512,17 +526,17 @@ impl DocStore {
 
     /// Quadro em resolução cheia com todas as operações (espera a decodificação completa).
     pub fn render_full(&self, id: DocId, frame: u32) -> AppResult<Pixels> {
-        self.pixels(id, frame, false).map(|(p, _, _)| p)
+        self.pixels(id, frame, false).map(|(p, ..)| p)
     }
 
-    /// Pixels atuais, dimensões lógicas (resolução cheia) e a escala lógica→pixels
-    /// (< 1 só durante a prévia).
+    /// Pixels atuais, dimensões lógicas (resolução cheia), a escala lógica→pixels
+    /// (< 1 só durante a prévia) e o estado do documento que eles refletem.
     fn pixels(
         &self,
         id: DocId,
         frame: u32,
         allow_preview: bool,
-    ) -> AppResult<(Pixels, (u32, u32), f64)> {
+    ) -> AppResult<(Pixels, (u32, u32), f64, RenderState)> {
         let map = if allow_preview {
             self.lock()
         } else {
@@ -534,14 +548,16 @@ impl DocStore {
         if f >= doc.source.frames.len() {
             return Err(AppError::NotFound(format!("quadro {frame} inexistente")));
         }
+        let n = doc.ops.len();
+        let generation = doc.generation;
+        let state = (n, generation);
         if doc.loading {
             let scale = doc.source.frames[0].width() as f64 / doc.full_size.0.max(1) as f64;
-            return Ok((Pixels::Source(doc.source.clone(), 0), doc.full_size, scale));
+            return Ok((Pixels::Source(doc.source.clone(), 0), doc.full_size, scale, state));
         }
-        let n = doc.ops.len();
         let size = doc.size_after_ops();
         if n == 0 {
-            return Ok((Pixels::Source(doc.source.clone(), f), size, 1.0));
+            return Ok((Pixels::Source(doc.source.clone(), f), size, 1.0, state));
         }
         let cache = &self.inner.cache;
         let (mut k, mut base) = (n, None);
@@ -553,10 +569,9 @@ impl DocStore {
             k -= 1;
         }
         if k == n {
-            return Ok((Pixels::Owned(base.expect("encontrado no cache")), size, 1.0));
+            return Ok((Pixels::Owned(base.expect("encontrado no cache")), size, 1.0, state));
         }
         let tail = doc.ops[k..n].to_vec();
-        let generation = doc.generation;
         let source = doc.source.clone();
         drop(map);
 
@@ -600,7 +615,7 @@ impl DocStore {
         if inflight.get(&key).is_some_and(|c| Arc::ptr_eq(c, &cell)) {
             inflight.remove(&key);
         }
-        Ok((Pixels::Owned(out), size, 1.0))
+        Ok((Pixels::Owned(out), size, 1.0, state))
     }
 
     /// Buffer do IPC (`u32 LE w`, `u32 LE h`, RGBA) que cabe em `max_w`x`max_h` sem ampliar.
@@ -613,7 +628,20 @@ impl DocStore {
         max_h: u32,
         region: Option<Rect>,
     ) -> AppResult<Vec<u8>> {
-        let (px, (w, h), scale) = self.pixels(id, frame, true)?;
+        self.render_view_state(id, frame, max_w, max_h, region)
+            .map(|(buf, _)| buf)
+    }
+
+    /// `render_view` e o estado do documento que o buffer reflete.
+    fn render_view_state(
+        &self,
+        id: DocId,
+        frame: u32,
+        max_w: u32,
+        max_h: u32,
+        region: Option<Rect>,
+    ) -> AppResult<(Vec<u8>, RenderState)> {
+        let (px, (w, h), scale, state) = self.pixels(id, frame, true)?;
         let region = region.map_or(Rect { x: 0, y: 0, w, h }, |r| ops::clamp_rect(r, w, h));
         let (out_w, out_h) = thumb::fit_size(region.w, region.h, max_w, max_h);
         let src = if scale == 1.0 {
@@ -628,7 +656,25 @@ impl DocStore {
             };
             ops::clamp_rect(r, px.width(), px.height())
         };
-        Ok(thumb::view_buffer(&px, src, out_w, out_h))
+        Ok((thumb::view_buffer(&px, src, out_w, out_h), state))
+    }
+
+    /// Quadro 0 inteiro reduzido para `max_w`x`max_h` (como `render_view`), guardado num
+    /// cache de 1 entrada: os ajustes de cor repetem a prévia sem refazer a redução.
+    /// A chave inclui `ops.len()` e `generation`, então editar o documento a invalida.
+    pub fn preview_base(&self, id: DocId, max_w: u32, max_h: u32) -> AppResult<Arc<Vec<u8>>> {
+        let lock = || self.inner.preview.lock().unwrap_or_else(|e| e.into_inner());
+        let state = self.with_doc(id, |d| (d.ops.len(), d.generation))?;
+        if let Some((k, buf)) = lock().as_ref()
+            && *k == (id, state, max_w, max_h)
+        {
+            return Ok(buf.clone());
+        }
+        // A chave guardada é a do estado que o render de fato usou.
+        let (buf, state) = self.render_view_state(id, 0, max_w, max_h, None)?;
+        let buf = Arc::new(buf);
+        *lock() = Some(((id, state, max_w, max_h), buf.clone()));
+        Ok(buf)
     }
 
     pub fn thumbnail(&self, id: DocId, frame: u32, size: u32) -> AppResult<Vec<u8>> {
