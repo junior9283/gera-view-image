@@ -53,5 +53,11 @@
     "repository": "GitHub repository",
     "logoAlt": "Gera View Image logo",
     "close": "Close"
+  },
+  "select": {
+    "layer": "Selection layer",
+    "instantAlphaHint": "Drag to adjust the tolerance. Enter or Delete makes it transparent.",
+    "noAlphaNotice": "This format has no transparency: the result will be saved as PNG or exported.",
+    "pasteUnavailable": "Paste is not available yet."
   }
 }

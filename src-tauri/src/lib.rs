@@ -30,6 +30,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(store)
         .manage(startup)
         .invoke_handler(tauri::generate_handler![
@@ -42,6 +43,9 @@ pub fn run() {
             commands::edit::apply_op,
             commands::edit::undo,
             commands::edit::redo,
+            commands::edit::instant_alpha,
+            commands::edit::snap_lasso,
+            commands::edit::copy_region,
             commands::theme::window_theme,
             commands::theme::compositing_available
         ])

@@ -51,6 +51,7 @@ tauri-plugin-updater = "2.14.1"
 tauri-plugin-process = "2.4.0"
 tauri-plugin-opener = "2.7.3"
 tauri-plugin-store = "2"
+tauri-plugin-clipboard-manager = "2"
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tga", "tiff", "webp"] }

@@ -53,5 +53,11 @@
     "repository": "Repositório no GitHub",
     "logoAlt": "Logo do Gera View Image",
     "close": "Fechar"
+  },
+  "select": {
+    "layer": "Camada de seleção",
+    "instantAlphaHint": "Arraste para ajustar a tolerância. Enter ou Delete torna transparente.",
+    "noAlphaNotice": "Este formato não tem transparência: o resultado será salvo como PNG ou exportado.",
+    "pasteUnavailable": "Colar ainda não está disponível."
   }
 }
