@@ -329,13 +329,7 @@ impl DocStore {
     pub fn revert(&self, id: DocId, to: RevertTarget) -> AppResult<DocInfo> {
         let fresh = match to {
             RevertTarget::Original => None,
-            RevertTarget::LastSaved => {
-                let path = self.info(id)?.path;
-                if path.is_empty() {
-                    return Err(AppError::NotFound("documento sem arquivo".into()));
-                }
-                Some(decode::decode(Path::new(&path))?)
-            }
+            RevertTarget::LastSaved => Some(decode::decode(&self.file_path(id)?)?),
         };
         let (_, info) = self.with_doc_mut(id, |d| {
             match fresh {
@@ -373,19 +367,20 @@ impl DocStore {
     /// Renomeia o arquivo na mesma pasta (sem sobrescrever).
     pub fn rename(&self, id: DocId, new_name: &str) -> AppResult<DocInfo> {
         let name = valid_name(new_name)?;
-        let path = self.file_path(id)?;
-        let to = path.with_file_name(name);
-        if to == path {
-            return self.info(id);
-        }
-        move_file(&path, &to)?;
-        self.with_doc_mut(id, |d| d.relocate(&to)).map(|(_, i)| i)
+        self.move_doc_file(id, |path| path.with_file_name(name))
     }
 
     /// Move o arquivo para a pasta `dir` (copiar + apagar entre discos; sem sobrescrever).
     pub fn move_to(&self, id: DocId, dir: &str) -> AppResult<DocInfo> {
+        self.move_doc_file(id, |path| {
+            Path::new(dir).join(path.file_name().unwrap_or_default())
+        })
+    }
+
+    /// Move o arquivo do documento para `dest(caminho atual)` e passa a apontar para ele.
+    fn move_doc_file(&self, id: DocId, dest: impl FnOnce(&Path) -> PathBuf) -> AppResult<DocInfo> {
         let path = self.file_path(id)?;
-        let to = Path::new(dir).join(path.file_name().unwrap_or_default());
+        let to = dest(&path);
         if to == path {
             return self.info(id);
         }
@@ -408,11 +403,8 @@ impl DocStore {
         let info = {
             let mut map = self.lock();
             let d = map.get(&id).ok_or_else(|| not_found(id))?;
-            let mut dup = Document::new(new_id, "", d.source.clone(), d.full_size, false);
-            dup.ops = d.ops.clone();
-            dup.info.name = name.to_string();
-            dup.saved_len = usize::MAX;
-            dup.refresh();
+            let dup =
+                Document::untitled(new_id, name, d.source.clone(), d.full_size, d.ops.clone());
             let info = dup.info.clone();
             map.insert(new_id, dup);
             info
@@ -424,13 +416,28 @@ impl DocStore {
     pub fn insert_untitled(&self, name: &str, decoded: Decoded) -> DocInfo {
         let id = self.next_id();
         let size = decoded.frames.first().map_or((0, 0), RgbaImage::dimensions);
-        let mut doc = Document::new(id, "", decoded, size, false);
-        doc.info.name = name.to_string();
-        doc.saved_len = usize::MAX;
-        doc.refresh();
+        let doc = Document::untitled(id, name, decoded, size, Vec::new());
         let info = doc.info.clone();
         self.lock().insert(id, doc);
         info
+    }
+}
+
+impl Document {
+    /// Documento sem caminho (Salvar vai para Exportar) que nasce "não salvo".
+    fn untitled(
+        id: DocId,
+        name: &str,
+        source: impl Into<Arc<Decoded>>,
+        size: (u32, u32),
+        ops: Vec<Op>,
+    ) -> Self {
+        let mut doc = Document::new(id, "", source, size, false);
+        doc.ops = ops;
+        doc.info.name = name.to_string();
+        doc.saved_len = usize::MAX;
+        doc.refresh();
+        doc
     }
 }
 

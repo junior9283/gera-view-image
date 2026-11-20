@@ -111,10 +111,14 @@ export async function ignoreChange(id: DocId): Promise<void> {
   await ipc.ignoreDiskChange(id);
 }
 
-export async function renameDoc(id: DocId, name: string): Promise<void> {
-  const info = await ipc.renameDoc(id, name);
+/** Arquivo do documento mudou de caminho (renomear/mover). */
+function relocated(info: DocInfo): void {
   update(info);
   addRecent(info.path);
+}
+
+export async function renameDoc(id: DocId, name: string): Promise<void> {
+  relocated(await ipc.renameDoc(id, name));
 }
 
 export async function moveActive(): Promise<void> {
@@ -122,9 +126,7 @@ export async function moveActive(): Promise<void> {
   if (!d?.path) return;
   const dir = await openDialog({ directory: true, multiple: false, defaultPath: dirname(d.path) });
   if (typeof dir !== "string") return;
-  const info = await ipc.moveTo(d.id, dir);
-  update(info);
-  addRecent(info.path);
+  relocated(await ipc.moveTo(d.id, dir));
 }
 
 async function addAndShow(info: DocInfo | null): Promise<void> {

@@ -163,11 +163,16 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
     } else {
         DynamicImage::ImageRgb8(rgb_on_white(&img))
     };
-    let xmp = meta
-        .iptc_keywords
-        .as_ref()
-        .map(|k| xmp_with_keywords(meta.xmp.as_deref(), k));
-    let xmp = xmp.or(meta.xmp.clone());
+    // Só PNG/TIFF gravam 16 bits por canal.
+    let pixels = if opts.depth16 && matches!(fmt, ExportFormat::Png | ExportFormat::Tiff) {
+        widen16(pixels)
+    } else {
+        pixels
+    };
+    let xmp = match &meta.iptc_keywords {
+        Some(k) => Some(xmp_with_keywords(meta.xmp.as_deref(), k)),
+        None => meta.xmp.clone(),
+    };
 
     let mut out = Vec::new();
     match fmt {
@@ -188,11 +193,6 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
             out = jpeg_insert_segments(&out, iptc.as_deref(), xmp.as_deref());
         }
         ExportFormat::Png => {
-            let pixels = if opts.depth16 {
-                widen16(pixels)
-            } else {
-                pixels
-            };
             let mut e = PngEncoder::new_with_quality(
                 &mut out,
                 CompressionType::Default,
@@ -203,11 +203,6 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
             out = png_insert_chunks(&out, meta.dpi, xmp.as_deref());
         }
         ExportFormat::Tiff => {
-            let pixels = if opts.depth16 {
-                widen16(pixels)
-            } else {
-                pixels
-            };
             let mut c = Cursor::new(Vec::new());
             let mut e = TiffEncoder::new(&mut c);
             if let Some(icc) = &meta.icc {
