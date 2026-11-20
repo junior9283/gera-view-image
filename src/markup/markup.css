@@ -1,0 +1,265 @@
+/* Camada de anotações: cobre a área do Viewport (o pai é position: relative). */
+.markup-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  touch-action: none;
+}
+.markup-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.markup-text-editor {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 1px dashed #0a84ff;
+  background: rgb(255 255 255 / 0.15);
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.25;
+  white-space: pre;
+}
+
+/* Barra de Marcação (abaixo da barra de ferramentas). */
+.markup-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--chrome-bg, #ececec);
+  color: var(--chrome-fg, #2b2b2b);
+  border-bottom: 1px solid var(--chrome-border, rgb(0 0 0 / 0.12));
+  font: 13px/1.3 Inter, system-ui, sans-serif;
+  position: relative;
+  z-index: 20;
+}
+.markup-group {
+  position: relative;
+  display: flex;
+}
+.markup-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.markup-btn:hover:not(:disabled) {
+  background: rgb(127 127 127 / 0.18);
+}
+.markup-btn[aria-pressed="true"] {
+  background: rgb(127 127 127 / 0.3);
+}
+.markup-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.markup-no-fill svg {
+  stroke-dasharray: 2 2;
+  color: var(--chrome-fg, #2b2b2b);
+}
+
+.markup-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 8px;
+  background: var(--chrome-bg, #ececec);
+  color: var(--chrome-fg, #2b2b2b);
+  border: 1px solid var(--chrome-border, rgb(0 0 0 / 0.12));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  z-index: 30;
+}
+.markup-menu > button,
+.markup-menu-row > button {
+  text-align: left;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.markup-menu button:hover,
+.markup-menu button.active,
+.markup-menu button[aria-checked="true"] {
+  background: rgb(127 127 127 / 0.22);
+}
+.markup-menu hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--chrome-border, rgb(0 0 0 / 0.12));
+  margin: 4px 0;
+}
+.markup-menu-label {
+  font-size: 11px;
+  opacity: 0.7;
+  padding: 2px 8px;
+}
+.markup-menu-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.markup-width-sample {
+  display: inline-block;
+  width: 40px;
+  background: currentColor;
+  vertical-align: middle;
+}
+.markup-text-menu label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 8px;
+}
+.markup-font-bold { font-weight: 700; }
+.markup-font-italic { font-style: italic; }
+.markup-font-underline { text-decoration: underline; }
+
+.markup-swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 24px);
+  gap: 4px;
+  padding: 4px;
+}
+.markup-swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgb(0 0 0 / 0.25);
+  cursor: pointer;
+}
+.markup-swatch[aria-checked="true"] {
+  outline: 2px solid #0a84ff;
+  outline-offset: 1px;
+}
+.markup-swatch.none {
+  background: linear-gradient(135deg, transparent 45%, #ff3b30 45%, #ff3b30 55%, transparent 55%), #fff;
+}
+.markup-custom-color input {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* Painel de Assinatura. */
+.sig-panel {
+  width: 384px;
+}
+.sig-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+}
+.sig-list li {
+  position: relative;
+}
+.sig-insert {
+  width: 100%;
+  height: 56px;
+  padding: 4px;
+  border: 1px solid var(--chrome-border, rgb(0 0 0 / 0.12));
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+.sig-insert img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.sig-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  cursor: pointer;
+}
+.sig-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 4px;
+}
+.sig-tabs button {
+  flex: 1;
+  padding: 4px;
+  border: 1px solid var(--chrome-border, rgb(0 0 0 / 0.12));
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.sig-tabs button[aria-selected="true"] {
+  background: rgb(127 127 127 / 0.25);
+}
+.sig-pad {
+  display: block;
+  margin: 6px auto 0;
+  background: #fff;
+  border: 1px solid var(--chrome-border, rgb(0 0 0 / 0.12));
+  border-radius: 6px;
+  touch-action: none;
+  cursor: crosshair;
+}
+.sig-hint {
+  margin: 4px 8px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.sig-error {
+  margin: 4px 8px;
+  color: #ff3b30;
+}
+.sig-import label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 8px;
+}
+.sig-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 6px 4px 0;
+}
+.sig-actions button {
+  padding: 4px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--chrome-border, rgb(0 0 0 / 0.12));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

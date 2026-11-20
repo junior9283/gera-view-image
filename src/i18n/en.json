@@ -191,6 +191,99 @@
     "noKeywords": "No keywords.",
     "noAnnotations": "No annotations."
   },
+  "markup": {
+    "bar": "Markup Toolbar",
+    "layer": "Annotations",
+    "tool": {
+      "select": "Selection",
+      "sketch": "Sketch",
+      "draw": "Draw",
+      "shapes": "Shapes",
+      "text": "Text",
+      "signature": "Sign",
+      "lineStyle": "Shape Style",
+      "stroke": "Border Color",
+      "fill": "Fill Color",
+      "textStyle": "Text Style",
+      "rotate": "Rotate Left",
+      "crop": "Crop"
+    },
+    "kind": {
+      "line": "Line",
+      "arrow": "Arrow",
+      "rect": "Rectangle",
+      "roundRect": "Rounded Rectangle",
+      "oval": "Oval",
+      "bubble": "Speech Bubble",
+      "star": "Star",
+      "polygon": "Polygon",
+      "freehand": "Freehand",
+      "text": "Text",
+      "loupe": "Loupe",
+      "highlight": "Highlight",
+      "highlightOval": "Oval Highlight",
+      "signature": "Signature",
+      "image": "Image"
+    },
+    "width": "Line Width",
+    "widthPx": "{{px}} px",
+    "dash": {
+      "solid": "Solid",
+      "dashed": "Dashed",
+      "dotted": "Dotted"
+    },
+    "arrowStart": "Start",
+    "arrowEnd": "End",
+    "end": {
+      "none": "None",
+      "arrow": "Arrow",
+      "circle": "Circle"
+    },
+    "shadow": "Shadow",
+    "noFill": "No Fill",
+    "customColor": "Other Color",
+    "font": "Font",
+    "fontSize": "Size",
+    "textColor": "Text Color",
+    "bold": "Bold",
+    "italic": "Italic",
+    "underline": "Underline",
+    "boldShort": "B",
+    "italicShort": "I",
+    "underlineShort": "U",
+    "align": {
+      "left": "Align Left",
+      "center": "Center",
+      "right": "Align Right"
+    },
+    "newText": "Text",
+    "textEditor": "Edit text",
+    "sig": {
+      "title": "Signatures",
+      "none": "No saved signatures.",
+      "insert": "Insert signature",
+      "remove": "Delete signature",
+      "create": "Create Signature",
+      "draw": "Draw",
+      "import": "Import Image",
+      "clear": "Clear",
+      "save": "Save",
+      "drawHint": "Sign here with your mouse or touchpad",
+      "importHint": "Choose an image with the signature on a light background; the background is removed.",
+      "importButton": "Choose Image…",
+      "importFailed": "Could not import the signature.",
+      "limit": "Up to {{n}} signatures; the oldest is removed.",
+      "pad": "Signature drawing area"
+    },
+    "selectTool": {
+      "pointer": "Select Annotations",
+      "rect": "Rectangular Selection",
+      "ellipse": "Elliptical Selection",
+      "lasso": "Lasso Selection",
+      "smartLasso": "Smart Lasso",
+      "instantAlpha": "Instant Alpha"
+    }
+  },
   "menu": {
     "bar": "Main menu",
     "file": {

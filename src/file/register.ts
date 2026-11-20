@@ -4,10 +4,12 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { subscribe } from "../lib/events";
 import { registerSlot } from "../lib/slots";
+import { flattenAnnotations } from "../markup/flatten";
 import { DOC_CHANGED_ON_DISK_EVENT, type DiskChanged } from "../ipc/types";
 import { registerCommand, type CommandId } from "../shortcuts/commands";
 import { useDocs } from "../store/docs";
 import { addRecent, getPrefs } from "../store/prefs";
+import { registerBeforeSave } from "./beforeSave";
 import * as file from "./fileActions";
 import { DiskBanner } from "./DiskBanner";
 import { confirmAndSave, setSaveHandler } from "./unsaved";
@@ -67,6 +69,8 @@ function trackRecents(): () => void {
 export function registerFileCommands(): () => void {
   const offs = ENTRIES.map(([id, run, enabled]) => registerCommand(id, run, enabled));
   setSaveHandler(file.saveDoc);
+  // Anotações da Marcação (Task 8) viram pixels (Op::Composite) antes de qualquer gravação.
+  offs.push(registerBeforeSave(async (id) => void (await flattenAnnotations(id))));
   offs.push(registerSlot("below-toolbar", "disk-banner", DiskBanner));
   offs.push(trackRecents());
   offs.push(
