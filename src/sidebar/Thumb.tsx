@@ -3,6 +3,7 @@ import { thumbnail } from "../ipc/commands";
 import type { DocInfo, ViewBuffer } from "../ipc/types";
 import { ErrorIcon } from "../viewer/DocError";
 import { bufferToCanvas, dpr } from "../viewer/paint";
+import { observeVisible } from "../lib/visibility";
 import { ByteLru } from "../lib/byteLru";
 
 /** Orçamento das miniaturas já recebidas (RGBA), em bytes. */
@@ -44,12 +45,7 @@ export function Thumb({ doc, frame = 0, size, fetchSize = size }: Props) {
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => setVisible(entries[entries.length - 1].isIntersecting),
-      { rootMargin: "200px" },
-    );
-    io.observe(el);
-    return () => io.disconnect();
+    return observeVisible(el, setVisible);
   }, []);
 
   const { id, rev, error } = doc;

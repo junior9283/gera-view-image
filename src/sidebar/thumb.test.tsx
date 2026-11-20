@@ -15,11 +15,12 @@ const info = (id: number): DocInfo => ({
 /** Buffer 2x1 no formato do IPC. */
 const buf = () => new Uint8Array([2, 0, 0, 0, 1, 0, 0, 0, 1, 2, 3, 255, 4, 5, 6, 255]).buffer;
 
-let observers: { cb: IntersectionObserverCallback; el: Element | null; disconnected: boolean }[] = [];
+/** Mock de um IntersectionObserver: guarda os observados por instância criada. */
+let observers: { cb: IntersectionObserverCallback; els: Set<Element>; disconnected: boolean }[] = [];
 const fire = (visible: boolean) =>
   act(async () => {
-    for (const o of observers.filter((x) => !x.disconnected && x.el))
-      o.cb([{ isIntersecting: visible, target: o.el! } as IntersectionObserverEntry], {} as IntersectionObserver);
+    for (const o of observers.filter((x) => !x.disconnected))
+      o.cb([...o.els].map((target) => ({ isIntersecting: visible, target }) as IntersectionObserverEntry), {} as IntersectionObserver);
     await new Promise((r) => setTimeout(r, 0));
   });
 
@@ -27,13 +28,15 @@ beforeAll(() => {
   class IO {
     rec: (typeof observers)[number];
     constructor(cb: IntersectionObserverCallback) {
-      this.rec = { cb, el: null, disconnected: false };
+      this.rec = { cb, els: new Set(), disconnected: false };
       observers.push(this.rec);
     }
     observe(el: Element) {
-      this.rec.el = el;
+      this.rec.els.add(el);
     }
-    unobserve() {}
+    unobserve(el: Element) {
+      this.rec.els.delete(el);
+    }
     disconnect() {
       this.rec.disconnected = true;
     }
@@ -67,5 +70,22 @@ describe("Thumb", () => {
     await fire(true);
     expect(canvas().width).toBe(2);
     expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("todas as miniaturas compartilham um único IntersectionObserver, desligado ao desmontar a última", async () => {
+    const { unmount } = render(
+      <>
+        <Thumb doc={info(1)} size={64} />
+        <Thumb doc={info(2)} size={64} />
+        <Thumb doc={info(3)} size={64} />
+      </>,
+    );
+    expect(observers).toHaveLength(1);
+    expect(observers[0].els.size).toBe(3);
+    await fire(true);
+    expect(invoke).toHaveBeenCalledTimes(3);
+    unmount();
+    expect(observers[0].els.size).toBe(0);
+    expect(observers[0].disconnected).toBe(true);
   });
 });
