@@ -63,20 +63,38 @@ fn exists_error(p: &Path) -> AppError {
 }
 
 /// Move `from` para `to` sem sobrescrever; entre discos, copia e apaga o original.
+///
+/// `rename` substituiria em silêncio um arquivo criado entre a checagem e a troca; o
+/// `hard_link` falha atomicamente se o destino existir. Sem hard link (outro disco, FAT),
+/// copia para um destino aberto com `create_new` (também sem substituir).
 fn move_file(from: &Path, to: &Path) -> AppResult<()> {
-    if to.exists() {
-        return Err(exists_error(to));
-    }
-    match std::fs::rename(from, to) {
-        Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
-            std::fs::copy(from, to)?;
-            std::fs::remove_file(from).inspect_err(|_| {
+    use std::io::ErrorKind;
+    match std::fs::hard_link(from, to) {
+        Ok(()) => {}
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => return Err(exists_error(to)),
+        Err(_) => {
+            let mut dest = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(to)
+                .map_err(|e| match e.kind() {
+                    ErrorKind::AlreadyExists => exists_error(to),
+                    _ => e.into(),
+                })?;
+            let copied = std::fs::File::open(from)
+                .and_then(|mut src| std::io::copy(&mut src, &mut dest))
+                .and_then(|_| dest.sync_all())
+                .and_then(|_| std::fs::set_permissions(to, std::fs::metadata(from)?.permissions()));
+            if let Err(e) = copied {
                 let _ = std::fs::remove_file(to);
-            })?;
-            Ok(())
+                return Err(e.into());
+            }
         }
-        r => r.map_err(Into::into),
     }
+    std::fs::remove_file(from).inspect_err(|_| {
+        let _ = std::fs::remove_file(to);
+    })?;
+    Ok(())
 }
 
 fn file_name(p: &Path) -> String {
