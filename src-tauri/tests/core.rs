@@ -535,8 +535,19 @@ fn arquivos_malformados_nao_dao_panic() {
             .collect()
     };
     for nome in [
-        "rgb.jpg", "alpha.png", "anim.gif", "multi.tiff", "img.webp", "img.avif", "img.heic",
-        "img.bmp", "img.ico", "img.tga", "img.svg", "img.psd", "img.dng",
+        "rgb.jpg",
+        "alpha.png",
+        "anim.gif",
+        "multi.tiff",
+        "img.webp",
+        "img.avif",
+        "img.heic",
+        "img.bmp",
+        "img.ico",
+        "img.tga",
+        "img.svg",
+        "img.psd",
+        "img.dng",
     ] {
         let bytes = std::fs::read(fx(nome)).unwrap();
         let ext = nome.rsplit('.').next().unwrap();

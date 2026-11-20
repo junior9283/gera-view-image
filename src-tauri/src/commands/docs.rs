@@ -57,11 +57,21 @@ impl Startup {
     }
 
     /// Caminhos absolutos dos argumentos que não são opções.
-    pub fn paths_from_args(args: impl Iterator<Item = std::ffi::OsString>) -> Vec<String> {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        args.filter(|a| !a.to_string_lossy().starts_with('-'))
-            .map(|a| cwd.join(PathBuf::from(a)).to_string_lossy().into_owned())
-            .collect()
+    /// Caminhos de `argv`, absolutos a partir de `cwd`. Um argumento que começa com `-`
+    /// é opção (ignorada), a não ser que exista um arquivo com esse nome.
+    pub fn paths_from_args(
+        args: impl Iterator<Item = std::ffi::OsString>,
+        cwd: &std::path::Path,
+    ) -> Vec<String> {
+        args.map(|a| {
+            (
+                a.to_string_lossy().starts_with('-'),
+                cwd.join(PathBuf::from(a)),
+            )
+        })
+        .filter(|(flag, p)| !flag || p.is_file())
+        .map(|(_, p)| p.to_string_lossy().into_owned())
+        .collect()
     }
 }
 

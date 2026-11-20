@@ -3,6 +3,10 @@
 //! JPEGs grandes abrem com uma prévia reduzida (escala DCT) e a decodificação completa
 //! roda em segundo plano; quando termina, `rev` muda e o ouvinte (`set_listener`) recebe
 //! o `DocInfo` novo. Quem precisa da resolução cheia (`apply_op`, `render_full`) espera.
+//! RAW faz o mesmo com a prévia JPEG embutida.
+//!
+//! Memória: decodificações cheias simultâneas reservam um orçamento de bytes
+//! (`DecodeBudget`), e renders iguais em andamento são calculados uma vez só.
 use super::{
     cache::RenderCache,
     model::{DocId, DocInfo, Op, Rect, SourceFormat},
@@ -21,10 +25,58 @@ use std::{
     ops::Deref,
     path::Path,
     sync::{
-        Arc, Condvar, Mutex, MutexGuard, RwLock,
-        atomic::{AtomicU32, Ordering},
+        Arc, Condvar, Mutex, MutexGuard, OnceLock, RwLock,
+        atomic::{AtomicU32, AtomicUsize, Ordering},
     },
 };
+
+/// Orçamento padrão para decodificações cheias simultâneas (estimativa em bytes RGBA8).
+pub const DEFAULT_DECODE_BUDGET: usize = 3 << 30;
+
+/// Semáforo por bytes: uma decodificação espera enquanto as em andamento somadas a ela
+/// passariam do limite. Sozinha, qualquer uma passa (o teto por imagem é `MAX_DECODE_BYTES`).
+struct DecodeBudget {
+    used: Mutex<usize>,
+    freed: Condvar,
+    limit: usize,
+    peak: AtomicUsize,
+}
+
+struct Reservation<'a>(&'a DecodeBudget, usize);
+
+impl DecodeBudget {
+    fn new(limit: usize) -> Self {
+        DecodeBudget {
+            used: Mutex::new(0),
+            freed: Condvar::new(),
+            limit,
+            peak: AtomicUsize::new(0),
+        }
+    }
+
+    fn reserve(&self, bytes: usize) -> Reservation<'_> {
+        let mut used = self
+            .freed
+            .wait_while(self.used.lock().unwrap_or_else(|e| e.into_inner()), |u| {
+                *u > 0 && *u + bytes > self.limit
+            })
+            .unwrap_or_else(|e| e.into_inner());
+        *used += bytes;
+        self.peak.fetch_max(*used, Ordering::Relaxed);
+        Reservation(self, bytes)
+    }
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        *self.0.used.lock().unwrap_or_else(|e| e.into_inner()) -= self.1;
+        self.0.freed.notify_all();
+    }
+}
+
+/// Render em andamento de `(doc, ops.len(), quadro, generation)`.
+type InflightKey = (DocId, usize, u32, u64);
+type Inflight = Arc<OnceLock<Arc<RgbaImage>>>;
 
 /// JPEG acima disto (em pixels) abre com prévia reduzida e completa em segundo plano.
 pub const PREVIEW_MIN_PIXELS: u64 = 4_000_000;
@@ -157,6 +209,9 @@ struct Inner {
     cache: RenderCache,
     next_id: AtomicU32,
     listener: RwLock<Option<Listener>>,
+    budget: DecodeBudget,
+    inflight: Mutex<HashMap<InflightKey, Inflight>>,
+    pipeline_runs: AtomicUsize,
 }
 
 /// Documentos abertos (`Mutex<HashMap<DocId, Document>>`), compartilhável entre threads.
@@ -175,14 +230,25 @@ enum Opened {
     Ready(Decoded),
     Preview {
         preview: Decoded,
-        full_size: (u32, u32),
+        /// `None` quando só a revelação completa sabe (RAW).
+        full_size: Option<(u32, u32)>,
         bytes: Vec<u8>,
     },
 }
 
-fn open_file(path: &Path) -> AppResult<Opened> {
+fn open_file(path: &Path, budget: &DecodeBudget) -> AppResult<Opened> {
     let bytes = std::fs::read(path)?;
-    if decode::detect_format(path, &bytes) == Some(SourceFormat::Jpeg)
+    let format = decode::detect_format(path, &bytes);
+    if format == Some(SourceFormat::Raw)
+        && let Some(img) = decode::raw_preview(&bytes)
+    {
+        return Ok(Opened::Preview {
+            preview: Decoded::single(img, SourceFormat::Raw),
+            full_size: None,
+            bytes,
+        });
+    }
+    if format == Some(SourceFormat::Jpeg)
         && decode::jpeg_size(&bytes).is_some_and(|(w, h)| w as u64 * h as u64 > PREVIEW_MIN_PIXELS)
     {
         // Se o decodificador rápido não der conta (ex.: JPEG aritmético), cai no completo.
@@ -194,11 +260,12 @@ fn open_file(path: &Path) -> AppResult<Opened> {
             };
             return Ok(Opened::Preview {
                 preview,
-                full_size: p.full_size,
+                full_size: Some(p.full_size),
                 bytes,
             });
         }
     }
+    let _r = budget.reserve(decode::estimate_bytes(&bytes));
     decode::decode_bytes(path, &bytes).map(Opened::Ready)
 }
 
@@ -208,6 +275,11 @@ impl DocStore {
     }
 
     pub fn with_cache(cache: RenderCache) -> Self {
+        Self::with_limits(cache, DEFAULT_DECODE_BUDGET)
+    }
+
+    /// `decode_budget`: bytes (estimados) de decodificações cheias ao mesmo tempo.
+    pub fn with_limits(cache: RenderCache, decode_budget: usize) -> Self {
         DocStore {
             inner: Arc::new(Inner {
                 docs: Mutex::new(HashMap::new()),
@@ -215,6 +287,9 @@ impl DocStore {
                 cache,
                 next_id: AtomicU32::new(1),
                 listener: RwLock::new(None),
+                budget: DecodeBudget::new(decode_budget),
+                inflight: Mutex::new(HashMap::new()),
+                pipeline_runs: AtomicUsize::new(0),
             }),
         }
     }
@@ -230,6 +305,16 @@ impl DocStore {
 
     pub fn cache(&self) -> &RenderCache {
         &self.inner.cache
+    }
+
+    /// Maior soma de reservas de decodificação simultâneas já vista.
+    pub fn decode_peak_bytes(&self) -> usize {
+        self.inner.budget.peak.load(Ordering::Relaxed)
+    }
+
+    /// Quantas vezes a cadeia de operações foi de fato executada (testes de deduplicação).
+    pub fn pipeline_runs(&self) -> usize {
+        self.inner.pipeline_runs.load(Ordering::Relaxed)
     }
 
     fn lock(&self) -> MutexGuard<'_, HashMap<DocId, Document>> {
@@ -254,21 +339,23 @@ impl DocStore {
         let opened: Vec<(Document, Option<Vec<u8>>)> = paths
             .par_iter()
             .zip(ids)
-            .map(|(path, id)| match open_file(Path::new(path)) {
-                Ok(Opened::Ready(d)) => {
-                    let size = d.frames.first().map_or((0, 0), RgbaImage::dimensions);
-                    (Document::new(id, path, d, size, false), None)
-                }
-                Ok(Opened::Preview {
-                    preview,
-                    full_size,
-                    bytes,
-                }) => (
-                    Document::new(id, path, preview, full_size, true),
-                    Some(bytes),
-                ),
-                Err(e) => (Document::failed(id, path, e), None),
-            })
+            .map(
+                |(path, id)| match open_file(Path::new(path), &self.inner.budget) {
+                    Ok(Opened::Ready(d)) => {
+                        let size = d.frames.first().map_or((0, 0), RgbaImage::dimensions);
+                        (Document::new(id, path, d, size, false), None)
+                    }
+                    Ok(Opened::Preview {
+                        preview,
+                        full_size,
+                        bytes,
+                    }) => {
+                        let size = full_size.unwrap_or_else(|| preview.frames[0].dimensions());
+                        (Document::new(id, path, preview, size, true), Some(bytes))
+                    }
+                    Err(e) => (Document::failed(id, path, e), None),
+                },
+            )
             .collect();
         let mut infos = Vec::with_capacity(opened.len());
         let mut pending = Vec::new();
@@ -284,8 +371,12 @@ impl DocStore {
         }
         for (id, path, bytes) in pending {
             let store = self.clone();
-            rayon::spawn(move || {
-                let full = decode::decode_bytes(Path::new(&path), &bytes);
+            // Thread própria: esperar o orçamento não pode prender o pool do rayon.
+            std::thread::spawn(move || {
+                let full = {
+                    let _r = store.inner.budget.reserve(decode::estimate_bytes(&bytes));
+                    decode::decode_bytes(Path::new(&path), &bytes)
+                };
                 drop(bytes);
                 store.finish_loading(id, full);
             });
@@ -298,7 +389,10 @@ impl DocStore {
             let mut map = self.lock();
             let Some(doc) = map.get_mut(&id) else { return };
             match full {
-                Ok(d) => doc.source = Arc::new(d),
+                Ok(d) => {
+                    doc.full_size = d.frames.first().map_or((0, 0), RgbaImage::dimensions);
+                    doc.source = Arc::new(d);
+                }
                 Err(e) => doc.error = Some(e),
             }
             doc.loading = false;
@@ -461,21 +555,45 @@ impl DocStore {
         let source = doc.source.clone();
         drop(map);
 
-        let mut cur: Option<RgbaImage> = None;
-        for op in &tail {
-            let input = cur
-                .as_ref()
-                .or(base.as_deref())
-                .unwrap_or(&source.frames[f]);
-            cur = Some(ops::apply(input, op));
-        }
-        let out = Arc::new(cur.expect("ao menos uma operação"));
-        let map = self.lock();
-        if map
-            .get(&id)
-            .is_some_and(|d| d.generation == generation && d.ops.len() >= n)
-        {
-            cache.insert((id, n, frame), out.clone());
+        // Renders iguais em andamento esperam o primeiro em vez de repetir o pipeline.
+        let key = (id, n, frame, generation);
+        let cell = self
+            .inner
+            .inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(key)
+            .or_default()
+            .clone();
+        let out = cell
+            .get_or_init(|| {
+                self.inner.pipeline_runs.fetch_add(1, Ordering::Relaxed);
+                let mut cur: Option<RgbaImage> = None;
+                for op in &tail {
+                    let input = cur
+                        .as_ref()
+                        .or(base.as_deref())
+                        .unwrap_or(&source.frames[f]);
+                    cur = Some(ops::apply(input, op));
+                }
+                let out = Arc::new(cur.expect("ao menos uma operação"));
+                if self
+                    .lock()
+                    .get(&id)
+                    .is_some_and(|d| d.generation == generation && d.ops.len() >= n)
+                {
+                    cache.insert((id, n, frame), out.clone());
+                }
+                out
+            })
+            .clone();
+        let mut inflight = self
+            .inner
+            .inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if inflight.get(&key).is_some_and(|c| Arc::ptr_eq(c, &cell)) {
+            inflight.remove(&key);
         }
         Ok((Pixels::Owned(out), size, 1.0))
     }

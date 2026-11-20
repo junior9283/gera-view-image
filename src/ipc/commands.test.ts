@@ -53,4 +53,11 @@ describe("wrappers", () => {
     await applyOp(2, { type: "rotate", data: { quarterTurns: 1 } });
     expect(invoke).toHaveBeenCalledWith("apply_op", { id: 2, op: { type: "rotate", data: { quarterTurns: 1 } } });
   });
+
+  it("applyOp converte o PNG do composite de Uint8Array para lista de bytes", async () => {
+    invoke.mockResolvedValue({});
+    await applyOp(3, { type: "composite", data: { png: new Uint8Array([137, 80, 78]) } });
+    // JSON.stringify(Uint8Array) viraria objeto {"0":137,...}; o Rust (serde_bytes) espera bytes.
+    expect(invoke).toHaveBeenCalledWith("apply_op", { id: 3, op: { type: "composite", data: { png: [137, 80, 78] } } });
+  });
 });

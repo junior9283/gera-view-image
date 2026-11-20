@@ -64,7 +64,8 @@ export type Op =
   | { type: "adjust"; data: ColorAdjust }
   | { type: "erase"; data: Mask }
   | { type: "makeTransparent"; data: Mask }
-  | { type: "composite"; data: { png: number[] } };
+  /** PNG das anotações achatadas. No Rust é `serde_bytes`; pela IPC JSON vai como lista de bytes. */
+  | { type: "composite"; data: { png: Uint8Array | number[] } };
 
 export interface ViewBuffer {
   width: number;

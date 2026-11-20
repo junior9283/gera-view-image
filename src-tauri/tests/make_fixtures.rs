@@ -139,7 +139,8 @@ fn generate(dir: &Path) {
         "isto não é uma imagem\n".as_bytes().to_vec()
     });
     write_if_missing(&p("img.psd"), || psd_rgb(40, 30));
-    write_if_missing(&p("img.dng"), || dng_linear(64, 48));
+    write_if_missing(&p("img.dng"), || dng_linear(64, 48, false));
+    write_if_missing(&p("img_previa.dng"), || dng_linear(64, 48, true));
 
     let acc = dir.join(DIR_ACENTOS);
     for n in ["img2.png", "img10.png"] {
@@ -234,8 +235,9 @@ pub fn psd_rgb(w: u32, h: u32) -> Vec<u8> {
     b
 }
 
-/// DNG "LinearRaw" (RGB já demosaicado) escrito pelo próprio `rawler`.
-fn dng_linear(w: usize, h: usize) -> Vec<u8> {
+/// DNG "LinearRaw" (RGB já demosaicado) escrito pelo próprio `rawler`,
+/// opcionalmente com prévia JPEG embutida (subframe 1), como as câmeras gravam.
+fn dng_linear(w: usize, h: usize, preview: bool) -> Vec<u8> {
     use rawler::{
         dng::{DngCompression, writer::DngWriter},
         formats::tiff::{Rational, SRational},
@@ -266,6 +268,12 @@ fn dng_linear(w: usize, h: usize) -> Vec<u8> {
         sub.rgb_image_u8(img.as_raw(), w, h, DngCompression::Uncompressed, 0)
             .unwrap();
         sub.finalize().unwrap();
+        if preview {
+            let small = image::DynamicImage::ImageRgb8(gradient(w as u32 / 2, h as u32 / 2));
+            let mut sub = dng.subframe(1);
+            sub.preview(&small, 0.8).unwrap();
+            sub.finalize().unwrap();
+        }
         dng.close().unwrap();
     }
     c.into_inner()

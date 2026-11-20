@@ -147,6 +147,7 @@ pub enum Op {
     MakeTransparent(Mask),
     /// Anotações achatadas: PNG RGBA composto por cima (src-over), escalado ao tamanho atual.
     Composite {
+        #[serde(with = "serde_bytes")]
         png: Vec<u8>,
     },
 }

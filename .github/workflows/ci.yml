@@ -9,7 +9,9 @@ permissions:
   contents: read
 
 env:
-  APT_DEPS: libwebkit2gtk-4.1-dev libheif-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+  # libheif 1.23 é compilada estática (embedded-libheif); só os codecs vêm do sistema.
+  # Sem libheif-dev de propósito: com ele o linker poderia pegar a libheif 1.12 dinâmica.
+  APT_DEPS: libwebkit2gtk-4.1-dev cmake libde265-dev libaom-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
 jobs:
   lint-typecheck:

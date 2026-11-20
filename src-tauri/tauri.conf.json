@@ -44,13 +44,15 @@
     "linux": {
       "deb": {
         "depends": [
-          "libheif1"
+          "libde265-0",
+          "libaom3"
         ],
         "desktopTemplate": "linux/gera-view-image.desktop.hbs"
       },
       "rpm": {
         "depends": [
-          "libheif"
+          "libde265",
+          "libaom"
         ],
         "desktopTemplate": "linux/gera-view-image.desktop.hbs"
       }

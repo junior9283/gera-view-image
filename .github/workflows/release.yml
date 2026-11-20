@@ -29,7 +29,9 @@ jobs:
       - name: Dependências do sistema
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libheif-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm
+          # libheif estática (embedded-libheif); codecs dinâmicos de soname estável (libde265.so.0, libaom.so.3).
+          # Sem libheif-dev, libdav1d-dev e libx265-dev: sonames mudam entre distros e quebrariam o .deb/.rpm.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev cmake libde265-dev libaom-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with: { toolchain: stable }
       - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
@@ -55,6 +57,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { name: deb, image: "ubuntu:22.04", pattern: "*.deb" }
           - { name: deb, image: "ubuntu:24.04", pattern: "*.deb" }
           - { name: rpm, image: "fedora:41", pattern: "*.rpm" }
     runs-on: ubuntu-22.04
@@ -63,18 +66,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "${{ matrix.pattern }}" --dir pkg
-      - name: Instalar e inspecionar em ${{ matrix.image }}
+      - name: Instalar e rodar --version em ${{ matrix.image }}
         run: |
           docker run --rm -v "$PWD/pkg:/pkg" ${{ matrix.image }} bash -euxc '
             if [ "${{ matrix.name }}" = deb ]; then
               apt-get update && apt-get install -y /pkg/*.deb
-              dpkg -I /pkg/*.deb
-              dpkg -s gera-view-image
             else
               dnf install -y /pkg/*.rpm
-              rpm -qi gera-view-image
             fi
-            # TODO(Tarefa 4): trocar a inspeção acima por `gera-view-image --version`
-            # quando o main.rs ganhar a flag (precisa de display/WebKit; hoje só checamos a instalação).
-            test -x /usr/bin/gera-view-image
+            # --version sai antes de iniciar GTK/WebKit: não precisa de display,
+            # mas exige que todas as bibliotecas dinâmicas do pacote estejam instaladas.
+            gera-view-image --version | grep -E "^gera-view-image [0-9]+\.[0-9]+\.[0-9]+"
           '

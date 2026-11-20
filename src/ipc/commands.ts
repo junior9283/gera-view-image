@@ -29,7 +29,11 @@ export const renderView = async (id: DocId, frame: number, maxW: number, maxH: n
 export const thumbnail = async (id: DocId, frame: number, size: number) =>
   decodeViewBuffer(await invoke<ArrayBuffer>("thumbnail", { id, frame, size }));
 
-export const applyOp = (id: DocId, op: Op) => invoke<DocInfo>("apply_op", { id, op });
+/** `JSON.stringify(Uint8Array)` vira objeto; os bytes do PNG precisam ir como lista. */
+const toWire = (op: Op): Op =>
+  op.type === "composite" && op.data.png instanceof Uint8Array ? { ...op, data: { png: Array.from(op.data.png) } } : op;
+
+export const applyOp = (id: DocId, op: Op) => invoke<DocInfo>("apply_op", { id, op: toWire(op) });
 
 export const undo = (id: DocId) => invoke<DocInfo>("undo", { id });
 

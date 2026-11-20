@@ -21,7 +21,9 @@ pub struct Decoded {
     pub delays_ms: Vec<u32>,
     pub format: SourceFormat,
     pub icc: Option<Vec<u8>>,
-    /// Bloco EXIF começando no cabeçalho TIFF (`II*\0`/`MM\0*`).
+    /// Bloco EXIF começando no cabeçalho TIFF (`II*\0`/`MM\0*`), exatamente como no arquivo.
+    /// Atenção: a tag Orientation continua com o valor ORIGINAL, mas `frames` já está girado.
+    /// Quem gravar este EXIF num arquivo novo deve reescrever Orientation = 1.
     pub exif: Option<Vec<u8>>,
     pub dpi: Option<(f32, f32)>,
 }
@@ -41,6 +43,33 @@ impl Decoded {
     pub fn bytes(&self) -> usize {
         self.frames.iter().map(|f| f.as_raw().len()).sum()
     }
+}
+
+/// Teto de memória de uma imagem decodificada (RGBA8, todas as páginas somadas).
+/// Arquivos que declaram mais que isso falham com erro antes de alocar.
+pub const MAX_DECODE_BYTES: usize = 2 << 30;
+
+/// Recusa dimensões cujo RGBA8 (somado a `already` bytes de páginas anteriores) passe do teto.
+fn check_budget(w: u32, h: u32, already: usize) -> AppResult<usize> {
+    let bytes = (w as usize)
+        .checked_mul(h as usize)
+        .and_then(|p| p.checked_mul(4))
+        .and_then(|b| b.checked_add(already))
+        .filter(|&b| b <= MAX_DECODE_BYTES);
+    bytes.ok_or_else(|| {
+        AppError::Unsupported(format!(
+            "imagem grande demais ({w}x{h}); o limite é {} MiB",
+            MAX_DECODE_BYTES >> 20
+        ))
+    })
+}
+
+/// Memória (bytes RGBA8) que decodificar `bytes` deve ocupar, lida só do cabeçalho.
+/// Formatos sem cabeçalho legível (RAW) usam 8x o tamanho do arquivo.
+pub fn estimate_bytes(bytes: &[u8]) -> usize {
+    imagesize::blob_size(bytes)
+        .map(|s| s.width.saturating_mul(s.height).saturating_mul(4))
+        .unwrap_or(bytes.len().saturating_mul(8))
 }
 
 /// Lado maior em que um SVG é rasterizado.
@@ -146,7 +175,7 @@ pub fn decode_bytes(path: &Path, bytes: &[u8]) -> AppResult<Decoded> {
             AppError::Unsupported(format!("formato não suportado: {}", path.display()))
         }
     })?;
-    guarded(|| decode_format(path, bytes, format))
+    guarded(|| decode_format(bytes, format))
 }
 
 /// Decodificadores de terceiros podem entrar em pânico com arquivos malformados:
@@ -159,7 +188,7 @@ fn guarded<T>(f: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
     })
 }
 
-fn decode_format(path: &Path, bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
+fn decode_format(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
     use SourceFormat::*;
     let mut d = match format {
         Jpeg => decode_image_crate(bytes, ImageFormat::Jpeg, format),
@@ -173,7 +202,7 @@ fn decode_format(path: &Path, bytes: &[u8], format: SourceFormat) -> AppResult<D
             decode_tiff(bytes).or_else(|_| decode_image_crate(bytes, ImageFormat::Tiff, format))
         }
         Heic | Avif => decode_heif(bytes, format),
-        Svg => decode_svg(path, bytes),
+        Svg => decode_svg(bytes),
         Psd => decode_psd(bytes),
         Raw => decode_raw(bytes),
     }?;
@@ -189,7 +218,7 @@ fn decode_format(path: &Path, bytes: &[u8], format: SourceFormat) -> AppResult<D
 
 fn limits() -> Limits {
     let mut l = Limits::default();
-    l.max_alloc = Some(4 << 30); // 4 GiB: PNG de 100 MP+ cabe; arquivos absurdos falham com erro.
+    l.max_alloc = Some(MAX_DECODE_BYTES as u64);
     l
 }
 
@@ -200,13 +229,32 @@ fn decode_image_crate(bytes: &[u8], fmt: ImageFormat, format: SourceFormat) -> A
     let orientation = dec.orientation().unwrap_or(Orientation::NoTransforms);
     let icc = dec.icc_profile().ok().flatten();
     let exif = dec.exif_metadata().ok().flatten();
+    let (w, h) = dec.dimensions();
+    check_budget(w, h, 0)?;
     let mut img = DynamicImage::from_decoder(dec)?;
     img.apply_orientation(orientation);
     Ok(Decoded {
         icc,
         exif,
-        ..Decoded::single(img.into_rgba8(), format)
+        ..Decoded::single(into_rgba(img), format)
     })
+}
+
+/// Como `into_rgba8`, mas RGB8 é expandido no mesmo buffer: sem RGB e RGBA vivos juntos.
+fn into_rgba(img: DynamicImage) -> RgbaImage {
+    let DynamicImage::ImageRgb8(rgb) = img else {
+        return img.into_rgba8();
+    };
+    let (w, h) = rgb.dimensions();
+    let mut v = rgb.into_raw();
+    let n = v.len() / 3;
+    // Realocações grandes do glibc usam mremap: crescer o Vec não copia nem duplica.
+    v.resize(n * 4, 255);
+    for i in (0..n).rev() {
+        let (r, g, b) = (v[i * 3], v[i * 3 + 1], v[i * 3 + 2]);
+        v[i * 4..i * 4 + 4].copy_from_slice(&[r, g, b, 255]);
+    }
+    RgbaImage::from_raw(w, h, v).expect("tamanho calculado acima")
 }
 
 fn frames_of<'a>(frames: ::image::Frames<'a>, format: SourceFormat) -> AppResult<Decoded> {
@@ -253,14 +301,22 @@ fn decode_tiff(bytes: &[u8]) -> AppResult<Decoded> {
         tags::Tag,
     };
     let map = |e: tiff::TiffError| AppError::corrupt(e);
-    let mut dec = Decoder::new(Cursor::new(bytes))
-        .map_err(map)?
-        .with_limits(TL::unlimited());
+    let mut dec = Decoder::new(Cursor::new(bytes)).map_err(map)?.with_limits({
+        // `unlimited()` + tetos: o padrão (256 MiB) recusaria TIFFs grandes legítimos.
+        let mut l = TL::unlimited();
+        l.decoding_buffer_size = MAX_DECODE_BYTES * 2; // 16 bits/canal antes de reduzir
+        l.intermediate_buffer_size = MAX_DECODE_BYTES;
+        l.ifd_value_size = 64 << 20;
+        l
+    });
     let mut frames = Vec::new();
     let mut icc = None;
     let mut dpi = None;
+    let mut total = 0;
     loop {
         let (w, h) = dec.dimensions().map_err(map)?;
+        // Antes de `read_image`: o cabeçalho pode declarar dimensões absurdas.
+        total = check_budget(w, h, total)?;
         let color = dec.colortype().map_err(map)?;
         let orientation = dec.find_tag_unsigned::<u8>(Tag::Orientation).ok().flatten();
         if frames.is_empty() {
@@ -294,7 +350,7 @@ fn decode_tiff(bytes: &[u8]) -> AppResult<Decoded> {
         if let Some(o) = orientation.and_then(Orientation::from_exif) {
             img.apply_orientation(o);
         }
-        frames.push(img.into_rgba8());
+        frames.push(into_rgba(img));
         if !dec.more_images() {
             break;
         }
@@ -352,11 +408,13 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
     let lib = LibHeif::new();
     let ctx = HeifContext::read_from_bytes(bytes).map_err(map)?;
     let handle = ctx.primary_image_handle().map_err(map)?;
+    check_budget(handle.width(), handle.height(), 0)?;
     // O libheif já aplica as transformações do contêiner (irot/imir): não há EXIF a aplicar.
     let img = lib
         .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgba), None)
         .map_err(map)?;
     let (w, h) = (img.width(), img.height());
+    check_budget(w, h, 0)?;
     let planes = img.planes();
     let plane = planes.interleaved.ok_or_else(short)?;
     let mut out = Vec::with_capacity(w as usize * h as usize * 4);
@@ -396,10 +454,15 @@ fn svg_fontdb() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
     .clone()
 }
 
-fn decode_svg(path: &Path, bytes: &[u8]) -> AppResult<Decoded> {
+fn decode_svg(bytes: &[u8]) -> AppResult<Decoded> {
     use resvg::{tiny_skia, usvg};
+    // Um SVG não pode ler arquivos locais (`<image href="/home/...">`): só `data:` URLs.
     let mut opt = usvg::Options {
-        resources_dir: path.parent().map(Path::to_path_buf),
+        resources_dir: None,
+        image_href_resolver: usvg::ImageHrefResolver {
+            resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+            resolve_string: Box::new(|_, _| None),
+        },
         ..Default::default()
     };
     // Carregar as fontes do sistema custa caro: só quando o SVG tem texto.
@@ -435,9 +498,44 @@ fn decode_svg(path: &Path, bytes: &[u8]) -> AppResult<Decoded> {
 }
 
 fn decode_psd(bytes: &[u8]) -> AppResult<Decoded> {
+    // Cabeçalho: "8BPS", versão (2), reservado (6), canais (2), altura (4), largura (4).
+    let be = |r: std::ops::Range<usize>| {
+        bytes
+            .get(r)
+            .map(|b| u32::from_be_bytes(b.try_into().expect("4 bytes")))
+    };
+    let (h, w) = be(14..18).zip(be(18..22)).ok_or_else(short)?;
+    check_budget(w, h, 0)?;
     let psd = psd::Psd::from_bytes(bytes).map_err(AppError::corrupt)?;
     let img = RgbaImage::from_raw(psd.width(), psd.height(), psd.rgba()).ok_or_else(short)?;
     Ok(Decoded::single(img, SourceFormat::Psd))
+}
+
+/// Prévia JPEG embutida no RAW (já orientada), para abrir rápido enquanto revela.
+pub fn raw_preview(bytes: &[u8]) -> Option<RgbaImage> {
+    guarded(|| {
+        use rawler::{decoders::RawDecodeParams, rawsource::RawSource};
+        let src = RawSource::new_from_slice(bytes);
+        let dec = rawler::get_decoder(&src).map_err(|e| AppError::Unsupported(e.to_string()))?;
+        let params = RawDecodeParams::default();
+        let img = dec
+            .preview_image(&src, &params)
+            .ok()
+            .flatten()
+            .ok_or_else(short)?;
+        check_budget(img.width(), img.height(), 0)?;
+        let mut img = DynamicImage::ImageRgba8(into_rgba(img));
+        if let Ok(meta) = dec.raw_metadata(&src, &params)
+            && let Some(o) = meta
+                .exif
+                .orientation
+                .and_then(|o| Orientation::from_exif(o as u8))
+        {
+            img.apply_orientation(o);
+        }
+        Ok(img.into_rgba8())
+    })
+    .ok()
 }
 
 /// RAW com a revelação padrão do `rawler` (demosaico, balanço de branco, sRGB).
@@ -446,6 +544,7 @@ fn decode_raw(bytes: &[u8]) -> AppResult<Decoded> {
     let src = RawSource::new_from_slice(bytes);
     let raw = rawler::decode(&src, &Default::default())
         .map_err(|e| AppError::Unsupported(e.to_string()))?;
+    check_budget(raw.width as u32, raw.height as u32, 0)?;
     let orientation = Orientation::from_exif(raw.orientation.to_u16() as u8);
     let mut img = RawDevelop::default()
         .develop_intermediate(&raw)
@@ -455,7 +554,7 @@ fn decode_raw(bytes: &[u8]) -> AppResult<Decoded> {
     if let Some(o) = orientation {
         img.apply_orientation(o);
     }
-    Ok(Decoded::single(img.into_rgba8(), SourceFormat::Raw))
+    Ok(Decoded::single(into_rgba(img), SourceFormat::Raw))
 }
 
 /// Densidade do segmento JFIF (APP0), se em polegadas ou centímetros.
