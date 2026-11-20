@@ -1,105 +1,264 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { listen } from "@tauri-apps/api/event";
-import { fitView, zoomAt, type View } from "./transform";
-import { renderView, startupDocuments } from "../ipc/commands";
-import { DOC_UPDATED_EVENT, type DocInfo, type ErrorCode } from "../ipc/types";
+import { renderView } from "../ipc/commands";
+import type { DocInfo, Rect } from "../ipc/types";
 import { useDocs } from "../store/docs";
-import { errorMessage } from "../i18n";
+import { usePrefs, type Prefs } from "../store/prefs";
+import { useUi } from "../store/ui";
+import { panBy, syncView, toggleFitActual, zoomBy } from "./actions";
+import { DocError } from "./DocError";
+import { bufferToCanvas, checkerPattern, dpr, useAnimatedFrame } from "./paint";
+import { visibleRegion, type Size, type ViewState } from "./zoom";
+import { ByteLru } from "../lib/byteLru";
+import "./viewer.css";
 
-/**
- * Viewport mínimo: mostra o primeiro documento de `argv` via `render_view`, com zoom
- * Ctrl+roda e pan por arraste. A versão completa (navegação, erros, região) é da Tarefa 5.
- */
+/** Buffer já recebido do `render_view`: cobre `region` (px da imagem) de um documento/revisão/quadro. */
+interface Buf {
+  canvas: HTMLCanvasElement;
+  id: number;
+  rev: number;
+  frame: number;
+  region: Rect;
+  img: Size;
+  seq: number;
+}
+
+/** O que precisa ser pedido para a view atual. */
+interface Need {
+  rect: Rect;
+  /** `null` = imagem inteira. */
+  region: Rect | null;
+  outW: number;
+  outH: number;
+  /** px do buffer por px da imagem. */
+  density: number;
+}
+
+/** Orçamento de buffers guardados (quadros de GIF) para não estourar a memória. */
+const CACHE_BYTES = 64 * 1024 * 1024;
+
+const BACKGROUNDS: Record<Exclude<Prefs["background"], "custom">, string> = {
+  window: "var(--chrome-bg)",
+  black: "#000",
+  white: "#fff",
+  gray: "#808080",
+};
+
+/** Área visível com margem de 25 % (menos pedidos ao arrastar), na densidade que a tela usa. */
+function needFor(view: ViewState, doc: DocInfo, size: Size): Need {
+  const img = { w: doc.width, h: doc.height };
+  const vis = visibleRegion(view, img, size);
+  const mx = Math.ceil(vis.w / 4);
+  const my = Math.ceil(vis.h / 4);
+  const x = Math.max(0, vis.x - mx);
+  const y = Math.max(0, vis.y - my);
+  const rect = { x, y, w: Math.min(img.w, vis.x + vis.w + mx) - x, h: Math.min(img.h, vis.y + vis.h + my) - y };
+  const full = rect.x === 0 && rect.y === 0 && rect.w === img.w && rect.h === img.h;
+  // O Rust nunca amplia: acima de 1 px de tela por px da imagem, vem a resolução nativa.
+  const density = Math.min(1, view.scale * dpr());
+  return {
+    rect,
+    region: full ? null : rect,
+    outW: Math.max(1, Math.ceil(rect.w * density)),
+    outH: Math.max(1, Math.ceil(rect.h * density)),
+    density,
+  };
+}
+
+const contains = (a: Rect, b: Rect) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
+
+const satisfies = (b: Buf, doc: DocInfo, frame: number, need: Need) =>
+  b.id === doc.id &&
+  b.rev === doc.rev &&
+  b.frame === frame &&
+  contains(b.region, need.rect) &&
+  b.canvas.width / b.region.w >= need.density * 0.98;
+
 export function Viewport() {
+  const { t } = useTranslation();
+  const doc = useDocs((s) => s.docs.find((d) => d.id === s.activeId) ?? null);
+  const hasDocs = useDocs((s) => s.docs.length > 0);
+  const view = useUi((s) => s.view);
+  const viewSize = useUi((s) => s.viewSize);
+  const page = useUi((s) => s.page);
+  const prefs = usePrefs();
+  const animFrame = useAnimatedFrame(doc, page === null);
+  const frame = page ?? animFrame;
+
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [error, setError] = useState<ErrorCode | null>(null);
-  useTranslation(); // re-renderiza a mensagem de erro quando o idioma muda
+  const buffers = useRef(new ByteLru<number, Buf>(CACHE_BYTES, (b) => b.canvas.width * b.canvas.height * 4));
+  /** Último buffer pintado: continua na tela (escalado) até chegar o novo, sem piscar. */
+  const shown = useRef<Buf | null>(null);
+  const seq = useRef(0);
+  /** Estado mais recente para o `paint` e as respostas assíncronas (atualizado antes de pintar). */
+  const cur = useRef({ doc, view, viewSize, frame });
 
+  const paint = useRef(() => {
+    const cv = canvas.current;
+    const { doc, view, viewSize, frame } = cur.current;
+    const ctx = cv?.getContext("2d");
+    if (!cv || !ctx) return;
+    const k = dpr();
+    const w = Math.round(viewSize.w * k);
+    const h = Math.round(viewSize.h * k);
+    if (cv.width !== w || cv.height !== h) {
+      cv.width = w;
+      cv.height = h;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (!doc || doc.error || !view) return;
+    const b = [buffers.current.get(frame), shown.current].find((x) => x?.id === doc.id);
+    if (!b) return;
+    const img = { x: view.panX, y: view.panY, w: doc.width * view.scale, h: doc.height * view.scale };
+    let dest: { x: number; y: number; w: number; h: number };
+    if (b.img.w === doc.width && b.img.h === doc.height) {
+      dest = { x: img.x + b.region.x * view.scale, y: img.y + b.region.y * view.scale, w: b.region.w * view.scale, h: b.region.h * view.scale };
+    } else if (b.region.w === b.img.w && b.region.h === b.img.h) {
+      dest = img; // dimensões mudaram (ex.: girar): o buffer antigo inteiro ocupa a imagem nova até chegar o certo
+    } else return;
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    ctx.fillStyle = checkerPattern(ctx, 8) ?? "#fff";
+    ctx.fillRect(dest.x, dest.y, dest.w, dest.h);
+    // Ampliação forte: pixels nítidos; o resto suavizado.
+    ctx.imageSmoothingEnabled = (dest.w * k) / b.canvas.width < 2;
+    ctx.drawImage(b.canvas, dest.x, dest.y, dest.w, dest.h);
+    shown.current = b;
+  });
+
+  // Tamanho da área (vem primeiro: o ajuste do documento depende dele).
   useEffect(() => {
     const el = box.current!;
-    const cv = canvas.current!;
-    let view: View = { scale: 1, x: 0, y: 0 };
-    let drag: { x: number; y: number } | null = null;
-    let shown: DocInfo | null = null;
-
-    const apply = () => {
-      cv.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
-    };
-
-    // Desenha o buffer ajustado à janela em pixels físicos (1 px do canvas = 1/dpr px CSS).
-    const draw = async (info: DocInfo) => {
-      setError(info.error);
-      if (info.error) return;
-      const dpr = window.devicePixelRatio || 1;
-      const v = await renderView(info.id, 0, Math.round(el.clientWidth * dpr), Math.round(el.clientHeight * dpr));
-      cv.width = v.width;
-      cv.height = v.height;
-      cv.getContext("2d")!.putImageData(new ImageData(v.data, v.width, v.height), 0, 0);
-      cv.style.width = `${v.width / dpr}px`;
-      cv.style.height = `${v.height / dpr}px`;
-      if (shown?.id !== info.id) {
-        view = fitView(v.width / dpr, v.height / dpr, el.clientWidth, el.clientHeight);
-        apply();
-      }
-      shown = info;
-    };
-
-    const start = async () => {
-      const infos = await startupDocuments();
-      useDocs.getState().add(infos);
-      const first = infos.find((d) => !d.error) ?? infos[0];
-      if (first) await draw(first);
-    };
-    start().catch((e) => console.error("falha ao abrir imagem:", e));
-
-    // A decodificação completa (ou outra mudança feita no Rust) chega por evento.
-    const unlisten = listen<DocInfo>(DOC_UPDATED_EVENT, (e) => {
-      useDocs.getState().update(e.payload);
-      if (shown?.id === e.payload.id) draw(e.payload).catch((err) => console.error(err));
+    const ro = new ResizeObserver(() => {
+      useUi.getState().setViewSize({ w: el.clientWidth, h: el.clientHeight });
+      syncView(false);
     });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-    const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
+  useEffect(() => syncView(true), [doc?.id]);
+  useEffect(() => syncView(false), [doc?.width, doc?.height, doc?.error]);
+
+  useLayoutEffect(() => {
+    cur.current = { doc, view, viewSize, frame };
+    paint.current();
+  });
+
+  // Indicador de zoom: aparece a cada mudança de escala e some sozinho.
+  const badge = useRef<HTMLDivElement>(null);
+  const scale = view ? +view.scale.toFixed(4) : null;
+  useEffect(() => {
+    const el = badge.current;
+    if (!el || scale === null) return;
+    el.classList.add("show");
+    const timer = setTimeout(() => el.classList.remove("show"), 1200);
+    return () => clearTimeout(timer);
+  }, [scale]);
+
+  // Pede o buffer que falta para a view atual.
+  useEffect(() => {
+    if (!doc || doc.error || !view || viewSize.w <= 0) return;
+    const need = needFor(view, doc, viewSize);
+    const have = buffers.current.get(frame);
+    if (have && satisfies(have, doc, frame, need)) return;
+    const { id, rev } = doc;
+    const timer = setTimeout(async () => {
+      const my = ++seq.current;
+      try {
+        const v = await renderView(id, frame, need.outW, need.outH, need.region);
+        const now = cur.current.doc;
+        if (now?.id !== id || now.rev !== rev) return;
+        const old = buffers.current.get(frame);
+        if (old && old.id === id && old.rev === rev && old.seq > my) return;
+        const b: Buf = { canvas: bufferToCanvas(v), id, rev, frame, region: need.rect, img: { w: doc.width, h: doc.height }, seq: my };
+        const cache = buffers.current;
+        for (const f of [...cache.keys()]) {
+          const x = cache.get(f)!;
+          if (x.id !== id || x.rev !== rev) cache.delete(f);
+        }
+        cache.set(frame, b);
+        paint.current();
+      } catch (e) {
+        console.error("falha ao desenhar a imagem:", e);
+      }
+    }, have ? 40 : 0);
+    return () => clearTimeout(timer);
+  }, [doc, frame, view, viewSize]);
+
+  // Roda, pinça e arraste (listeners nativos: a roda precisa de passive: false).
+  useEffect(() => {
+    const el = box.current!;
+    let drag: { x: number; y: number; id: number } | null = null;
+    const anchor = (e: MouseEvent) => {
       const r = el.getBoundingClientRect();
-      view = zoomAt(view, Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
-      apply();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
+      if (e.ctrlKey) {
+        // Pinça do touchpad chega como roda com ctrlKey e deltas pequenos; a roda do mouse, com ~100.
+        const d = Math.max(-50, Math.min(50, e.deltaY * unit));
+        zoomBy(Math.exp(-d * 0.005), anchor(e));
+      } else {
+        const dx = e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX;
+        const dy = e.shiftKey && !e.deltaX ? 0 : e.deltaY;
+        panBy(-dx * unit, -dy * unit);
+      }
     };
     const onDown = (e: PointerEvent) => {
-      drag = { x: e.clientX, y: e.clientY };
-      el.setPointerCapture(e.pointerId);
+      if (e.button !== 0 && e.button !== 1) return;
+      drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      el.classList.add("dragging");
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* ponteiro já liberado */
+      }
     };
     const onMove = (e: PointerEvent) => {
-      if (!drag) return;
-      view = { ...view, x: view.x + e.clientX - drag.x, y: view.y + e.clientY - drag.y };
-      drag = { x: e.clientX, y: e.clientY };
-      apply();
+      if (!drag || e.pointerId !== drag.id) return;
+      panBy(e.clientX - drag.x, e.clientY - drag.y);
+      drag = { ...drag, x: e.clientX, y: e.clientY };
     };
-    const onUp = () => (drag = null);
-
-    el.addEventListener("wheel", onWheel, { passive: false });
-    el.addEventListener("pointerdown", onDown);
-    el.addEventListener("pointermove", onMove);
-    el.addEventListener("pointerup", onUp);
+    const onEnd = () => {
+      drag = null;
+      el.classList.remove("dragging");
+    };
+    const onDouble = (e: MouseEvent) => toggleFitActual(anchor(e));
+    const listeners: [string, EventListener, AddEventListenerOptions?][] = [
+      ["wheel", onWheel as EventListener, { passive: false }],
+      ["pointerdown", onDown as EventListener],
+      ["pointermove", onMove as EventListener],
+      ["pointerup", onEnd],
+      ["pointercancel", onEnd],
+      ["lostpointercapture", onEnd],
+      ["dblclick", onDouble as EventListener],
+    ];
+    for (const [n, f, o] of listeners) el.addEventListener(n, f, o);
     return () => {
-      unlisten.then((f) => f());
-      el.removeEventListener("wheel", onWheel);
-      el.removeEventListener("pointerdown", onDown);
-      el.removeEventListener("pointermove", onMove);
-      el.removeEventListener("pointerup", onUp);
+      for (const [n, f] of listeners) el.removeEventListener(n, f);
     };
   }, []);
 
+  const background = prefs.background === "custom" ? prefs.customBg : BACKGROUNDS[prefs.background];
+
   return (
-    <div ref={box} className="viewport">
+    <div ref={box} className="viewport" data-testid="viewport" aria-label={t("viewer.label")} style={{ background }}>
       <canvas ref={canvas} className="viewport-canvas" />
-      {error && (
-        <p className="viewport-error" role="alert">
-          {errorMessage(error)}
-        </p>
-      )}
+      {doc?.error && <DocError doc={doc} />}
+      {!hasDocs && <div className="viewport-empty">{t("viewer.empty")}</div>}
+      <div
+        ref={badge}
+        className={`zoom-badge${scale === null ? " hidden" : ""}`}
+        data-testid="zoom-level"
+        data-scale={scale ?? ""}
+        aria-label={t("viewer.zoomLevel", { pct: Math.round((scale ?? 0) * 100) })}
+      >
+        {t("viewer.zoomPercent", { pct: Math.round((scale ?? 0) * 100) })}
+      </div>
     </div>
   );
 }

@@ -62,5 +62,38 @@
     "permission": "Sem permissão para acessar o arquivo",
     "changed_on_disk": "O arquivo mudou no disco",
     "heic_decoder_missing": "Para abrir HEIC, instale a libde265 (no Fedora: RPM Fusion)"
+  },
+  "viewer": {
+    "label": "Visualização da imagem",
+    "empty": "Arraste imagens para esta janela para abri-las",
+    "zoomLevel": "Zoom {{pct}}%",
+    "zoomPercent": "{{pct}}%",
+    "dropHere": "Solte para abrir"
+  },
+  "error": {
+    "title": "Não foi possível abrir esta imagem",
+    "corrupt": "O arquivo está corrompido ou incompleto.",
+    "unsupported": "Este formato não é suportado.",
+    "not_found": "O arquivo não foi encontrado.",
+    "io": "Erro ao ler o arquivo.",
+    "permission": "Sem permissão para ler o arquivo.",
+    "changed_on_disk": "O arquivo foi alterado por outro programa.",
+    "heic_decoder_missing": "Para abrir HEIC, instale a biblioteca libde265.",
+    "generic": "Erro desconhecido ao abrir o arquivo."
+  },
+  "sidebar": {
+    "label": "Miniaturas",
+    "page": "Página {{n}}",
+    "contactSheet": "Folha de contato",
+    "thumbSize": "Tamanho das miniaturas"
+  },
+  "slideshow": {
+    "label": "Apresentação",
+    "prev": "Anterior",
+    "next": "Próxima",
+    "pause": "Pausar",
+    "play": "Continuar",
+    "exit": "Sair da apresentação",
+    "index": "{{i}} de {{n}}"
   }
 }
