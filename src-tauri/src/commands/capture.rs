@@ -70,7 +70,11 @@ fn dbus_err(e: impl std::fmt::Display) -> AppError {
 fn token() -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static N: AtomicU32 = AtomicU32::new(0);
-    format!("gvi{}_{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed))
+    format!(
+        "gvi{}_{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 /// `Screenshot` do portal: caminho local do arquivo gerado, ou `None` se cancelado.
@@ -101,9 +105,7 @@ pub fn portal_screenshot(interactive: bool) -> AppResult<Option<String>> {
     opts.insert("handle_token", Value::from(tok.as_str()));
     opts.insert("interactive", Value::from(interactive));
     opts.insert("modal", Value::from(true));
-    let _: OwnedObjectPath = proxy
-        .call("Screenshot", &("", opts))
-        .map_err(dbus_err)?;
+    let _: OwnedObjectPath = proxy.call("Screenshot", &("", opts)).map_err(dbus_err)?;
     let msg = responses
         .next()
         .ok_or_else(|| dbus_err("portal fechou sem responder"))?;

@@ -63,6 +63,7 @@
     "changed_on_disk": "The file changed on disk",
     "heic_decoder_missing": "To open HEIC, install libde265 (on Fedora: RPM Fusion)",
     "empty_selection": "Make a selection first",
+    "clipboard_empty": "The clipboard has no image",
     "doc": {
       "title": "This image could not be opened",
       "corrupt": "The file is corrupted or incomplete.",
@@ -202,6 +203,7 @@
       "duplicate": "Duplicate",
       "rename": "Rename…",
       "moveTo": "Move To…",
+      "showInFolder": "Show in Folder",
       "revert": "Revert To",
       "revertLastSaved": "Last Saved",
       "revertOriginal": "Original",
@@ -307,5 +309,89 @@
   },
   "dialog": {
     "images": "Images"
+  },
+  "file": {
+    "untitled": "Untitled",
+    "copyName": "{{name}} (copy)",
+    "pasted": "Pasted",
+    "capture": "Screenshot",
+    "saved": "Saved: {{name}}",
+    "exported": "Exported: {{name}}",
+    "exportedMany": "{{count}} images exported",
+    "unsaved": {
+      "titleOne": "Save changes to “{{name}}”?",
+      "titleMany": "Save changes to {{count}} images?",
+      "body": "Your changes will be lost if you don’t save them.",
+      "save": "Save",
+      "discard": "Don’t Save",
+      "cancel": "Cancel"
+    },
+    "export": {
+      "title": "Export",
+      "titleSave": "Save As",
+      "titleSelected": "Export Selected",
+      "name": "Name",
+      "folder": "Folder",
+      "choose": "Choose…",
+      "format": "Format",
+      "quality": "Quality",
+      "lossless": "Lossless",
+      "depth16": "16 bits per channel",
+      "alpha": "Keep transparency (alpha)",
+      "strip": "Remove metadata (EXIF, GPS, IPTC)",
+      "resize": "Resize (longest side)",
+      "pixels": "px",
+      "estimate": "Estimated size: {{size}}",
+      "estimating": "Estimating size…",
+      "images": "Images",
+      "progress": "Exporting {{done}} of {{total}}…",
+      "overwrite": "“{{name}}” already exists. Replace it?",
+      "replace": "Replace",
+      "export": "Export",
+      "save": "Save",
+      "cancel": "Cancel",
+      "failed": "Could not export “{{name}}”",
+      "noFolder": "Choose the destination folder.",
+      "noName": "Type a name.",
+      "formats": {
+        "jpeg": "JPEG",
+        "png": "PNG",
+        "tiff": "TIFF",
+        "webp": "WebP",
+        "avif": "AVIF",
+        "exr": "OpenEXR",
+        "bmp": "BMP",
+        "heic": "HEIC",
+        "jp2": "JPEG 2000"
+      }
+    },
+    "rename": {
+      "title": "Rename",
+      "name": "New name",
+      "ok": "Rename",
+      "cancel": "Cancel"
+    },
+    "recent": {
+      "title": "Open Recent",
+      "empty": "No recent files.",
+      "clear": "Clear Menu",
+      "close": "Close"
+    },
+    "disk": {
+      "changed": "“{{name}}” was changed outside the app.",
+      "removed": "“{{name}}” was deleted or moved outside the app.",
+      "reload": "Reload",
+      "ignore": "Ignore"
+    },
+    "print": {
+      "title": "Print",
+      "fit": "Fit to page",
+      "orientation": "Orientation",
+      "auto": "Automatic",
+      "portrait": "Portrait",
+      "landscape": "Landscape",
+      "print": "Print…",
+      "close": "Close"
+    }
   }
 }

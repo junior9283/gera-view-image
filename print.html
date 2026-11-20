@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gera View Image</title>
+  </head>
+
+  <body>
+    <form class="print-bar" id="bar">
+      <label><input type="checkbox" id="fit" checked /> <span data-i18n="file.print.fit"></span></label>
+      <label>
+        <span data-i18n="file.print.orientation"></span>
+        <select id="orientation">
+          <option value="auto" data-i18n="file.print.auto"></option>
+          <option value="portrait" data-i18n="file.print.portrait"></option>
+          <option value="landscape" data-i18n="file.print.landscape"></option>
+        </select>
+      </label>
+      <span class="print-spacer"></span>
+      <button type="button" id="close" data-i18n="file.print.close"></button>
+      <button type="submit" id="print" data-i18n="file.print.print"></button>
+    </form>
+    <main class="print-page"><img id="image" alt="" /></main>
+    <script type="module" src="/src/print/print.ts"></script>
+  </body>
+</html>

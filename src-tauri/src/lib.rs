@@ -60,6 +60,7 @@ pub fn run() {
             commands::file::move_to,
             commands::file::duplicate,
             commands::file::document_dpi,
+            commands::file::path_exists,
             commands::file::ignore_disk_change,
             commands::file::open_with,
             commands::file::reveal,

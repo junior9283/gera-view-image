@@ -2,7 +2,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as ipc from "../ipc/commands";
 import type { DocId, DocInfo, Rect } from "../ipc/types";
-import { confirmClose } from "../file/unsaved";
+import { confirmAndSave } from "../file/unsaved";
 import { useDocs } from "../store/docs";
 import { getPrefs } from "../store/prefs";
 import { useUi, type SidebarMode } from "../store/ui";
@@ -83,10 +83,10 @@ function targetIndex(i: number, n: number, dir: Dir, wrap: boolean): number {
   return i > 0 ? i - 1 : wrap ? n - 1 : i;
 }
 
-/** Fecha os documentos, perguntando antes se algum estiver sujo. */
+/** Fecha os documentos, perguntando antes (Salvar / Não Salvar / Cancelar) se algum estiver sujo. */
 export async function closeDocs(ids: DocId[]): Promise<void> {
   const docs = useDocs.getState().docs.filter((d) => ids.includes(d.id));
-  if (!docs.length || (await confirmClose(docs)) !== "discard") return;
+  if (!docs.length || !(await confirmAndSave(docs))) return;
   for (const d of docs) await useDocs.getState().close(d.id);
 }
 

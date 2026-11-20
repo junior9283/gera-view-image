@@ -140,7 +140,7 @@ impl Document {
         let source = source.into();
         let p = Path::new(path);
         let disk = DiskStamp::of(p);
-        let writable = Self::can_save(path, &source);
+        let writable = Self::can_save(path, source.format, source.frames.len());
         let info = DocInfo {
             id,
             path: path.to_string(),
@@ -177,11 +177,11 @@ impl Document {
 
     /// Salvar grava no próprio arquivo: há caminho, o formato é gravável, uma só página/quadro
     /// (TIFF de várias páginas e GIF animado perderiam conteúdo) e o arquivo não é só leitura.
-    pub(super) fn can_save(path: &str, source: &Decoded) -> bool {
+    pub(super) fn can_save(path: &str, format: SourceFormat, frames: usize) -> bool {
         let read_only = std::fs::metadata(path)
             .map(|m| m.permissions().readonly())
             .unwrap_or(false);
-        !path.is_empty() && source.format.writable() && source.frames.len() <= 1 && !read_only
+        !path.is_empty() && format.writable() && frames <= 1 && !read_only
     }
 
     fn failed(id: DocId, path: &str, err: AppError) -> Self {
@@ -596,7 +596,12 @@ impl DocStore {
         let state = (n, generation);
         if doc.loading {
             let scale = doc.source.frames[0].width() as f64 / doc.full_size.0.max(1) as f64;
-            return Ok((Pixels::Source(doc.source.clone(), 0), doc.full_size, scale, state));
+            return Ok((
+                Pixels::Source(doc.source.clone(), 0),
+                doc.full_size,
+                scale,
+                state,
+            ));
         }
         let size = doc.size_after_ops();
         if n == 0 {
@@ -612,7 +617,12 @@ impl DocStore {
             k -= 1;
         }
         if k == n {
-            return Ok((Pixels::Owned(base.expect("encontrado no cache")), size, 1.0, state));
+            return Ok((
+                Pixels::Owned(base.expect("encontrado no cache")),
+                size,
+                1.0,
+                state,
+            ));
         }
         let tail = doc.ops[k..n].to_vec();
         let source = doc.source.clone();
@@ -742,9 +752,10 @@ mod tests {
         let id = store.next_id();
         let preview = RgbaImage::from_fn(100, 75, |x, y| Rgba([x as u8, y as u8, 7, 255]));
         let decoded = Decoded::single(preview, SourceFormat::Jpeg);
-        store
-            .lock()
-            .insert(id, Document::new(id, "/tmp/previa.jpg", decoded, (400, 300), true));
+        store.lock().insert(
+            id,
+            Document::new(id, "/tmp/previa.jpg", decoded, (400, 300), true),
+        );
         let px = |x, y| {
             let r = Rect { x, y, w: 1, h: 1 };
             let buf = store.render_view(id, 0, 64, 64, Some(r)).unwrap();
@@ -773,7 +784,10 @@ mod tests {
             .open_documents(&[path.to_string_lossy().into_owned()])
             .remove(0);
         assert_eq!(info.error, None);
-        assert!(store.with_doc(info.id, |d| d.loading).unwrap(), "abre pela prévia");
+        assert!(
+            store.with_doc(info.id, |d| d.loading).unwrap(),
+            "abre pela prévia"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
         drop(cheio);
         assert!(store.wait_ready(info.id).is_err());

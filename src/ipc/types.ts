@@ -14,7 +14,8 @@ export type ErrorCode =
   | "permission"
   | "changed_on_disk"
   | "heic_decoder_missing"
-  | "empty_selection";
+  | "empty_selection"
+  | "clipboard_empty";
 
 export interface AppError {
   code: ErrorCode;
@@ -112,3 +113,27 @@ export interface Metadata {
   gps: Gps | null;
   keywords: string[];
 }
+
+// ---------- Arquivo (Task 11): espelho de `image/encode.rs` e `doc/file.rs` ----------
+
+export type ExportFormat = "jpeg" | "png" | "tiff" | "heic" | "webp" | "avif" | "jp2" | "exr" | "bmp";
+
+export interface ExportOptions {
+  format: ExportFormat;
+  /** 1..100; `null`: JPEG 90, WebP sem perdas, AVIF 80. */
+  quality: number | null;
+  alpha: boolean;
+  depth16: boolean;
+  stripMetadata: boolean;
+  resize: [number, number] | null;
+}
+
+export type SaveOutcome = { type: "saved"; data: DocInfo } | { type: "needsExport" };
+
+export type RevertTarget = "lastSaved" | "original";
+
+export type CaptureMode = "selection" | "window" | "screen";
+
+/** Evento do vigia: o arquivo do documento mudou (ou sumiu) fora do app. */
+export const DOC_CHANGED_ON_DISK_EVENT = "doc-changed-on-disk";
+export interface DiskChanged { id: DocId; removed: boolean }

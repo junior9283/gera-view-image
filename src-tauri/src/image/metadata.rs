@@ -216,8 +216,8 @@ fn photoshop_resource(mut rest: &[u8], want: u16) -> Option<&[u8]> {
     while let Some(r) = rest.strip_prefix(b"8BIM") {
         let id = u16::from_be_bytes([*r.first()?, *r.get(1)?]);
         let name_total = (1 + *r.get(2)? as usize).next_multiple_of(2);
-        let size = u32::from_be_bytes(r.get(2 + name_total..6 + name_total)?.try_into().ok()?)
-            as usize;
+        let size =
+            u32::from_be_bytes(r.get(2 + name_total..6 + name_total)?.try_into().ok()?) as usize;
         let start = 6 + name_total;
         let data = r.get(start..start + size)?;
         if id == want {
@@ -351,7 +351,10 @@ pub fn icc_description(icc: &[u8]) -> Option<String> {
                 let len = u32::from_be_bytes(tag.get(20..24)?.try_into().ok()?) as usize;
                 let o = u32::from_be_bytes(tag.get(24..28)?.try_into().ok()?) as usize;
                 let s = tag.get(o..o.checked_add(len)?)?;
-                let units: Vec<u16> = s.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+                let units: Vec<u16> = s
+                    .chunks_exact(2)
+                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                    .collect();
                 String::from_utf16_lossy(&units)
             }
             _ => return None,

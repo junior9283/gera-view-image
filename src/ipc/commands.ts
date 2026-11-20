@@ -1,5 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ColorAdjust, DocId, DocInfo, Histogram, Mask, Metadata, Op, Rect, ViewBuffer } from "./types";
+import type {
+  CaptureMode, ColorAdjust, DocId, DocInfo, ExportOptions, Histogram, Mask, Metadata, Op, Rect, RevertTarget,
+  SaveOutcome, ViewBuffer,
+} from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -59,3 +62,40 @@ export const histogram = (id: DocId) => invoke<Histogram>("histogram", { id });
 export const autoLevels = (id: DocId) => invoke<ColorAdjust>("auto_levels", { id });
 
 export const metadata = (id: DocId) => invoke<Metadata>("metadata", { id });
+
+// ---------- Arquivo (Task 11) ----------
+
+/** `keywords`: palavras-chave editadas no inspetor (`null` = manter as do arquivo). */
+export const save = (id: DocId, keywords: string[] | null) => invoke<SaveOutcome>("save", { id, keywords });
+
+export const exportDoc = (id: DocId, dest: string, opts: ExportOptions, keywords: string[] | null) =>
+  invoke<DocInfo>("export", { id, dest, opts, keywords });
+
+export const estimateSize = (id: DocId, opts: ExportOptions) => invoke<number>("estimate_size", { id, opts });
+
+export const revert = (id: DocId, to: RevertTarget) => invoke<DocInfo>("revert", { id, to });
+
+export const renameDoc = (id: DocId, name: string) => invoke<DocInfo>("rename", { id, name });
+
+export const moveTo = (id: DocId, dir: string) => invoke<DocInfo>("move_to", { id, dir });
+
+export const duplicate = (id: DocId, name: string) => invoke<DocInfo>("duplicate", { id, name });
+
+/** DPI atual (do arquivo ou do último Ajustar Tamanho); `null` se o arquivo não informa. */
+export const documentDpi = (id: DocId) => invoke<number | null>("document_dpi", { id });
+
+export const pathExists = (path: string) => invoke<boolean>("path_exists", { path });
+
+export const ignoreDiskChange = (id: DocId) => invoke<void>("ignore_disk_change", { id });
+
+export const openWith = (id: DocId) => invoke<void>("open_with", { id });
+
+export const reveal = (id: DocId) => invoke<void>("reveal", { id });
+
+export const printDocument = (id: DocId, title: string) => invoke<void>("print_document", { id, title });
+
+export const newFromClipboard = (name: string) => invoke<DocInfo>("new_from_clipboard", { name });
+
+/** `null` = o usuário cancelou a captura. */
+export const captureScreen = (mode: CaptureMode, name: string) =>
+  invoke<DocInfo | null>("capture_screen", { mode, name });

@@ -63,6 +63,7 @@
     "changed_on_disk": "O arquivo mudou no disco",
     "heic_decoder_missing": "Para abrir HEIC, instale a libde265 (no Fedora: RPM Fusion)",
     "empty_selection": "Faça uma seleção primeiro",
+    "clipboard_empty": "A área de transferência não tem imagem",
     "doc": {
       "title": "Não foi possível abrir esta imagem",
       "corrupt": "O arquivo está corrompido ou incompleto.",
@@ -202,6 +203,7 @@
       "duplicate": "Duplicar",
       "rename": "Renomear…",
       "moveTo": "Mover Para…",
+      "showInFolder": "Mostrar na Pasta",
       "revert": "Reverter Para",
       "revertLastSaved": "Última Versão Salva",
       "revertOriginal": "Original",
@@ -307,5 +309,89 @@
   },
   "dialog": {
     "images": "Imagens"
+  },
+  "file": {
+    "untitled": "Sem título",
+    "copyName": "{{name}} (cópia)",
+    "pasted": "Colada",
+    "capture": "Captura de tela",
+    "saved": "Salvo: {{name}}",
+    "exported": "Exportado: {{name}}",
+    "exportedMany": "{{count}} imagens exportadas",
+    "unsaved": {
+      "titleOne": "Salvar as alterações em “{{name}}”?",
+      "titleMany": "Salvar as alterações em {{count}} imagens?",
+      "body": "Se não salvar, as alterações serão perdidas.",
+      "save": "Salvar",
+      "discard": "Não Salvar",
+      "cancel": "Cancelar"
+    },
+    "export": {
+      "title": "Exportar",
+      "titleSave": "Salvar Como",
+      "titleSelected": "Exportar Selecionadas",
+      "name": "Nome",
+      "folder": "Pasta",
+      "choose": "Escolher…",
+      "format": "Formato",
+      "quality": "Qualidade",
+      "lossless": "Sem perdas",
+      "depth16": "16 bits por canal",
+      "alpha": "Manter transparência (alfa)",
+      "strip": "Remover metadados (EXIF, GPS, IPTC)",
+      "resize": "Redimensionar (lado maior)",
+      "pixels": "px",
+      "estimate": "Tamanho estimado: {{size}}",
+      "estimating": "Calculando tamanho…",
+      "images": "Imagens",
+      "progress": "Exportando {{done}} de {{total}}…",
+      "overwrite": "“{{name}}” já existe. Substituir?",
+      "replace": "Substituir",
+      "export": "Exportar",
+      "save": "Salvar",
+      "cancel": "Cancelar",
+      "failed": "Falha ao exportar “{{name}}”",
+      "noFolder": "Escolha a pasta de destino.",
+      "noName": "Digite um nome.",
+      "formats": {
+        "jpeg": "JPEG",
+        "png": "PNG",
+        "tiff": "TIFF",
+        "webp": "WebP",
+        "avif": "AVIF",
+        "exr": "OpenEXR",
+        "bmp": "BMP",
+        "heic": "HEIC",
+        "jp2": "JPEG 2000"
+      }
+    },
+    "rename": {
+      "title": "Renomear",
+      "name": "Novo nome",
+      "ok": "Renomear",
+      "cancel": "Cancelar"
+    },
+    "recent": {
+      "title": "Abrir Recentes",
+      "empty": "Nenhum arquivo recente.",
+      "clear": "Limpar Lista",
+      "close": "Fechar"
+    },
+    "disk": {
+      "changed": "O arquivo “{{name}}” foi alterado fora do app.",
+      "removed": "O arquivo “{{name}}” foi apagado ou movido para fora do app.",
+      "reload": "Recarregar",
+      "ignore": "Ignorar"
+    },
+    "print": {
+      "title": "Imprimir",
+      "fit": "Ajustar à página",
+      "orientation": "Orientação",
+      "auto": "Automática",
+      "portrait": "Retrato",
+      "landscape": "Paisagem",
+      "print": "Imprimir…",
+      "close": "Fechar"
+    }
   }
 }

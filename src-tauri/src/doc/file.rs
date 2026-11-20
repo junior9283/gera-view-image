@@ -152,11 +152,12 @@ impl DocStore {
         &self,
         id: DocId,
         keywords: Option<Vec<String>>,
+        read_file: bool,
     ) -> AppResult<(Pixels, MetaCarry, Option<Vec<u8>>)> {
         let px = self.render_full(id, 0)?;
         let (path, source, dpi) =
             self.with_doc(id, |d| (d.info.path.clone(), d.source.clone(), d.dpi()))?;
-        let file = (!path.is_empty())
+        let file = (read_file && !path.is_empty())
             .then(|| std::fs::read(&path).ok())
             .flatten();
         let (iptc, xmp) = file
@@ -181,7 +182,7 @@ impl DocStore {
         let (path, format, writable, n, generation) = self.with_doc(id, |d| {
             (
                 d.info.path.clone(),
-                d.source.format,
+                d.info.format,
                 d.info.writable,
                 d.ops.len(),
                 d.generation,
@@ -193,7 +194,7 @@ impl DocStore {
         if let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, file) = self.render_for_write(id, keywords)?;
+        let (px, meta, file) = self.render_for_write(id, keywords, true)?;
         let quality = match fmt {
             ExportFormat::Jpeg => file.as_deref().and_then(encode::jpeg_quality),
             // WebP com perda: sem como estimar a qualidade, usa 90; sem perdas continua sem perdas.
@@ -237,7 +238,7 @@ impl DocStore {
         if same_file && let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, _) = self.render_for_write(id, keywords)?;
+        let (px, meta, _) = self.render_for_write(id, keywords, true)?;
         let bytes = encode::encode(&px, opts, &meta)?;
         encode::write_file_atomic(&dest_path, &bytes)?;
         let adopt = path.is_empty()
@@ -248,11 +249,9 @@ impl DocStore {
                 if adopt {
                     d.relocate(&dest_path);
                     d.opened_disk = d.disk;
-                    let mut src = (*d.source).clone();
-                    src.format = opts.format.source_format();
-                    d.source = Arc::new(src);
-                    d.info.format = d.source.format;
-                    d.info.writable = Document::can_save(dest, &d.source);
+                    d.info.format = opts.format.source_format();
+                    d.info.writable =
+                        Document::can_save(dest, d.info.format, d.source.frames.len());
                     if d.generation == generation && d.ops.len() >= n {
                         d.saved_len = n;
                     }
@@ -266,7 +265,7 @@ impl DocStore {
 
     /// Tamanho estimado do arquivo com `opts` (codifica de verdade; imagens grandes por amostra).
     pub fn estimate_size(&self, id: DocId, opts: &ExportOptions) -> AppResult<u64> {
-        let (px, meta, _) = self.render_for_write(id, None)?;
+        let (px, meta, _) = self.render_for_write(id, None, false)?;
         let (w, h) = opts.resize.unwrap_or(px.dimensions());
         let area = w as u64 * h as u64;
         if area <= ESTIMATE_MAX_PIXELS {
@@ -281,7 +280,14 @@ impl DocStore {
             dpi: meta.dpi,
             ..MetaCarry::default()
         };
-        let small = encode::encode(&px, &ExportOptions { resize: Some((sw, sh)), ..opts.clone() }, &sample)?;
+        let small = encode::encode(
+            &px,
+            &ExportOptions {
+                resize: Some((sw, sh)),
+                ..opts.clone()
+            },
+            &sample,
+        )?;
         let meta_len = [meta.exif.as_ref(), meta.icc.as_ref()]
             .into_iter()
             .flatten()
@@ -320,7 +326,11 @@ impl DocStore {
                         d.source = orig;
                     }
                     // Se o disco ainda é o da abertura, o documento volta a ficar limpo.
-                    d.saved_len = if d.disk == d.opened_disk { 0 } else { usize::MAX };
+                    d.saved_len = if d.disk == d.opened_disk {
+                        0
+                    } else {
+                        usize::MAX
+                    };
                 }
             }
             d.ops.clear();
@@ -403,11 +413,19 @@ fn webp_is_lossy(b: &[u8]) -> bool {
 
 /// Bytes PNG (rápido) do quadro 0 com as operações: usado pela impressão.
 pub fn render_png(store: &DocStore, id: DocId) -> AppResult<Vec<u8>> {
-    use ::image::{ImageEncoder, codecs::png::{CompressionType, FilterType, PngEncoder}};
+    use ::image::{
+        ImageEncoder,
+        codecs::png::{CompressionType, FilterType, PngEncoder},
+    };
     let px = store.render_full(id, 0)?;
     let mut out = Vec::new();
     PngEncoder::new_with_quality(&mut out, CompressionType::Fast, FilterType::Adaptive)
-        .write_image(px.as_raw(), px.width(), px.height(), ::image::ExtendedColorType::Rgba8)
+        .write_image(
+            px.as_raw(),
+            px.width(),
+            px.height(),
+            ::image::ExtendedColorType::Rgba8,
+        )
         .map_err(AppError::from)?;
     Ok(out)
 }

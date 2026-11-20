@@ -18,7 +18,10 @@ use std::{
     sync::{Mutex, mpsc},
     time::Duration,
 };
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder, ipc::Response};
+use tauri::{
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    ipc::Response,
+};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
@@ -79,6 +82,12 @@ pub async fn move_to(store: State<'_, DocStore>, id: DocId, dir: String) -> AppR
 pub async fn duplicate(store: State<'_, DocStore>, id: DocId, name: String) -> AppResult<DocInfo> {
     let store = store.inner().clone();
     blocking(move || store.duplicate(id, &name)).await
+}
+
+/// Existe algo em `path`? (Exportar pergunta antes de substituir.)
+#[tauri::command]
+pub fn path_exists(path: String) -> bool {
+    Path::new(&path).exists()
 }
 
 /// DPI atual do documento (o do arquivo ou o do último Ajustar Tamanho).
@@ -202,13 +211,15 @@ pub struct DiskChanged {
 pub fn start_watch(app: AppHandle, store: DocStore) {
     std::thread::spawn(move || {
         let (tx, rx) = mpsc::channel::<PathBuf>();
-        let Ok(mut watcher) = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(ev) = res {
-                for p in ev.paths {
-                    let _ = tx.send(p);
+        let Ok(mut watcher) =
+            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                if let Ok(ev) = res {
+                    for p in ev.paths {
+                        let _ = tx.send(p);
+                    }
                 }
-            }
-        }) else {
+            })
+        else {
             return;
         };
         let mut dirs: HashSet<PathBuf> = HashSet::new();

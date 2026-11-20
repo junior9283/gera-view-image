@@ -7,6 +7,8 @@ const ipc = vi.hoisted(() => ({
   histogram: vi.fn(async () => ({ r: Array(256).fill(1), g: Array(256).fill(1), b: Array(256).fill(1), l: Array(256).fill(1) })),
   autoLevels: vi.fn(async () => ({ ...NEUTRAL_ADJUST, levels: { black: 10, gamma: 1, white: 240 } })),
   applyOp: vi.fn(async () => ({ id: 1, rev: 2 })),
+  documentDpi: vi.fn<(...a: unknown[]) => Promise<number | null>>(async () => null),
+  estimateSize: vi.fn<(...a: unknown[]) => Promise<number>>(async () => 5 * 1024 * 1024),
 }));
 vi.mock("../ipc/commands", () => ipc);
 
@@ -107,6 +109,30 @@ describe("ResizeDialog", () => {
       type: "resize",
       data: { w: 4000, h: 3000, filter: "lanczos3", dpi: 300 },
     });
+  });
+
+  it("usa o DPI do documento (não sobrescreve com 72)", async () => {
+    ipc.documentDpi.mockResolvedValueOnce(300);
+    render(createElement(ResizeDialog, { doc, onClose: () => {} }));
+    await vi.waitFor(() => expect((screen.getByLabelText(/Resolução/) as HTMLInputElement).value).toBe("300"));
+    fireEvent.change(screen.getByLabelText("Largura"), { target: { value: "2000" } });
+    fireEvent.click(screen.getByText("OK"));
+    await vi.waitFor(() => expect(ipc.applyOp).toHaveBeenCalled());
+    expect(ipc.applyOp).toHaveBeenCalledWith(1, {
+      type: "resize",
+      data: { w: 2000, h: 1500, filter: "lanczos3", dpi: 300 },
+    });
+  });
+
+  it("tamanho resultante vem do estimate_size (com debounce)", async () => {
+    vi.useFakeTimers();
+    render(createElement(ResizeDialog, { doc, onClose: () => {} }));
+    fireEvent.change(screen.getByLabelText("Largura"), { target: { value: "1000" } });
+    expect(ipc.estimateSize).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(300));
+    expect(ipc.estimateSize).toHaveBeenCalledTimes(1);
+    expect(ipc.estimateSize.mock.calls[0][1]).toMatchObject({ format: "png", resize: [1000, 750] });
+    expect(screen.getByText("Tamanho resultante: 5.0 MB")).toBeTruthy();
   });
 
   it("preset define largura e altura", () => {

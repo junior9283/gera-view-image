@@ -11,7 +11,7 @@ use gera_view_image_lib::{
     error::AppError,
     image::{
         decode::decode,
-        encode::{ExportFormat, ExportOptions, encode, MetaCarry, write_atomic},
+        encode::{ExportFormat, ExportOptions, MetaCarry, encode, write_atomic},
         metadata::parse_blocks,
     },
 };
@@ -51,7 +51,11 @@ fn opts(format: ExportFormat) -> ExportOptions {
 
 fn gradiente(w: u32, h: u32) -> RgbImage {
     RgbImage::from_fn(w, h, |x, y| {
-        Rgb([(x * 255 / w) as u8, (y * 255 / h) as u8, ((x + y) % 256) as u8])
+        Rgb([
+            (x * 255 / w) as u8,
+            (y * 255 / h) as u8,
+            ((x + y) % 256) as u8,
+        ])
     })
 }
 
@@ -71,7 +75,12 @@ fn exif_make_model_orientation(orientation: u16) -> Vec<u8> {
     t.extend_from_slice(&8u32.to_le_bytes());
     t.extend_from_slice(&3u16.to_le_bytes());
     t.extend(entry(0x010F, 2, make.len() as u32, off_make.to_le_bytes()));
-    t.extend(entry(0x0110, 2, model.len() as u32, off_model.to_le_bytes()));
+    t.extend(entry(
+        0x0110,
+        2,
+        model.len() as u32,
+        off_model.to_le_bytes(),
+    ));
     let mut o = [0u8; 4];
     o[..2].copy_from_slice(&orientation.to_le_bytes());
     t.extend(entry(0x0112, 3, 1, o));
@@ -93,7 +102,10 @@ fn jpeg_com_exif(img: &RgbImage, tiff: &[u8]) -> Vec<u8> {
 }
 
 fn campo(blocks: &[(String, String)], nome: &str) -> Option<String> {
-    blocks.iter().find(|(k, _)| k == nome).map(|(_, v)| v.clone())
+    blocks
+        .iter()
+        .find(|(k, _)| k == nome)
+        .map(|(_, v)| v.clone())
 }
 
 #[test]
@@ -109,9 +121,7 @@ fn salvar_jpeg_preserva_exif_e_zera_orientacao() {
     let store = DocStore::new();
     let id = abre(&store, &path);
     assert_eq!(store.info(id).unwrap().width, 20);
-    store
-        .apply_op(id, Op::Rotate { quarter_turns: 1 })
-        .unwrap();
+    store.apply_op(id, Op::Rotate { quarter_turns: 1 }).unwrap();
     let out = store.save(id, None).unwrap();
     let SaveOutcome::Saved(info) = out else {
         panic!("JPEG deveria salvar no lugar")
@@ -120,13 +130,20 @@ fn salvar_jpeg_preserva_exif_e_zera_orientacao() {
     assert_eq!((info.width, info.height), (40, 20));
 
     let d = decode(&path).unwrap();
-    assert_eq!(d.frames[0].dimensions(), (40, 20), "girado e com Orientation=1");
+    assert_eq!(
+        d.frames[0].dimensions(),
+        (40, 20),
+        "girado e com Orientation=1"
+    );
     let bytes = fs::read(&path).unwrap();
     let b = parse_blocks(&bytes, d.exif.as_deref());
     assert_eq!(campo(&b.exif, "Make").as_deref(), Some("Gera"));
     assert_eq!(campo(&b.exif, "Model").as_deref(), Some("TestCam"));
     let orient = campo(&b.exif, "Orientation").unwrap_or_default();
-    assert!(orient.contains("row 0 at top and column 0 at left") || orient == "1", "{orient}");
+    assert!(
+        orient.contains("row 0 at top and column 0 at left") || orient == "1",
+        "{orient}"
+    );
 }
 
 #[test]
@@ -156,14 +173,24 @@ fn salvar_preserva_permissoes() {
     let store = DocStore::new();
     let id = abre(&store, &path);
     store.apply_op(id, Op::FlipH).unwrap();
-    assert!(matches!(store.save(id, None).unwrap(), SaveOutcome::Saved(_)));
+    assert!(matches!(
+        store.save(id, None).unwrap(),
+        SaveOutcome::Saved(_)
+    ));
     let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o640);
 }
 
 #[test]
 fn salvar_raw_pede_exportar() {
-    for nome in ["img.dng", "img.psd", "img.svg", "anim.gif", "multi.tiff", "img.heic"] {
+    for nome in [
+        "img.dng",
+        "img.psd",
+        "img.svg",
+        "anim.gif",
+        "multi.tiff",
+        "img.heic",
+    ] {
         let path = copia("raw-exportar", nome);
         let store = DocStore::new();
         let info = store.open_documents(&[s(&path)]).remove(0);
@@ -187,11 +214,15 @@ fn salvar_em_caminho_com_acento() {
     fs::copy(fx(&format!("{DIR_ACENTOS}/Ação 1.jpg")), &path).unwrap();
     let store = DocStore::new();
     let id = abre(&store, &path);
-    let (w, h) = (store.info(id).unwrap().width, store.info(id).unwrap().height);
-    store
-        .apply_op(id, Op::Rotate { quarter_turns: 1 })
-        .unwrap();
-    assert!(matches!(store.save(id, None).unwrap(), SaveOutcome::Saved(_)));
+    let (w, h) = (
+        store.info(id).unwrap().width,
+        store.info(id).unwrap().height,
+    );
+    store.apply_op(id, Op::Rotate { quarter_turns: 1 }).unwrap();
+    assert!(matches!(
+        store.save(id, None).unwrap(),
+        SaveOutcome::Saved(_)
+    ));
     assert_eq!(decode(&path).unwrap().frames[0].dimensions(), (h, w));
 
     // Exportar para outro nome com acento e espaço.
@@ -225,7 +256,11 @@ fn arquivo_modificado_externamente_retorna_changed_on_disk() {
     fs::write(&path, &outro).unwrap();
     let err = store.save(id, None).unwrap_err();
     assert_eq!(err.code(), "changed_on_disk");
-    assert_eq!(fs::read(&path).unwrap(), outro, "não sobrescreve a versão de fora");
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        outro,
+        "não sobrescreve a versão de fora"
+    );
     assert_eq!(store.disk_change(id).unwrap(), Some(false));
 
     // Reverter para o último salvo relê o disco e volta a permitir salvar.
@@ -239,14 +274,19 @@ fn reverter_para_o_original_mantem_a_abertura() {
     let path = copia("reverter", "rgb.jpg");
     let store = DocStore::new();
     let id = abre(&store, &path);
-    store
-        .apply_op(id, Op::Rotate { quarter_turns: 1 })
-        .unwrap();
+    store.apply_op(id, Op::Rotate { quarter_turns: 1 }).unwrap();
     store.save(id, None).unwrap();
     assert_eq!(store.info(id).unwrap().width, 40);
     let info = store.revert(id, RevertTarget::Original).unwrap();
-    assert_eq!((info.width, info.height), (20, 40), "volta ao estado da abertura");
-    assert!(info.dirty, "o disco tem a versão salva, diferente do original");
+    assert_eq!(
+        (info.width, info.height),
+        (20, 40),
+        "volta ao estado da abertura"
+    );
+    assert!(
+        info.dirty,
+        "o disco tem a versão salva, diferente do original"
+    );
     let info = store.revert(id, RevertTarget::LastSaved).unwrap();
     assert_eq!((info.width, info.height), (40, 20));
     assert!(!info.dirty);
@@ -386,22 +426,26 @@ fn renomear_e_mover() {
     assert!(destino.join("Nova ação.png").exists() && !novo.exists());
     // Depois de mover, salvar continua funcionando (o carimbo do disco segue o arquivo).
     store.apply_op(id, Op::FlipH).unwrap();
-    assert!(matches!(store.save(id, None).unwrap(), SaveOutcome::Saved(_)));
+    assert!(matches!(
+        store.save(id, None).unwrap(),
+        SaveOutcome::Saved(_)
+    ));
 }
 
 #[test]
 fn duplicar_abre_copia_sem_caminho() {
     let store = DocStore::new();
     let id = abre(&store, &fx("rgb.jpg"));
-    store
-        .apply_op(id, Op::Rotate { quarter_turns: 1 })
-        .unwrap();
+    store.apply_op(id, Op::Rotate { quarter_turns: 1 }).unwrap();
     let dup = store.duplicate(id, "rgb cópia.jpg").unwrap();
     assert_ne!(dup.id, id);
     assert_eq!(dup.path, "");
     assert!(!dup.writable);
     assert_eq!((dup.width, dup.height), (40, 20));
-    assert!(matches!(store.save(dup.id, None).unwrap(), SaveOutcome::NeedsExport));
+    assert!(matches!(
+        store.save(dup.id, None).unwrap(),
+        SaveOutcome::NeedsExport
+    ));
 
     // Exportar um documento sem caminho o liga ao arquivo novo.
     let dest = tmp("duplicar").join("salvo.png");

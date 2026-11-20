@@ -8,7 +8,7 @@ use crate::{
     error::{AppError, AppResult},
 };
 use ::image::{
-    DynamicImage, ImageEncoder, RgbaImage,
+    DynamicImage, ImageEncoder, RgbImage, RgbaImage,
     codecs::{
         avif::AvifEncoder,
         bmp::BmpEncoder,
@@ -157,19 +157,16 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
             ..meta.clone()
         }
     };
-    let opaque = img.pixels().all(|p| p[3] == 255);
-    let with_alpha = opts.alpha && fmt.keeps_alpha() && !opaque;
-    let pixels = if with_alpha || opaque {
+    let with_alpha = opts.alpha && fmt.keeps_alpha() && img.pixels().any(|p| p[3] != 255);
+    let pixels = if with_alpha {
         DynamicImage::ImageRgba8(img.into_owned())
     } else {
-        DynamicImage::ImageRgba8(flatten_on_white(&img))
+        DynamicImage::ImageRgb8(rgb_on_white(&img))
     };
-    let pixels = if with_alpha {
-        pixels
-    } else {
-        DynamicImage::ImageRgb8(pixels.into_rgb8())
-    };
-    let xmp = meta.iptc_keywords.as_ref().map(|k| xmp_with_keywords(meta.xmp.as_deref(), k));
+    let xmp = meta
+        .iptc_keywords
+        .as_ref()
+        .map(|k| xmp_with_keywords(meta.xmp.as_deref(), k));
     let xmp = xmp.or(meta.xmp.clone());
 
     let mut out = Vec::new();
@@ -191,15 +188,26 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
             out = jpeg_insert_segments(&out, iptc.as_deref(), xmp.as_deref());
         }
         ExportFormat::Png => {
-            let pixels = if opts.depth16 { widen16(pixels) } else { pixels };
-            let mut e =
-                PngEncoder::new_with_quality(&mut out, CompressionType::Default, FilterType::Adaptive);
+            let pixels = if opts.depth16 {
+                widen16(pixels)
+            } else {
+                pixels
+            };
+            let mut e = PngEncoder::new_with_quality(
+                &mut out,
+                CompressionType::Default,
+                FilterType::Adaptive,
+            );
             set_meta(&mut e, &meta);
             pixels.write_with_encoder(e).map_err(enc_err)?;
             out = png_insert_chunks(&out, meta.dpi, xmp.as_deref());
         }
         ExportFormat::Tiff => {
-            let pixels = if opts.depth16 { widen16(pixels) } else { pixels };
+            let pixels = if opts.depth16 {
+                widen16(pixels)
+            } else {
+                pixels
+            };
             let mut c = Cursor::new(Vec::new());
             let mut e = TiffEncoder::new(&mut c);
             if let Some(icc) = &meta.icc {
@@ -268,16 +276,14 @@ fn set_meta(e: &mut impl ImageEncoder, meta: &MetaCarry) {
     }
 }
 
-fn flatten_on_white(img: &RgbaImage) -> RgbaImage {
-    let mut out = img.clone();
-    for p in out.pixels_mut() {
+/// RGB8 com a transparência composta sobre branco (formatos sem alfa), numa passada só.
+fn rgb_on_white(img: &RgbaImage) -> RgbImage {
+    RgbImage::from_fn(img.width(), img.height(), |x, y| {
+        let p = img.get_pixel(x, y);
         let a = p[3] as u32;
-        for c in 0..3 {
-            p[c] = ((p[c] as u32 * a + 255 * (255 - a) + 127) / 255) as u8;
-        }
-        p[3] = 255;
-    }
-    out
+        let c = |v: u8| ((v as u32 * a + 255 * (255 - a) + 127) / 255) as u8;
+        ::image::Rgb([c(p[0]), c(p[1]), c(p[2])])
+    })
 }
 
 fn widen16(img: DynamicImage) -> DynamicImage {
@@ -299,17 +305,31 @@ fn linear_f32(img: &DynamicImage) -> DynamicImage {
             }
         })
         .collect();
-    let mut f = img.to_rgba32f();
-    let src = img.to_rgba8();
-    for (d, s) in f.pixels_mut().zip(src.pixels()) {
-        for c in 0..3 {
-            d[c] = lut[s[c] as usize];
+    match img {
+        DynamicImage::ImageRgba8(i) => DynamicImage::ImageRgba32F(::image::Rgba32FImage::from_fn(
+            i.width(),
+            i.height(),
+            |x, y| {
+                let p = i.get_pixel(x, y);
+                ::image::Rgba([
+                    lut[p[0] as usize],
+                    lut[p[1] as usize],
+                    lut[p[2] as usize],
+                    p[3] as f32 / 255.0,
+                ])
+            },
+        )),
+        other => {
+            let i = other.to_rgb8();
+            DynamicImage::ImageRgb32F(::image::Rgb32FImage::from_fn(
+                i.width(),
+                i.height(),
+                |x, y| {
+                    let p = i.get_pixel(x, y);
+                    ::image::Rgb([lut[p[0] as usize], lut[p[1] as usize], lut[p[2] as usize]])
+                },
+            ))
         }
-    }
-    if img.color().has_alpha() {
-        DynamicImage::ImageRgba32F(f)
-    } else {
-        DynamicImage::ImageRgb32F(DynamicImage::ImageRgba32F(f).into_rgb32f())
     }
 }
 
@@ -327,12 +347,20 @@ pub fn exif_reset_orientation(tiff: &[u8]) -> Vec<u8> {
     let u16_at = |b: &[u8], i: usize| {
         b.get(i..i + 2).map(|x| {
             let a = [x[0], x[1]];
-            if le { u16::from_le_bytes(a) } else { u16::from_be_bytes(a) }
+            if le {
+                u16::from_le_bytes(a)
+            } else {
+                u16::from_be_bytes(a)
+            }
         })
     };
     let Some(ifd) = t.get(4..8).map(|x| {
         let a = [x[0], x[1], x[2], x[3]];
-        (if le { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) }) as usize
+        (if le {
+            u32::from_le_bytes(a)
+        } else {
+            u32::from_be_bytes(a)
+        }) as usize
     }) else {
         return t;
     };
@@ -340,7 +368,11 @@ pub fn exif_reset_orientation(tiff: &[u8]) -> Vec<u8> {
     for k in 0..n as usize {
         let e = ifd + 2 + k * 12;
         if u16_at(&t, e) == Some(0x0112) && u16_at(&t, e + 2) == Some(3) && e + 10 <= t.len() {
-            let one = if le { 1u16.to_le_bytes() } else { 1u16.to_be_bytes() };
+            let one = if le {
+                1u16.to_le_bytes()
+            } else {
+                1u16.to_be_bytes()
+            };
             t[e + 8..e + 10].copy_from_slice(&one);
         }
     }
@@ -392,10 +424,10 @@ pub fn xmp_with_keywords(orig: Option<&str>, keywords: &[String]) -> String {
         .collect();
     let subject = format!("<dc:subject><rdf:Bag>{items}</rdf:Bag></dc:subject>");
     if let Some(x) = orig {
-        if let (Some(a), Some(b)) = (x.find("<dc:subject>"), x.find("</dc:subject>")) {
-            if a < b {
-                return format!("{}{subject}{}", &x[..a], &x[b + "</dc:subject>".len()..]);
-            }
+        if let (Some(a), Some(b)) = (x.find("<dc:subject>"), x.find("</dc:subject>"))
+            && a < b
+        {
+            return format!("{}{subject}{}", &x[..a], &x[b + "</dc:subject>".len()..]);
         }
         if let Some(end) = x.find("</rdf:RDF>") {
             return format!(
@@ -553,9 +585,9 @@ fn webp_with_meta(
 /// Tabela de luminância do anexo K da norma JPEG (a soma não depende da ordem zigue-zague).
 const STD_LUMA_SUM: u32 = {
     const T: [u8; 64] = [
-        16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55, 14, 13, 16, 24, 40, 57,
-        69, 56, 14, 17, 22, 29, 51, 87, 80, 62, 18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64,
-        81, 104, 113, 92, 49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99,
+        16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55, 14, 13, 16, 24, 40, 57, 69,
+        56, 14, 17, 22, 29, 51, 87, 80, 62, 18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81,
+        104, 113, 92, 49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99,
     ];
     let mut s = 0;
     let mut i = 0;
@@ -592,7 +624,9 @@ pub fn jpeg_quality(bytes: &[u8]) -> Option<u8> {
                     let sum: u32 = if prec == 0 {
                         vals.iter().map(|&v| v as u32).sum()
                     } else {
-                        vals.chunks(2).map(|c| u16::from_be_bytes([c[0], c[1]]) as u32).sum()
+                        vals.chunks(2)
+                            .map(|c| u16::from_be_bytes([c[0], c[1]]) as u32)
+                            .sum()
                     };
                     let scale = sum as f64 * 100.0 / STD_LUMA_SUM as f64;
                     let q = if scale <= 100.0 {
@@ -666,7 +700,11 @@ mod tests {
     #[test]
     fn orientacao_vira_1_nos_dois_enderecamentos() {
         for le in [true, false] {
-            let mut t = if le { b"II*\0".to_vec() } else { b"MM\0*".to_vec() };
+            let mut t = if le {
+                b"II*\0".to_vec()
+            } else {
+                b"MM\0*".to_vec()
+            };
             let p32 = |v: u32| if le { v.to_le_bytes() } else { v.to_be_bytes() };
             let p16 = |v: u16| if le { v.to_le_bytes() } else { v.to_be_bytes() };
             t.extend_from_slice(&p32(8));
@@ -696,7 +734,10 @@ mod tests {
     fn iim_mantem_outros_campos() {
         let orig = [0x1C, 2, 120, 0, 2, b'o', b'i', 0x1C, 2, 25, 0, 1, b'x'];
         let out = iim_with_keywords(Some(&orig), &["y".into()]);
-        assert!(out.windows(7).any(|w| w == [0x1C, 2, 120, 0, 2, b'o', b'i']));
+        assert!(
+            out.windows(7)
+                .any(|w| w == [0x1C, 2, 120, 0, 2, b'o', b'i'])
+        );
         assert!(!out.windows(6).any(|w| w == [0x1C, 2, 25, 0, 1, b'x']));
         assert!(out.ends_with(&[0x1C, 2, 25, 0, 1, b'y']));
     }

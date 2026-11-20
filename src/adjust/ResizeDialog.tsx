@@ -1,6 +1,8 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { documentDpi } from "../ipc/commands";
 import type { DocInfo, ResizeFilter } from "../ipc/types";
+import { defaultOptions, exportFormatOf, useEstimate } from "../file/estimate";
 import { useDocs } from "../store/docs";
 import { RESIZE_PRESETS, UNITS, fromPixels, linkDims, toPixels, type Unit } from "./units";
 import "./adjust.css";
@@ -8,7 +10,7 @@ import "./adjust.css";
 const DEFAULT_DPI = 72;
 const MAX_PIXELS = 2 ** 31;
 
-/** Ponto de extensão da Tarefa 11: troca por `estimate_size` quando existir. */
+/** Estimativa síncrona fixa (testes). Sem ela, vale o `estimate_size` do Rust no formato do arquivo. */
 export type SizeEstimator = (w: number, h: number) => number;
 export const rawSizeBytes: SizeEstimator = (w, h) => w * h * 4;
 
@@ -21,12 +23,28 @@ interface Props {
   estimate?: SizeEstimator;
 }
 
-export function ResizeDialog({ doc, onClose, estimate = rawSizeBytes }: Props) {
+export function ResizeDialog({ doc, onClose, estimate }: Props) {
   const { t } = useTranslation();
   const titleId = useId();
   const [size, setSize] = useState({ w: doc.width, h: doc.height });
   const [unit, setUnit] = useState<Unit>("px");
+  // DPI do documento (arquivo ou último Ajustar Tamanho); 72 quando o arquivo não informa.
+  const [docDpi, setDocDpi] = useState(DEFAULT_DPI);
   const [dpi, setDpi] = useState(DEFAULT_DPI);
+  useEffect(() => {
+    let live = true;
+    documentDpi(doc.id).then(
+      (d) => {
+        if (!live || !d) return;
+        setDocDpi(d);
+        setDpi(d);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [doc.id]);
   const [link, setLink] = useState(true);
   const [resample, setResample] = useState(true);
   const [filter, setFilter] = useState<ResizeFilter>("lanczos3");
@@ -51,9 +69,13 @@ export function ResizeDialog({ doc, onClose, estimate = rawSizeBytes }: Props) {
   };
 
   const eff = resample ? size : orig;
-  const bytes = estimate(eff.w, eff.h);
+  const real = useEstimate(
+    doc.id,
+    estimate ? null : { ...defaultOptions(exportFormatOf(doc.format)), resize: [eff.w, eff.h] },
+  );
+  const bytes = estimate ? estimate(eff.w, eff.h) : (real ?? rawSizeBytes(eff.w, eff.h));
   const tooBig = resample && size.w * size.h > MAX_PIXELS;
-  const unchanged = resample ? size.w === orig.w && size.h === orig.h : dpi === DEFAULT_DPI;
+  const unchanged = resample ? size.w === orig.w && size.h === orig.h : dpi === docDpi;
 
   const ok = async () => {
     try {

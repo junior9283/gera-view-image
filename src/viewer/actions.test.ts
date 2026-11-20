@@ -10,7 +10,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ setFullscr
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { resetPrefsForTests, setPrefs } from "../store/prefs";
 import { resetUiForTests, useUi } from "../store/ui";
-import { confirmClose } from "../file/unsaved";
+import { answerUnsaved, confirmClose, currentUnsaved, resetUnsavedForTests } from "../file/unsaved";
 import * as actions from "./actions";
 
 const info = (id: number, extra: Partial<DocInfo> = {}): DocInfo => ({
@@ -27,6 +27,7 @@ beforeEach(() => {
   resetDocsForTests();
   resetPrefsForTests();
   resetUiForTests();
+  resetUnsavedForTests();
 });
 
 describe("navegação entre os abertos", () => {
@@ -110,9 +111,12 @@ describe("navegação na pasta", () => {
     expect(invoke).not.toHaveBeenCalledWith("open_documents", expect.anything());
   });
 
-  it("documento sujo fica aberto enquanto não houver diálogo", async () => {
+  it("documento sujo fica aberto se o diálogo de não salvo for cancelado", async () => {
     useDocs.getState().add([info(1, { path: "/pasta/1.png", dirty: true })]);
-    await actions.prev();
+    const nav = actions.prev();
+    await vi.waitFor(() => expect(currentUnsaved()).not.toBeNull());
+    answerUnsaved("cancel");
+    await nav;
     expect(ids()).toEqual([1, 10]);
     expect(active()).toBe(10);
     expect(invoke).not.toHaveBeenCalledWith("close_document", expect.anything());
@@ -195,17 +199,23 @@ describe("barra lateral, tela cheia e apresentação", () => {
   });
 });
 
-describe("unsaved (stub até a Tarefa 11)", () => {
-  it("descarta quando nada está sujo e cancela se houver sujo", async () => {
+describe("fechar com alterações", () => {
+  it("sem sujos fecha direto; com sujo pergunta e respeita a resposta", async () => {
     expect(await confirmClose([info(1)])).toBe("discard");
-    expect(await confirmClose([info(1), info(2, { dirty: true })])).toBe("cancel");
-  });
-
-  it("closeDocs fecha só se confirmClose permitir", async () => {
     useDocs.getState().add([info(1), info(2, { dirty: true })]);
     await actions.closeDocs([1]);
     expect(ids()).toEqual([2]);
-    await actions.closeDocs([2]);
+
+    const cancel = actions.closeDocs([2]);
+    await vi.waitFor(() => expect(currentUnsaved()?.docs.map((d) => d.id)).toEqual([2]));
+    answerUnsaved("cancel");
+    await cancel;
     expect(ids()).toEqual([2]);
+
+    const discard = actions.closeDocs([2]);
+    await vi.waitFor(() => expect(currentUnsaved()).not.toBeNull());
+    answerUnsaved("discard");
+    await discard;
+    expect(ids()).toEqual([]);
   });
 });
