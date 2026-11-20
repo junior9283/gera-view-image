@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import * as ipc from "../ipc/commands";
@@ -12,6 +12,7 @@ import {
   type Handle,
   handlePosition,
   hitHandle,
+  latestOnly,
   rectFromPoints,
   resizeRect,
   throttle,
@@ -37,7 +38,17 @@ type Drag =
   | { kind: "resize"; handle: Handle; orig: Rect; start: [number, number]; shape: "rect" | "ellipse" }
   | { kind: "move"; orig: Rect; start: [number, number]; shape: "rect" | "ellipse" }
   | { kind: "lasso"; points: Point[]; snap: boolean }
-  | { kind: "alpha"; seed: [number, number]; origin: [number, number]; fire: ReturnType<typeof throttle<[number]>> };
+  | AlphaDrag;
+
+interface AlphaDrag {
+  kind: "alpha";
+  /** Ponto de tela do início do arrasto (a distância dele dá a tolerância). */
+  origin: [number, number];
+  /** Pedido com throttle (durante o arrasto) e pedido direto (ao soltar). */
+  fire: ReturnType<typeof throttle<[number]>>;
+  request: (tolerance: number) => void;
+  released: boolean;
+}
 
 const isBox = (m: Mask | null): m is Extract<Mask, { type: "rect" | "ellipse" }> =>
   m?.type === "rect" || m?.type === "ellipse";
@@ -58,6 +69,12 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [draft, setDraft] = useState<Mask | null>(null);
   const [alpha, setAlpha] = useState<Mask | null>(null);
+
+  /** Limpa a prévia e invalida respostas ainda em voo (elas comparam com `alphaSeq`). */
+  const clearAlpha = useCallback(() => {
+    alphaSeq.current++;
+    setAlpha(null);
+  }, []);
 
   const view = useMemo<ViewTransform>(() => ({ scale, panX, panY }), [scale, panX, panY]);
   const shown = draft ?? selection;
@@ -176,20 +193,22 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
   useEffect(() => {
     if (!alpha) return;
     const onKey = (e: KeyboardEvent) => {
+      // Digitar num campo de texto não pode aplicar nem descartar o Alfa Instantâneo.
+      if ((e.target as Element | null)?.closest?.("input, textarea, [contenteditable]:not([contenteditable=false])")) return;
       if (e.key === "Escape") {
-        setAlpha(null);
+        clearAlpha();
         setSelection(null);
       } else if (e.key === "Enter" || e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         void applyOp(docId, { type: "makeTransparent", data: alpha }).then(() => {
-          setAlpha(null);
+          clearAlpha();
           setSelection(null);
         });
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [alpha, applyOp, docId, setSelection]);
+  }, [alpha, applyOp, docId, setSelection, clearAlpha]);
 
   const local = (e: ReactPointerEvent): [number, number] => {
     const r = canvasRef.current!.getBoundingClientRect();
@@ -205,7 +224,7 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const [sx, sy] = local(e);
     const p = toImage(view, sx, sy);
-    setAlpha(null);
+    clearAlpha();
     if (tool === "rect" || tool === "ellipse") {
       if (isBox(selection)) {
         const handle = hitHandle(selection.data, view, sx, sy);
@@ -220,14 +239,19 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
       drag.current = { kind: "lasso", points: [p], snap: tool === "smartLasso" };
     } else {
       const seed = clampPx(p);
-      const fire = throttle((tol: number) => {
-        const seq = ++alphaSeq.current;
-        void ipc.instantAlpha(docId, seed[0], seed[1], tol).then((m) => {
-          if (seq === alphaSeq.current) setAlpha(m);
-        });
-      }, ALPHA_THROTTLE_MS);
-      drag.current = { kind: "alpha", seed, origin: [sx, sy], fire };
-      fire(0);
+      const gen = ++alphaSeq.current;
+      // Uma chamada por vez ao Rust; tolerâncias novas se reduzem à última.
+      const request = latestOnly(
+        (tol: number) => ipc.instantAlpha(docId, seed[0], seed[1], tol),
+        (m, _tol, last) => {
+          if (gen !== alphaSeq.current) return; // arrasto cancelado ou substituído
+          setAlpha(m);
+          if (d.released && last) setSelection(m);
+        },
+      );
+      const d: AlphaDrag = { kind: "alpha", origin: [sx, sy], request, fire: throttle(request, ALPHA_THROTTLE_MS), released: false };
+      drag.current = d;
+      d.fire(0);
     }
   };
 
@@ -263,14 +287,8 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
     if (d.kind === "alpha") {
       const [sx, sy] = local(e);
       d.fire.cancel();
-      const seq = ++alphaSeq.current;
-      void ipc
-        .instantAlpha(docId, d.seed[0], d.seed[1], toleranceFromDistance(Math.hypot(sx - d.origin[0], sy - d.origin[1])))
-        .then((m) => {
-          if (seq !== alphaSeq.current) return;
-          setAlpha(m);
-          setSelection(m);
-        });
+      d.released = true; // o resultado mais recente vira a seleção
+      d.request(toleranceFromDistance(Math.hypot(sx - d.origin[0], sy - d.origin[1])));
       return;
     }
     const committed = draft;
@@ -279,11 +297,24 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
       const pts = simplifyPath(d.points, 1 / scale);
       if (pts.length < 3) return setSelection(null);
       if (!d.snap) return setSelection({ type: "polygon", data: pts });
-      void ipc.snapLasso(docId, pts).then((snapped) => setSelection({ type: "polygon", data: snapped }));
+      void ipc.snapLasso(docId, pts).then((snapped) => {
+        if (snapped.length >= 3) setSelection({ type: "polygon", data: snapped });
+      });
     } else if (committed && isBox(committed) && committed.data.w > 0 && committed.data.h > 0) {
       setSelection(committed);
     } else if (d.kind === "create") {
       setSelection(null);
+    }
+  };
+
+  /** Cancelar o ponteiro descarta o arrasto (não confirma a seleção). */
+  const onPointerCancel = () => {
+    const d = drag.current;
+    drag.current = null;
+    setDraft(null);
+    if (d?.kind === "alpha") {
+      d.fire.cancel();
+      clearAlpha();
     }
   };
 
@@ -300,7 +331,7 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={onPointerCancel}
       />
       {alpha && (
         <div role="status" className="select-notice" style={{ position: "absolute", left: 12, bottom: 12, padding: "6px 10px", borderRadius: 6, background: "rgba(0,0,0,0.75)", color: "#fff", fontSize: 12 }}>

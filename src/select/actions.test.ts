@@ -60,13 +60,10 @@ describe("ações de seleção", () => {
     expect(useSelection.getState().selection).toBeNull();
   });
 
-  it("cropToSelection com seleção não retangular apaga fora da máscara antes de cortar", async () => {
+  it("cropToSelection com seleção não retangular gera exatamente 1 op, com a máscara", async () => {
     useSelection.setState({ selection: ellipse });
     await cropToSelection();
-    const [primeira, segunda] = ops() as { type: string; data: Mask }[];
-    expect(primeira.type).toBe("makeTransparent");
-    expect(primeira.data.type).toBe("bitmap");
-    expect(segunda).toEqual({ type: "crop", data: { x: 2, y: 1, w: 4, h: 4 } });
+    expect(ops()).toEqual([{ type: "crop", data: { x: 2, y: 1, w: 4, h: 4, mask: ellipse } }]);
   });
 
   it("copySelection manda a máscara ao Rust", async () => {

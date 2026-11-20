@@ -72,8 +72,7 @@ pub async fn copy_region(
     let store = store.inner().clone();
     let region = blocking(move || {
         let img = store.render_full(id, 0)?;
-        select::extract_region(&img, mask.as_ref())
-            .ok_or_else(|| AppError::Unsupported("seleção vazia".into()))
+        select::extract_region(&img, mask.as_ref()).ok_or(AppError::EmptySelection)
     })
     .await?;
     let (w, h) = region.dimensions();

@@ -15,6 +15,9 @@ pub enum AppError {
     Permission(String),
     #[error("{0}")]
     ChangedOnDisk(String),
+    /// A ação precisa de uma seleção não vazia; a interface traduz pelo código.
+    #[error("empty selection")]
+    EmptySelection,
 }
 
 impl AppError {
@@ -27,6 +30,7 @@ impl AppError {
             AppError::Io(_) => "io",
             AppError::Permission(_) => "permission",
             AppError::ChangedOnDisk(_) => "changed_on_disk",
+            AppError::EmptySelection => "empty_selection",
         }
     }
 

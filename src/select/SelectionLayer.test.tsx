@@ -39,6 +39,64 @@ describe("SelectionLayer", () => {
     expect(layer().style.pointerEvents).toBe("none");
   });
 
+  it("Alfa Instantâneo: uma chamada por vez; cancelar o ponteiro descarta o resultado", async () => {
+    useSelection.setState({ selectionTool: "instantAlpha" });
+    const resolvers: ((m: Mask) => void)[] = [];
+    invoke.mockImplementation(() => new Promise((ok) => resolvers.push(ok)));
+    render(<SelectionLayer {...props} />);
+    fireEvent.pointerDown(layer(), { clientX: 30, clientY: 30, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(layer(), { clientX: 130, clientY: 30, pointerId: 1 });
+    fireEvent.pointerUp(layer(), { clientX: 230, clientY: 30, pointerId: 1 });
+    expect(invoke).toHaveBeenCalledTimes(1); // a segunda espera a primeira
+    resolvers[0](bitmap);
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(2));
+    expect(invoke).toHaveBeenLastCalledWith("instant_alpha", { id: 1, x: 10, y: 10, tolerance: 200 / 300 });
+    resolvers[1](bitmap);
+    await vi.waitFor(() => expect(useSelection.getState().selection).toEqual(bitmap));
+
+    // Novo arrasto cancelado: o resultado que chega depois é descartado.
+    useSelection.setState({ selection: null });
+    invoke.mockClear();
+    fireEvent.pointerDown(layer(), { clientX: 30, clientY: 30, button: 0, pointerId: 1 });
+    fireEvent.pointerCancel(layer(), { pointerId: 1 });
+    resolvers[2](bitmap);
+    await act(async () => {});
+    expect(useSelection.getState().selection).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("Enter com foco num campo de texto não aplica o Alfa Instantâneo", async () => {
+    useSelection.setState({ selectionTool: "instantAlpha" });
+    invoke.mockResolvedValue(bitmap);
+    render(
+      <>
+        <SelectionLayer {...props} />
+        <input aria-label="campo" />
+      </>,
+    );
+    fireEvent.pointerDown(layer(), { clientX: 30, clientY: 30, button: 0, pointerId: 1 });
+    await act(async () => {});
+    fireEvent.pointerUp(layer(), { clientX: 30, clientY: 30, pointerId: 1 });
+    await act(async () => {});
+    invoke.mockClear();
+    fireEvent.keyDown(screen.getByLabelText("campo"), { key: "Enter" });
+    await act(async () => {});
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("laço magnético que volta com menos de 3 pontos não grava seleção", async () => {
+    useSelection.setState({ selectionTool: "smartLasso" });
+    invoke.mockResolvedValue([[1, 1], [2, 2]]);
+    render(<SelectionLayer {...props} />);
+    fireEvent.pointerDown(layer(), { clientX: 30, clientY: 30, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(layer(), { clientX: 60, clientY: 30, pointerId: 1 });
+    fireEvent.pointerMove(layer(), { clientX: 60, clientY: 60, pointerId: 1 });
+    fireEvent.pointerUp(layer(), { clientX: 60, clientY: 60, pointerId: 1 });
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith("snap_lasso", expect.anything()));
+    await act(async () => {});
+    expect(useSelection.getState().selection).toBeNull();
+  });
+
   it("Alfa Instantâneo: prévia, aviso de formato sem alfa e Enter aplica makeTransparent", async () => {
     useSelection.setState({ selectionTool: "instantAlpha" });
     useDocs.setState({ activeId: 1 });

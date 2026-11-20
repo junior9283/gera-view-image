@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   hitHandle,
+  latestOnly,
   rectFromPoints,
   resizeRect,
   throttle,
@@ -54,6 +55,43 @@ describe("Alfa Instantâneo", () => {
     expect(toleranceFromDistance(0)).toBe(0);
     expect(toleranceFromDistance(150)).toBe(0.5);
     expect(toleranceFromDistance(900)).toBe(1);
+  });
+});
+
+describe("latestOnly", () => {
+  it("nunca roda duas chamadas juntas e só repete a última pendente", async () => {
+    const resolvers: (() => void)[] = [];
+    let ativas = 0;
+    let maxAtivas = 0;
+    const fn = vi.fn((a: number) => {
+      ativas++;
+      maxAtivas = Math.max(maxAtivas, ativas);
+      return new Promise<number>((ok) => resolvers.push(() => (ativas--, ok(a * 10))));
+    });
+    const done = vi.fn();
+    const call = latestOnly(fn, done);
+    call(1);
+    call(2);
+    call(3);
+    expect(fn).toHaveBeenCalledTimes(1);
+    resolvers[0]();
+    await vi.waitFor(() => expect(fn).toHaveBeenCalledTimes(2));
+    expect(fn).toHaveBeenLastCalledWith(3);
+    resolvers[1]();
+    await vi.waitFor(() => expect(done).toHaveBeenCalledTimes(2));
+    expect(maxAtivas).toBe(1);
+    expect(done).toHaveBeenNthCalledWith(1, 10, 1, false);
+    expect(done).toHaveBeenNthCalledWith(2, 30, 3, true);
+  });
+
+  it("sobrevive a uma falha", async () => {
+    const fn = vi.fn().mockRejectedValueOnce(new Error("x")).mockResolvedValue("ok");
+    const done = vi.fn();
+    const call = latestOnly(fn, done);
+    call(1);
+    await vi.waitFor(() => expect(fn).toHaveBeenCalledTimes(1));
+    call(2);
+    await vi.waitFor(() => expect(done).toHaveBeenCalledWith("ok", 2, true));
   });
 });
 

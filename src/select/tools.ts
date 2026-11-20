@@ -104,5 +104,30 @@ export function throttle<A extends unknown[]>(fn: (...a: A) => void, ms: number)
   return t;
 }
 
+/** No máximo uma chamada em andamento: pedidos que chegam nesse meio-tempo se reduzem ao
+ *  último, disparado quando a atual termina. `onDone(resultado, arg, ultimo)`: `ultimo` é
+ *  `true` quando não há pedido pendente (ou seja, o resultado é o mais recente). */
+export function latestOnly<A, R>(fn: (a: A) => Promise<R>, onDone: (r: R, a: A, last: boolean) => void) {
+  let busy = false;
+  let next: { a: A } | null = null;
+  const run = async (a: A): Promise<void> => {
+    busy = true;
+    try {
+      onDone(await fn(a), a, next === null);
+    } catch {
+      // prévia: uma falha não deve impedir o próximo pedido
+    } finally {
+      busy = false;
+      const pending = next;
+      next = null;
+      if (pending) void run(pending.a);
+    }
+  };
+  return (a: A) => {
+    if (busy) next = { a };
+    else void run(a);
+  };
+}
+
 /** Formatos sem canal alfa: o resultado do Alfa Instantâneo vira PNG ao salvar/exportar. */
 export const FORMATS_WITHOUT_ALPHA = new Set(["jpeg", "bmp", "raw"]);

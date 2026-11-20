@@ -9,10 +9,10 @@ const SNAP_RADIUS: i32 = 8;
 const SNAP_STEP: f32 = 4.0;
 
 /// Codifica uma cobertura (`true` = dentro) em corridas alternadas, começando por "fora".
-pub fn coverage_to_rle(cov: &[bool]) -> Vec<u32> {
+pub fn coverage_to_rle(cov: impl IntoIterator<Item = bool>) -> Vec<u32> {
     let mut rle = Vec::new();
     let (mut inside, mut run) = (false, 0u32);
-    for &c in cov {
+    for c in cov {
         if c == inside {
             run += 1;
         } else {
@@ -105,23 +105,30 @@ fn lab([r, g, b]: [u8; 3]) -> [f32; 3] {
 /// Flood fill contíguo (4 vizinhos) a partir de `seed`: entra todo pixel cuja distância
 /// em Lab (ΔE76) à cor da semente seja `<= tolerance * 100`.
 pub fn instant_alpha(img: &RgbaImage, seed: (u32, u32), tolerance: f32) -> Mask {
+    instant_alpha_counted(img, seed, tolerance).0
+}
+
+/// Como `instant_alpha`, mas também devolve quantos pixels foram convertidos para Lab.
+/// O Lab é calculado sob demanda (semente e pixels visitados), nunca para a imagem toda:
+/// a memória extra é 1 byte por pixel (estado), não 12.
+pub fn instant_alpha_counted(img: &RgbaImage, seed: (u32, u32), tolerance: f32) -> (Mask, usize) {
+    const UNSEEN: u8 = 0;
+    const INSIDE: u8 = 1;
+    const OUTSIDE: u8 = 2;
     let (w, h) = img.dimensions();
-    let mut cov = vec![false; (w * h) as usize];
+    let mut state = vec![UNSEEN; (w * h) as usize];
+    let mut converted = 0usize;
     if seed.0 < w && seed.1 < h {
-        let labs: Vec<[f32; 3]> = img
-            .pixels()
-            .map(|p| lab([p.0[0], p.0[1], p.0[2]]))
-            .collect();
         let idx = |x: u32, y: u32| (y * w + x) as usize;
-        let s = labs[idx(seed.0, seed.1)];
-        let limit = tolerance.clamp(0.0, 1.0) * 100.0;
-        let near = |i: usize| {
-            let l = labs[i];
-            let d = ((l[0] - s[0]).powi(2) + (l[1] - s[1]).powi(2) + (l[2] - s[2]).powi(2)).sqrt();
-            d <= limit
+        let mut lab_at = |x: u32, y: u32| {
+            converted += 1;
+            let p = img.get_pixel(x, y).0;
+            lab([p[0], p[1], p[2]])
         };
+        let s = lab_at(seed.0, seed.1);
+        let limit = tolerance.clamp(0.0, 1.0) * 100.0;
         let mut stack = vec![seed];
-        cov[idx(seed.0, seed.1)] = true;
+        state[idx(seed.0, seed.1)] = INSIDE;
         while let Some((x, y)) = stack.pop() {
             let nbrs = [
                 (x > 0).then(|| (x - 1, y)),
@@ -131,18 +138,27 @@ pub fn instant_alpha(img: &RgbaImage, seed: (u32, u32), tolerance: f32) -> Mask 
             ];
             for (nx, ny) in nbrs.into_iter().flatten() {
                 let i = idx(nx, ny);
-                if !cov[i] && near(i) {
-                    cov[i] = true;
+                if state[i] != UNSEEN {
+                    continue;
+                }
+                let l = lab_at(nx, ny);
+                let d =
+                    ((l[0] - s[0]).powi(2) + (l[1] - s[1]).powi(2) + (l[2] - s[2]).powi(2)).sqrt();
+                if d <= limit {
+                    state[i] = INSIDE;
                     stack.push((nx, ny));
+                } else {
+                    state[i] = OUTSIDE;
                 }
             }
         }
     }
-    Mask::Bitmap {
+    let mask = Mask::Bitmap {
         w,
         h,
-        rle: coverage_to_rle(&cov),
-    }
+        rle: coverage_to_rle(state.iter().map(|&s| s == INSIDE)),
+    };
+    (mask, converted)
 }
 
 /// Magnitude do gradiente de Sobel sobre a luminância.
@@ -279,6 +295,27 @@ mod tests {
     }
 
     #[test]
+    fn converte_para_lab_so_o_que_visita() {
+        // Semente 3x3 cercada por uma moldura vermelha, numa imagem grande: o Lab só pode
+        // ser calculado para a semente, a região e a vizinhança imediata (não w*h).
+        let mut img = RgbaImage::from_pixel(200, 200, Rgba([255, 255, 255, 255]));
+        for y in 98..103 {
+            for x in 98..103 {
+                let borda = x == 98 || x == 102 || y == 98 || y == 102;
+                let cor = if borda {
+                    [255, 0, 0, 255]
+                } else {
+                    [255, 255, 255, 255]
+                };
+                img.put_pixel(x, y, Rgba(cor));
+            }
+        }
+        let (m, convertidos) = instant_alpha_counted(&img, (100, 100), 0.05);
+        assert_eq!(bitmap_count(&m), 9);
+        assert!(convertidos <= 1 + 9 + 12, "convertidos = {convertidos}");
+    }
+
+    #[test]
     fn so_regioes_contiguas() {
         // Faixa vermelha separa dois brancos; a semente só alcança o seu lado.
         let mut img = RgbaImage::from_pixel(9, 3, Rgba([255, 255, 255, 255]));
@@ -346,10 +383,7 @@ mod tests {
 
     #[test]
     fn rle_alfa_e_limites() {
-        assert_eq!(
-            coverage_to_rle(&[true, true, false, true]),
-            vec![0, 2, 1, 1]
-        );
+        assert_eq!(coverage_to_rle([true, true, false, true]), vec![0, 2, 1, 1]);
         let m = Mask::Rect(Rect {
             x: 2,
             y: 1,

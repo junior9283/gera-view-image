@@ -35,10 +35,9 @@ export async function cropToSelection() {
   if (!doc || !selection) return;
   const bounds = maskBounds(selection, doc.width, doc.height);
   if (!bounds) return;
-  const { applyOp } = useDocs.getState();
-  if (selection.type !== "rect")
-    await applyOp(doc.id, { type: "makeTransparent", data: invertMask(selection, doc.width, doc.height) });
-  await applyOp(doc.id, { type: "crop", data: bounds });
+  // Uma op só (um desfazer, sem estado parcial): fora da máscara vira transparente e depois corta.
+  const data = selection.type === "rect" ? bounds : { ...bounds, mask: selection };
+  await useDocs.getState().applyOp(doc.id, { type: "crop", data });
   deselect();
 }
 

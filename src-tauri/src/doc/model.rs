@@ -63,6 +63,23 @@ pub struct Rect {
     pub h: u32,
 }
 
+/// Recorte. Com `mask`, tudo fora dela fica transparente (alfa 0) antes do corte, numa só
+/// operação (um único desfazer). Serializa como o `Rect` mais o campo opcional `mask`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CropSpec {
+    #[serde(flatten)]
+    pub rect: Rect,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask: Option<Mask>,
+}
+
+impl From<Rect> for CropSpec {
+    fn from(rect: Rect) -> Self {
+        CropSpec { rect, mask: None }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ResizeFilter {
@@ -132,7 +149,7 @@ pub enum Op {
     },
     FlipH,
     FlipV,
-    Crop(Rect),
+    Crop(CropSpec),
     /// `dpi` só altera metadados (resolução gravada na exportação).
     Resize {
         w: u32,

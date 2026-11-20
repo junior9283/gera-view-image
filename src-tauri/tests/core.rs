@@ -5,7 +5,7 @@ mod make_fixtures;
 use gera_view_image_lib::{
     doc::{
         cache::RenderCache,
-        model::{DocId, Op, Rect, ResizeFilter, SourceFormat},
+        model::{CropSpec, DocId, Mask, Op, Rect, ResizeFilter, SourceFormat},
         store::DocStore,
     },
     error::AppError,
@@ -195,24 +195,30 @@ fn crop_dimensoes() {
     let img = pattern(100, 80);
     let c = apply(
         &img,
-        &Op::Crop(Rect {
-            x: 10,
-            y: 20,
-            w: 50,
-            h: 30,
-        }),
+        &Op::Crop(
+            Rect {
+                x: 10,
+                y: 20,
+                w: 50,
+                h: 30,
+            }
+            .into(),
+        ),
     );
     assert_eq!(c.dimensions(), (50, 30));
     assert_eq!(c.get_pixel(0, 0), img.get_pixel(10, 20));
     // Retângulo que sai da imagem é recortado ao limite.
     let c = apply(
         &img,
-        &Op::Crop(Rect {
-            x: 90,
-            y: 70,
-            w: 50,
-            h: 30,
-        }),
+        &Op::Crop(
+            Rect {
+                x: 90,
+                y: 70,
+                w: 50,
+                h: 30,
+            }
+            .into(),
+        ),
     );
     assert_eq!(c.dimensions(), (10, 10));
 }
@@ -313,6 +319,43 @@ fn composite_sobrepoe_png() {
 }
 
 #[test]
+fn crop_com_mascara_e_uma_op_so() {
+    let img = RgbaImage::from_pixel(20, 20, Rgba([9, 9, 9, 255]));
+    let elipse = Mask::Ellipse(Rect {
+        x: 2,
+        y: 2,
+        w: 10,
+        h: 10,
+    });
+    let op = Op::Crop(CropSpec {
+        rect: Rect {
+            x: 2,
+            y: 2,
+            w: 10,
+            h: 10,
+        },
+        mask: Some(elipse),
+    });
+    let c = apply(&img, &op);
+    assert_eq!(c.dimensions(), (10, 10));
+    assert_eq!(c.get_pixel(0, 0).0, [9, 9, 9, 0], "canto fora da elipse");
+    assert_eq!(c.get_pixel(5, 5).0[3], 255);
+    // JSON: `mask` é opcional e vai junto do retângulo.
+    let json = serde_json::to_value(&op).unwrap();
+    assert_eq!(json["data"]["mask"]["type"], "ellipse");
+    assert_eq!(json["data"]["w"], 10);
+
+    // Uma op só: um desfazer volta ao original.
+    let store = DocStore::new();
+    let info = store.insert_decoded("/tmp/mascara.png", decoded(img));
+    store.apply_op(info.id, op).unwrap();
+    assert_eq!(store.with_doc(info.id, |d| d.ops.len()).unwrap(), 1);
+    let u = store.undo(info.id).unwrap();
+    assert!(!u.dirty && !u.can_undo);
+    assert_eq!((u.width, u.height), (20, 20));
+}
+
+#[test]
 fn undo_redo() {
     let store = DocStore::new();
     let info = store.open_documents(&[s(&fx("alpha.png"))]).remove(0);
@@ -324,12 +367,15 @@ fn undo_redo() {
     store
         .apply_op(
             info.id,
-            Op::Crop(Rect {
-                x: 0,
-                y: 0,
-                w: 10,
-                h: 5,
-            }),
+            Op::Crop(
+                Rect {
+                    x: 0,
+                    y: 0,
+                    w: 10,
+                    h: 5,
+                }
+                .into(),
+            ),
         )
         .unwrap();
     let u = store.undo(info.id).unwrap();
@@ -510,12 +556,15 @@ fn op_serializa_com_type_e_data() {
     .unwrap();
     assert_eq!(
         op,
-        Op::Crop(Rect {
-            x: 1,
-            y: 2,
-            w: 3,
-            h: 4
-        })
+        Op::Crop(
+            Rect {
+                x: 1,
+                y: 2,
+                w: 3,
+                h: 4
+            }
+            .into()
+        )
     );
 }
 
