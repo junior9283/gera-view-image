@@ -12,7 +12,7 @@ const binary = process.env.GVI_BINARY ?? path.join(targetDir, "release", "gera-v
 export const fixtures = path.join(root, "src-tauri", "tests", "fixtures");
 
 // Portas próprias: outros agentes/execuções usam 4446/4447 (e o padrão 4444 do WebKitWebDriver).
-const PORT = Number(process.env.GVI_E2E_PORT ?? 4445);
+const PORT = Number(process.env.TAURI_DRIVER_PORT ?? process.env.GVI_E2E_PORT ?? 4445);
 const NATIVE_PORT = PORT + 100;
 
 /** `TAURI_DRIVER`, senão o primeiro `tauri-driver` do PATH, senão `~/.cargo/bin`. */

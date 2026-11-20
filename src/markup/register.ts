@@ -4,6 +4,8 @@
 import i18n from "../i18n";
 import { setAnnotationSource } from "../inspector/annotations";
 import { registerSlot } from "../lib/slots";
+import { useDocs } from "../store/docs";
+import { flattenAnnotations } from "./flatten";
 import { installHistory } from "./history";
 import { MarkupBar } from "./MarkupBar";
 import { MarkupLayer } from "./MarkupLayer";
@@ -30,5 +32,24 @@ setAnnotationSource({
     st.setVisible(true);
     st.setTool("select");
     st.select(id, [annotationId]);
+  },
+});
+
+/**
+ * Gancho do E2E (markup.e2e.ts): contar anotações e achatar sem depender do Salvar/Exportar
+ * (Task 11). Não amplia nada: a página já tem o IPC inteiro.
+ */
+const active = () => useDocs.getState().activeId;
+Object.assign(window, {
+  __gviMarkup: {
+    activeId: active,
+    count: () => {
+      const id = active();
+      return id === null ? 0 : getItems(id).length;
+    },
+    flatten: () => {
+      const id = active();
+      return id === null ? Promise.resolve(false) : flattenAnnotations(id);
+    },
   },
 });
