@@ -73,7 +73,8 @@
       "changed_on_disk": "The file was changed by another program.",
       "heic_decoder_missing": "To open HEIC, install the libde265 library.",
       "generic": "Unknown error opening the file."
-    }
+    },
+    "generic": "Could not complete the action"
   },
   "viewer": {
     "label": "Image view",
@@ -274,5 +275,123 @@
       "limit": "Up to {{n}} signatures; the oldest is removed.",
       "pad": "Signature drawing area"
     }
+  },
+  "menu": {
+    "bar": "Main menu",
+    "file": {
+      "title": "File",
+      "newFromClipboard": "New from Clipboard",
+      "open": "Open…",
+      "openRecent": "Open Recent",
+      "close": "Close",
+      "save": "Save",
+      "duplicate": "Duplicate",
+      "rename": "Rename…",
+      "moveTo": "Move To…",
+      "revert": "Revert To",
+      "revertLastSaved": "Last Saved",
+      "revertOriginal": "Original",
+      "export": "Export…",
+      "exportSelected": "Export Selected Images…",
+      "capture": "Take Screenshot",
+      "captureSelection": "From Selection…",
+      "captureWindow": "From Window…",
+      "captureScreen": "From Entire Screen",
+      "print": "Print…",
+      "openWith": "Open With…"
+    },
+    "edit": {
+      "title": "Edit",
+      "undo": "Undo",
+      "redo": "Redo",
+      "cut": "Cut",
+      "copy": "Copy",
+      "paste": "Paste",
+      "delete": "Delete",
+      "selectAll": "Select All",
+      "deselect": "Deselect All",
+      "invertSelection": "Invert Selection",
+      "preferences": "Preferences…"
+    },
+    "view": {
+      "title": "View",
+      "hideSidebar": "Hide Sidebar",
+      "thumbnails": "Thumbnails",
+      "contactSheet": "Contact Sheet",
+      "actualSize": "Actual Size",
+      "fit": "Zoom to Fit",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
+      "zoomToSelection": "Zoom to Selection",
+      "markupBar": "Show Markup Toolbar",
+      "slideshow": "Slideshow",
+      "fullscreen": "Full Screen"
+    },
+    "go": {
+      "title": "Go",
+      "prev": "Previous",
+      "next": "Next",
+      "first": "First",
+      "last": "Last"
+    },
+    "tools": {
+      "title": "Tools",
+      "rotateLeft": "Rotate Left",
+      "rotateRight": "Rotate Right",
+      "flipH": "Flip Horizontal",
+      "flipV": "Flip Vertical",
+      "crop": "Crop",
+      "adjustColor": "Adjust Color…",
+      "resize": "Adjust Size…",
+      "instantAlpha": "Instant Alpha",
+      "inspector": "Show Inspector",
+      "annotate": "Annotate",
+      "annotateKinds": {
+        "rect": "Rectangle",
+        "oval": "Oval",
+        "line": "Line",
+        "arrow": "Arrow",
+        "text": "Text",
+        "bubble": "Speech Bubble",
+        "star": "Star",
+        "polygon": "Polygon",
+        "loupe": "Loupe",
+        "highlight": "Highlight",
+        "signature": "Signature"
+      }
+    },
+    "window": {
+      "title": "Window",
+      "minimize": "Minimize",
+      "maximize": "Maximize"
+    },
+    "help": {
+      "title": "Help",
+      "shortcuts": "Keyboard Shortcuts",
+      "checkUpdates": "Check for Updates…",
+      "about": "About Gera View Image"
+    }
+  },
+  "toolbar": {
+    "label": "Toolbar",
+    "sidebar": "Show or hide the sidebar",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "share": "Share",
+    "markup": "Show markup toolbar",
+    "rotate": "Rotate left (with Alt: right)",
+    "inspector": "Show inspector"
+  },
+  "shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "close": "Close",
+    "command": "Command",
+    "keys": "Shortcut"
+  },
+  "toast": {
+    "close": "Dismiss"
+  },
+  "dialog": {
+    "images": "Images"
   }
 }

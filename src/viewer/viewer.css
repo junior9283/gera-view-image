@@ -11,6 +11,16 @@
 .viewport.dragging {
   cursor: grabbing;
 }
+/* Camadas registradas no slot viewport-overlay (seleção, Marcação). */
+.viewport-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* Espaço pressionado: o arraste é pan mesmo com uma ferramenta de seleção ativa. */
+.viewport.space-pan .viewport-overlay * {
+  pointer-events: none !important;
+}
 .viewport-canvas {
   position: absolute;
   inset: 0;
