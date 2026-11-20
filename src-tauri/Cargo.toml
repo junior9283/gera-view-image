@@ -17,6 +17,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+cc = "1"
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -27,8 +28,13 @@ jpeg-decoder = "0.3.2"
 rayon = "1.12.0"
 fast_image_resize = { version = "6.1.0", features = ["image", "rayon"] }
 # libheif 1.23 compilada estática (embedded-libheif): o Ubuntu 22.04 tem só a 1.12.
-# Os codecs (libde265, dav1d, aom, x265) continuam dinâmicos: ver bundle.linux.*.depends.
+# AVIF: aom ligado dinamicamente (depends). HEIC: libde265 OPCIONAL, carregada com dlopen
+# pelo plugin de native/heic (build.rs); o binário não pode ter libde265 como NEEDED
+# (o CI confere com readelf). Não instalar libde265-dev no build: o cmake a ligaria.
 libheif-rs = { version = "3.0.0", default-features = false, features = ["v1_17", "embedded-libheif"] }
+# Direto só para o build.rs receber DEP_HEIF_ROOT; versão fixa porque o plugin HEIC
+# é compilado da fonte que esta versão embute.
+libheif-sys = { version = "=5.3.1", default-features = false, features = ["v1_17", "embedded-libheif"] }
 psd = "0.3.5"
 resvg = "0.50.0"
 rawler = "0.8.0"
