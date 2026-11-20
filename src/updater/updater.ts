@@ -61,7 +61,7 @@ export async function checkForUpdate({ manual }: { manual: boolean }): Promise<U
   return { version: update.version, notes: update.body ?? "", date: update.date ?? null };
 }
 
-/** Baixa e instala a versão encontrada por `checkForUpdate`; `onProgress` recebe 0..1 (ou null se o tamanho for desconhecido). */
+/** Baixa e instala a versão encontrada por `checkForUpdate`; `onProgress` recebe 0..1 (ou null se o tamanho for desconhecido). Não reinicia: use `restartApp`. */
 export async function installUpdate(onProgress: (fraction: number | null) => void): Promise<void> {
   if (!pending) throw new Error("Nenhuma atualização pendente");
   let total = 0;
@@ -73,5 +73,6 @@ export async function installUpdate(onProgress: (fraction: number | null) => voi
       onProgress(total > 0 ? Math.min(received / total, 1) : null);
     } else onProgress(1);
   });
-  await relaunch();
 }
+
+export const restartApp = () => relaunch();

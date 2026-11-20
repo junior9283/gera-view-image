@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import "./update.css";
-import { checkForUpdate, installUpdate, RELEASES_URL, skipVersion, type UpdateInfo } from "./updater";
+import { checkForUpdate, installUpdate, restartApp, RELEASES_URL, skipVersion, type UpdateInfo } from "./updater";
 
 // TODO(Tarefa de i18n): mover para i18next (pt-BR/en) quando o i18n existir; hoje só pt-BR.
 const T = {
@@ -11,6 +11,7 @@ const T = {
   skip: "Pular esta versão",
   installing: "Instalando…",
   failed: "Não foi possível instalar automaticamente",
+  installed: "Atualização instalada. Reinicie o app para concluir.",
   openPage: "Abrir página da versão",
   upToDate: "Você já está na versão mais recente.",
   close: "Fechar",
@@ -46,6 +47,7 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
   const [progress, setProgress] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [installed, setInstalled] = useState(false);
 
   const install = async () => {
     setBusy(true);
@@ -54,6 +56,14 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
       await installUpdate(setProgress);
     } catch {
       setFailed(true);
+      setBusy(false);
+      return;
+    }
+    try {
+      await restartApp();
+    } catch {
+      // Instalou, mas não reiniciou: não é erro de instalação.
+      setInstalled(true);
       setBusy(false);
     }
   };
@@ -67,6 +77,7 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
         </h3>
         <Notes text={info.notes} />
         {busy && <progress aria-label={T.installing} value={progress ?? undefined} max={1} />}
+        {installed && <p role="status">{T.installed}</p>}
         {failed && (
           <p role="alert">
             {T.failed}.{" "}
@@ -74,7 +85,7 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
           </p>
         )}
         <div className="update-actions">
-          <button onClick={install} disabled={busy}>{T.install}</button>
+          <button onClick={install} disabled={busy || installed}>{T.install}</button>
           <button onClick={onClose} disabled={busy}>{T.later}</button>
           <button
             onClick={() => {
@@ -99,8 +110,9 @@ export function UpdateHost() {
   const run = useCallback(async (manual: boolean) => {
     try {
       const found = await checkForUpdate({ manual });
-      setInfo(found);
-      if (manual && !found) setUpToDate(true);
+      // A verificação automática sem resultado não pode fechar um diálogo já aberto.
+      if (found) setInfo(found);
+      else if (manual) setUpToDate(true);
     } catch {
       // Sem rede/endpoint: silencioso na verificação automática.
     }
