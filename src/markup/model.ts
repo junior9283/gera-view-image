@@ -1,4 +1,5 @@
 // Modelo vetorial das anotações (Marcação). Coordenadas sempre em pixels da imagem.
+import type { Op } from "../ipc/types";
 
 export type Point = [number, number];
 export type ArrowEnd = "none" | "arrow" | "circle";
@@ -290,4 +291,74 @@ export function polygonVertices(b: Box, sides: number): Point[] {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
     return [cx + (b.w * Math.cos(a)) / 2, cy + (b.h * Math.sin(a)) / 2] as Point;
   });
+}
+
+// ---- Op geométricas ----
+
+/** Leva cada anotação por `f` (ponto da imagem antiga → nova); `k` escala o que tem tamanho fixo. */
+function mapAnnotation(a: Annotation, f: (p: Point) => Point, k: number): Annotation {
+  const box = (b: Box): Box => boxOf([f([b.x, b.y]), f([b.x + b.w, b.y + b.h])]);
+  switch (a.kind) {
+    case "line":
+    case "arrow": {
+      const [p, q] = [f([a.geom.x1, a.geom.y1]), f([a.geom.x2, a.geom.y2])];
+      return { ...a, geom: { x1: p[0], y1: p[1], x2: q[0], y2: q[1] } };
+    }
+    case "freehand":
+      return { ...a, geom: { points: a.geom.points.map(f) } };
+    case "loupe": {
+      const [cx, cy] = f([a.geom.cx, a.geom.cy]);
+      return { ...a, geom: { ...a.geom, cx, cy, r: a.geom.r * k } };
+    }
+    case "text":
+    case "signature":
+    case "image": {
+      // Texto e imagens não deitam: só o centro acompanha.
+      const b = normBox(a.geom);
+      const [w, h] = [b.w * k, b.h * k];
+      const [cx, cy] = f([b.x + b.w / 2, b.y + b.h / 2]);
+      return { ...a, geom: { ...a.geom, x: cx - w / 2, y: cy - h / 2, w, h } } as Annotation;
+    }
+    case "bubble": {
+      const [x, y] = f([a.geom.tail.x, a.geom.tail.y]);
+      return { ...a, geom: { ...a.geom, ...box(normBox(a.geom)), tail: { x, y } } };
+    }
+    default:
+      return { ...a, geom: { ...a.geom, ...box(normBox(a.geom)) } } as Annotation;
+  }
+}
+
+/**
+ * Anotações levadas pela `Op` (girar, espelhar, recortar, redimensionar) de uma imagem
+ * `w`×`h`, ou `null` se a `Op` não mexe na geometria.
+ */
+export function transformForOp(items: readonly Annotation[], op: Op, w: number, h: number): Annotation[] | null {
+  let f: (p: Point) => Point;
+  let k = 1;
+  switch (op.type) {
+    case "rotate": {
+      const q = ((op.data.quarterTurns % 4) + 4) % 4;
+      if (q === 0) return null;
+      f = q === 1 ? ([x, y]) => [h - y, x] : q === 2 ? ([x, y]) => [w - x, h - y] : ([x, y]) => [y, w - x];
+      break;
+    }
+    case "flipH":
+      f = ([x, y]) => [w - x, y];
+      break;
+    case "flipV":
+      f = ([x, y]) => [x, h - y];
+      break;
+    case "crop":
+      f = ([x, y]) => [x - op.data.x, y - op.data.y];
+      break;
+    case "resize": {
+      const [sx, sy] = [op.data.w / w, op.data.h / h];
+      f = ([x, y]) => [x * sx, y * sy];
+      k = Math.sqrt(sx * sy);
+      break;
+    }
+    default:
+      return null;
+  }
+  return items.map((a) => mapAnnotation(a, f, k));
 }

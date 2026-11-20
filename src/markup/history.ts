@@ -4,15 +4,19 @@
 import { opsHistory, setHistoryProvider, type HistoryProvider } from "../edit/history";
 import type { DocId } from "../ipc/types";
 import { useDocs } from "../store/docs";
-import type { Annotation } from "./model";
+import { transformForOp, type Annotation } from "./model";
 import { getItems, useMarkup } from "./store";
 
+/** Anotações antes e depois de um passo. */
+export interface ItemsChange { before: Annotation[]; after: Annotation[] }
+
 type Entry = { ts: number } & (
-  | { kind: "markup"; before: Annotation[]; after: Annotation[] }
-  /** `Op` aplicada no Rust (o Rust guarda a própria pilha; aqui só a posição na ordem). */
-  | { kind: "op" }
-  /** Anotações achatadas com `Op::Composite`: desfazer volta a `Op` e devolve as anotações. */
-  | { kind: "flatten"; before: Annotation[] }
+  | ({ kind: "markup" } & ItemsChange)
+  /**
+   * `Op` aplicada no Rust (o Rust guarda a própria pilha; aqui só a posição na ordem).
+   * `items`: anotações que mudaram junto (girar/recortar as leva; achatar as consome).
+   */
+  | { kind: "op"; items?: ItemsChange }
 );
 
 interface Stacks { undo: Entry[]; redo: Entry[] }
@@ -35,8 +39,7 @@ function record(id: DocId, e: Entry): void {
 
 export const pushMarkup = (id: DocId, before: Annotation[], after: Annotation[]) =>
   record(id, { ts: Date.now(), kind: "markup", before, after });
-export const pushOp = (id: DocId) => record(id, { ts: Date.now(), kind: "op" });
-export const pushFlatten = (id: DocId, before: Annotation[]) => record(id, { ts: Date.now(), kind: "flatten", before });
+export const pushOp = (id: DocId, items?: ItemsChange) => record(id, { ts: Date.now(), kind: "op", items });
 
 function serial(id: DocId, f: () => Promise<void>): Promise<void> {
   const next = (chains.get(id) ?? Promise.resolve()).catch(() => {}).then(f);
@@ -64,8 +67,8 @@ async function step(id: DocId, dir: "undo" | "redo"): Promise<void> {
     from.push(e);
     throw err;
   }
-  if (e.kind === "markup") setItems(id, dir === "undo" ? e.before : e.after);
-  else if (e.kind === "flatten") setItems(id, dir === "undo" ? e.before : []);
+  const change = e.kind === "markup" ? e : e.items;
+  if (change) setItems(id, dir === "undo" ? change.before : change.after);
   to.push(e);
 }
 
@@ -84,14 +87,20 @@ export function forget(id: DocId): void {
 
 /**
  * Registra a pilha unificada como provedor global e passa a anotar na ordem as `Op`
- * aplicadas por `useDocs.applyOp`. Documentos fechados perdem pilha e anotações.
+ * aplicadas por `useDocs.applyOp` (as geométricas levam as anotações junto). Documentos fechados perdem pilha e anotações.
  * Devolve a função que desfaz tudo isso.
  */
 export function installHistory(): () => void {
   const orig = useDocs.getState().applyOp;
   const tracked: typeof orig = async (id, op) => {
+    const doc = useDocs.getState().docs.find((d) => d.id === id);
+    const before = getItems(id);
+    const after = doc && before.length ? transformForOp(before, op, doc.width, doc.height) : null;
     const info = await orig(id, op);
-    pushOp(id);
+    if (after) {
+      pushOp(id, { before, after });
+      setItems(id, after);
+    } else pushOp(id);
     return info;
   };
   useDocs.setState({ applyOp: tracked });

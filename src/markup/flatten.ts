@@ -3,7 +3,7 @@ import * as ipc from "../ipc/commands";
 import type { DocId } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { bufferToCanvas } from "../viewer/paint";
-import { pushFlatten } from "./history";
+import { pushOp } from "./history";
 import { flattenToPng, type Source } from "./render";
 import { getItems, useMarkup } from "./store";
 
@@ -27,7 +27,7 @@ export async function flattenAnnotations(id: DocId): Promise<boolean> {
   // Direto pelo IPC: o passo entra como "achatar", não como uma Op comum.
   const info = await ipc.applyOp(id, { type: "composite", data: { png } });
   useDocs.getState().update(info);
-  pushFlatten(id, items);
+  pushOp(id, { before: items, after: [] });
   useMarkup.getState().setItems(id, []);
   return true;
 }

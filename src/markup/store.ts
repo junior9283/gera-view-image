@@ -6,6 +6,7 @@ import { DEFAULT_FONT, DEFAULT_STYLE, mergeStyle, type Annotation, type Style, t
 export type ShapeTool =
   | "line" | "arrow" | "rect" | "roundRect" | "oval" | "bubble" | "star" | "polygon" | "loupe" | "highlight" | "highlightOval";
 export type Tool = "select" | "sketch" | "draw" | "text" | ShapeTool;
+export type BarMenu = "shapes" | "signature" | "lineStyle" | "stroke" | "fill" | "textStyle";
 
 const EMPTY: Annotation[] = [];
 
@@ -20,6 +21,8 @@ interface MarkupState {
   selected: Record<DocId, string[]>;
   /** Texto em edição na camada. */
   editing: string | null;
+  /** Menu/painel aberto na barra (ex.: `shapes`, `signature`). */
+  menu: BarMenu | null;
   setVisible: (v: boolean) => void;
   toggle: () => void;
   setTool: (t: Tool) => void;
@@ -28,6 +31,7 @@ interface MarkupState {
   setItems: (id: DocId, items: Annotation[]) => void;
   select: (id: DocId, ids: string[]) => void;
   setEditing: (id: string | null) => void;
+  setMenu: (m: BarMenu | null) => void;
   /** Esquece o documento (fechado). */
   drop: (id: DocId) => void;
 }
@@ -39,12 +43,13 @@ const INITIAL = {
   docs: {} as Record<DocId, Annotation[]>,
   selected: {} as Record<DocId, string[]>,
   editing: null as string | null,
+  menu: null as BarMenu | null,
 };
 
 export const useMarkup = create<MarkupState>((set) => ({
   ...INITIAL,
-  setVisible: (visible) => set(visible ? { visible } : { visible, editing: null }),
-  toggle: () => set((s) => (s.visible ? { visible: false, editing: null } : { visible: true })),
+  setVisible: (visible) => set(visible ? { visible } : { visible, editing: null, menu: null }),
+  toggle: () => set((s) => (s.visible ? { visible: false, editing: null, menu: null } : { visible: true })),
   setTool: (tool) => set({ tool }),
   setStyle: (patch) => set((s) => ({ style: mergeStyle(s.style, patch) })),
   setItems: (id, items) =>
@@ -55,6 +60,7 @@ export const useMarkup = create<MarkupState>((set) => ({
     }),
   select: (id, ids) => set((s) => ({ selected: { ...s.selected, [id]: ids } })),
   setEditing: (editing) => set({ editing }),
+  setMenu: (menu) => set({ menu }),
   drop: (id) =>
     set((s) => {
       const docs = { ...s.docs };

@@ -32,10 +32,8 @@ export function moveSelected(id: DocId, dx: number, dy: number): void {
   commit(id, moveItems(getItems(id), getSelected(id), dx, dy));
 }
 
-/** Muda o estilo das selecionadas (um passo) e o estilo das próximas anotações. */
-export function restyleSelected(id: DocId | null, patch: StylePatch): void {
-  useMarkup.getState().setStyle(patch);
-  if (id === null) return;
+/** Muda o estilo das selecionadas (um passo só); `patch` em px da imagem. */
+export function restyleSelected(id: DocId, patch: StylePatch): void {
   const sel = getSelected(id);
   if (sel.length) commit(id, restyle(getItems(id), sel, patch));
 }

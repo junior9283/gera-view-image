@@ -7,6 +7,7 @@ import {
   moveItems,
   restyle,
   serialize,
+  transformForOp,
   type Annotation,
   type AnnotationDoc,
 } from "./model";
@@ -97,5 +98,38 @@ describe("modelo de anotações", () => {
   it("bounds normaliza caixas e cobre a lupa", () => {
     expect(bounds({ id: "z", kind: "loupe", geom: { cx: 50, cy: 40, r: 10, zoom: 2 }, style: DEFAULT_STYLE })).toEqual({ x: 40, y: 30, w: 20, h: 20 });
     expect(bounds({ id: "l", kind: "line", geom: { x1: 10, y1: 5, x2: 0, y2: 0 }, style: DEFAULT_STYLE })).toEqual({ x: 0, y: 0, w: 10, h: 5 });
+  });
+
+  describe("acompanha as Op geométricas", () => {
+    const arrow: Annotation = { id: "s", kind: "arrow", geom: { x1: 10, y1: 20, x2: 30, y2: 20 }, style: DEFAULT_STYLE };
+    const box: Annotation = { id: "b", kind: "rect", geom: { x: 10, y: 20, w: 40, h: 10 }, style: DEFAULT_STYLE };
+    const text: Annotation = { id: "t", kind: "text", geom: { x: 10, y: 20, w: 40, h: 10, text: "x" }, style: DEFAULT_STYLE };
+
+    it("girar à esquerda (100×50 → 50×100)", () => {
+      const [a, b, t] = transformForOp([arrow, box, text], { type: "rotate", data: { quarterTurns: -1 } }, 100, 50)!;
+      expect(a.geom).toEqual({ x1: 20, y1: 90, x2: 20, y2: 70 });
+      expect(b.geom).toEqual({ x: 20, y: 50, w: 10, h: 40 });
+      // Texto não deita: só o centro acompanha.
+      expect(t.geom).toMatchObject({ x: 5, y: 65, w: 40, h: 10 });
+    });
+
+    it("girar à direita e espelhar", () => {
+      expect(transformForOp([arrow], { type: "rotate", data: { quarterTurns: 1 } }, 100, 50)![0].geom).toEqual({ x1: 30, y1: 10, x2: 30, y2: 30 });
+      expect(transformForOp([box], { type: "flipH" }, 100, 50)![0].geom).toEqual({ x: 50, y: 20, w: 40, h: 10 });
+      expect(transformForOp([box], { type: "flipV" }, 100, 50)![0].geom).toEqual({ x: 10, y: 20, w: 40, h: 10 });
+    });
+
+    it("recortar desloca e redimensionar escala", () => {
+      expect(transformForOp([box], { type: "crop", data: { x: 5, y: 10, w: 50, h: 30 } }, 100, 50)![0].geom).toEqual({ x: 5, y: 10, w: 40, h: 10 });
+      const z: Annotation = { id: "z", kind: "loupe", geom: { cx: 50, cy: 25, r: 10, zoom: 2 }, style: DEFAULT_STYLE };
+      const [r, l] = transformForOp([box, z], { type: "resize", data: { w: 200, h: 100, filter: "lanczos3", dpi: null } }, 100, 50)!;
+      expect(r.geom).toEqual({ x: 20, y: 40, w: 80, h: 20 });
+      expect(l.geom).toEqual({ cx: 100, cy: 50, r: 20, zoom: 2 });
+    });
+
+    it("Op sem geometria não mexe", () => {
+      expect(transformForOp([box], { type: "flipH" }, 100, 50)).not.toBeNull();
+      expect(transformForOp([box], { type: "erase", data: { type: "rect", data: { x: 0, y: 0, w: 1, h: 1 } } }, 100, 50)).toBeNull();
+    });
   });
 });

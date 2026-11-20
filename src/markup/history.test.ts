@@ -97,6 +97,17 @@ describe("desfazer unificado", () => {
     expect(globalHistory.canRedo(1)).toBe(false);
   });
 
+  it("girar a imagem leva as anotações junto, no mesmo passo", async () => {
+    addAnnotation(1, rect("a")); // 100x80, caixa (10,10,20,20)
+    await useDocs.getState().applyOp(1, { type: "rotate", data: { quarterTurns: 1 } });
+    expect(getItems(1)[0].geom).toEqual({ x: 50, y: 10, w: 20, h: 20 });
+    await globalHistory.undo(1);
+    expect(ipc.undo).toHaveBeenCalledTimes(1);
+    expect(getItems(1)[0].geom).toEqual({ x: 10, y: 10, w: 20, h: 20 });
+    await globalHistory.redo(1);
+    expect(getItems(1)[0].geom).toEqual({ x: 50, y: 10, w: 20, h: 20 });
+  });
+
   it("ação nova limpa o refazer", async () => {
     addAnnotation(1, rect("a"));
     await globalHistory.undo(1);
