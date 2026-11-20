@@ -35,3 +35,11 @@ Contornos aplicados por padrão: `WEBKIT_DISABLE_DMABUF_RENDERER=1` e `WEBKIT_DI
 - libheif é compilada estática (`embedded-libheif`, cmake). Precisa dos headers de libde265, aom e x265 (`*-devel`/`*-dev`). O `libheif.pc` gerado quebra o `-L` num caminho com espaço ("GERA VIEW IMAGE"): localmente use `CARGO_TARGET_DIR` por um symlink sem espaços. No CI o caminho não tem espaço.
 - Os pacotes dependem só de codecs com soname estável (`libde265-0`/`libde265`, `libaom3`/`libaom`). Conferir com `ldd` no binário release antes de mexer em `bundle.linux.*.depends`; o smoke do release roda `gera-view-image --version` depois de instalar em ubuntu:22.04, ubuntu:24.04 e fedora:41.
 - Testes de memória (`tests/robustez.rs`) usam `DocStore::with_limits` com orçamento pequeno e contam reservas/execuções do pipeline em vez de medir RSS.
+
+## E2E (Tarefa 5): WebdriverIO + tauri-driver
+- `npm run test:e2e` (`wdio.conf.ts`) roda contra o binário **release** (`$CARGO_TARGET_DIR/release/gera-view-image` ou `GVI_BINARY`). Build: `npm run build && cargo build --release --features tauri/custom-protocol --manifest-path src-tauri/Cargo.toml`.
+- Portas: `tauri-driver --port 4445 --native-port 4545` (`GVI_E2E_PORT` muda as duas). O padrão do WebKitWebDriver (4444) colide com outras execuções em paralelo.
+- Os arquivos entram por `argv` (`tauri:options.args`); o spec espera os 3 itens na barra lateral antes de começar.
+- Seletores estáveis: `data-testid` (`zoom-level` com `data-scale`, `doc-error`, `thumb-error`, `sidebar`), não textos (o idioma segue o sistema).
+- WebdriverIO fica no 9: o 10 dá ERESOLVE com as dependências atuais. As vulnerabilidades do `npm audit` são todas transitivas do wdio (só dev); `npm audit --omit=dev` = 0.
+- Vitest de componentes: `resetPrefsForTests()` volta o idioma para o do sistema (en no jsdom); fixe `setPrefs({ language: "pt-BR" })` depois do reset.
