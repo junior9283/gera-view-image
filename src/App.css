@@ -27,3 +27,15 @@ body,
   transform-origin: 0 0;
   image-rendering: auto;
 }
+.viewport-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 16px;
+  color: #ddd;
+  font: 14px/1.4 system-ui, sans-serif;
+  text-align: center;
+  cursor: default;
+}

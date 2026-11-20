@@ -53,5 +53,14 @@
     "repository": "GitHub repository",
     "logoAlt": "Gera View Image logo",
     "close": "Close"
+  },
+  "errors": {
+    "not_found": "File not found",
+    "unsupported": "Unsupported format",
+    "corrupt": "File is damaged or incomplete",
+    "io": "Could not read the file",
+    "permission": "No permission to access the file",
+    "changed_on_disk": "The file changed on disk",
+    "heic_decoder_missing": "To open HEIC, install libde265 (on Fedora: RPM Fusion)"
   }
 }

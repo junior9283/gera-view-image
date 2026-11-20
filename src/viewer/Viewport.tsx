@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { fitView, zoomAt, type View } from "./transform";
 import { renderView, startupDocuments } from "../ipc/commands";
-import { DOC_UPDATED_EVENT, type DocInfo } from "../ipc/types";
+import { DOC_UPDATED_EVENT, type DocInfo, type ErrorCode } from "../ipc/types";
 import { useDocs } from "../store/docs";
+import { errorMessage } from "../i18n";
 
 /**
  * Viewport mínimo: mostra o primeiro documento de `argv` via `render_view`, com zoom
@@ -12,6 +14,8 @@ import { useDocs } from "../store/docs";
 export function Viewport() {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [error, setError] = useState<ErrorCode | null>(null);
+  useTranslation(); // re-renderiza a mensagem de erro quando o idioma muda
 
   useEffect(() => {
     const el = box.current!;
@@ -26,6 +30,7 @@ export function Viewport() {
 
     // Desenha o buffer ajustado à janela em pixels físicos (1 px do canvas = 1/dpr px CSS).
     const draw = async (info: DocInfo) => {
+      setError(info.error);
       if (info.error) return;
       const dpr = window.devicePixelRatio || 1;
       const v = await renderView(info.id, 0, Math.round(el.clientWidth * dpr), Math.round(el.clientHeight * dpr));
@@ -90,6 +95,11 @@ export function Viewport() {
   return (
     <div ref={box} className="viewport">
       <canvas ref={canvas} className="viewport-canvas" />
+      {error && (
+        <p className="viewport-error" role="alert">
+          {errorMessage(error)}
+        </p>
+      )}
     </div>
   );
 }

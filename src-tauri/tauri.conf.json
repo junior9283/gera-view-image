@@ -44,15 +44,19 @@
     "linux": {
       "deb": {
         "depends": [
-          "libde265-0",
           "libaom3"
+        ],
+        "recommends": [
+          "libde265-0"
         ],
         "desktopTemplate": "linux/gera-view-image.desktop.hbs"
       },
       "rpm": {
         "depends": [
-          "libde265",
           "libaom"
+        ],
+        "recommends": [
+          "libde265"
         ],
         "desktopTemplate": "linux/gera-view-image.desktop.hbs"
       }

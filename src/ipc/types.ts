@@ -6,7 +6,14 @@ export type SourceFormat =
   | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "webp" | "heic"
   | "avif" | "ico" | "svg" | "psd" | "tga" | "raw";
 
-export type ErrorCode = "not_found" | "unsupported" | "corrupt" | "io" | "permission" | "changed_on_disk";
+export type ErrorCode =
+  | "not_found"
+  | "unsupported"
+  | "corrupt"
+  | "io"
+  | "permission"
+  | "changed_on_disk"
+  | "heic_decoder_missing";
 
 export interface AppError {
   code: ErrorCode;

@@ -49,27 +49,72 @@ impl Decoded {
 /// Arquivos que declaram mais que isso falham com erro antes de alocar.
 pub const MAX_DECODE_BYTES: usize = 2 << 30;
 
+#[cfg(test)]
+thread_local! {
+    /// Teto menor nos testes unitários, para provar a soma de páginas/quadros sem gigabytes.
+    static TEST_MAX: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+fn max_decode_bytes() -> usize {
+    #[cfg(test)]
+    if let Some(m) = TEST_MAX.with(|c| c.get()) {
+        return m;
+    }
+    MAX_DECODE_BYTES
+}
+
 /// Recusa dimensões cujo RGBA8 (somado a `already` bytes de páginas anteriores) passe do teto.
 fn check_budget(w: u32, h: u32, already: usize) -> AppResult<usize> {
     let bytes = (w as usize)
         .checked_mul(h as usize)
         .and_then(|p| p.checked_mul(4))
         .and_then(|b| b.checked_add(already))
-        .filter(|&b| b <= MAX_DECODE_BYTES);
+        .filter(|&b| b <= max_decode_bytes());
     bytes.ok_or_else(|| {
         AppError::Unsupported(format!(
             "imagem grande demais ({w}x{h}); o limite é {} MiB",
-            MAX_DECODE_BYTES >> 20
+            max_decode_bytes() >> 20
         ))
     })
 }
 
-/// Memória (bytes RGBA8) que decodificar `bytes` deve ocupar, lida só do cabeçalho.
-/// Formatos sem cabeçalho legível (RAW) usam 8x o tamanho do arquivo.
-pub fn estimate_bytes(bytes: &[u8]) -> usize {
+/// Memória que decodificar `bytes` deve ocupar, lida só do cabeçalho (RGBA8 = 4 bytes/pixel).
+/// RAW: o IFD0 costuma ser a miniatura, então usa o maior IFD/SubIFD (o sensor) x 12
+/// (dados do sensor + revelação + RGBA), ou 8x o arquivo, o que for maior.
+pub fn estimate_bytes(path: &Path, bytes: &[u8]) -> usize {
+    let by_file = bytes.len().saturating_mul(8);
+    if detect_format(path, bytes) == Some(SourceFormat::Raw) {
+        return raw_sensor_pixels(bytes).map_or(by_file, |px| px.saturating_mul(12).max(by_file));
+    }
     imagesize::blob_size(bytes)
         .map(|s| s.width.saturating_mul(s.height).saturating_mul(4))
-        .unwrap_or(bytes.len().saturating_mul(8))
+        .unwrap_or(by_file)
+}
+
+/// Maior largura x altura entre os IFDs de um RAW baseado em TIFF (DNG, NEF, ARW, CR2...),
+/// sem decodificar pixels. `None` para os que não são TIFF (CR3, RAF, CRW).
+fn raw_sensor_pixels(bytes: &[u8]) -> Option<usize> {
+    use rawler::{
+        formats::tiff::{GenericTiffReader, reader::TiffReader},
+        tags::TiffCommonTag as Tag,
+    };
+    guarded(|| {
+        const SUB_IFDS: u16 = 330;
+        let mut cur = Cursor::new(bytes);
+        let tiff = GenericTiffReader::new(&mut cur, 0, 0, Some(16), &[SUB_IFDS])
+            .map_err(AppError::corrupt)?;
+        tiff.chains()
+            .iter()
+            .flat_map(|ifd| ifd.find_ifds_with_tag(Tag::ImageWidth))
+            .filter_map(|ifd| {
+                let w = ifd.get_entry(Tag::ImageWidth)?.value.force_usize(0);
+                let h = ifd.get_entry(Tag::ImageLength)?.value.force_usize(0);
+                Some(w.saturating_mul(h))
+            })
+            .max()
+            .ok_or_else(short)
+    })
+    .ok()
 }
 
 /// Lado maior em que um SVG é rasterizado.
@@ -257,20 +302,22 @@ fn into_rgba(img: DynamicImage) -> RgbaImage {
     RgbaImage::from_raw(w, h, v).expect("tamanho calculado acima")
 }
 
+/// Quadros de uma animação, somando cada um contra o teto antes de guardar o próximo.
 fn frames_of<'a>(frames: ::image::Frames<'a>, format: SourceFormat) -> AppResult<Decoded> {
-    let frames = frames.collect_frames()?;
-    if frames.is_empty() {
+    let (mut images, mut delays_ms, mut total) = (Vec::new(), Vec::new(), 0);
+    for f in frames {
+        let f = f?;
+        let (w, h) = f.buffer().dimensions();
+        total = check_budget(w, h, total)?;
+        let (n, d) = f.delay().numer_denom_ms();
+        delays_ms.push(n.checked_div(d).unwrap_or(0));
+        images.push(f.into_buffer());
+    }
+    if images.is_empty() {
         return Err(AppError::Corrupt("animação sem quadros".into()));
     }
-    let delays_ms = frames
-        .iter()
-        .map(|f| {
-            let (n, d) = f.delay().numer_denom_ms();
-            n.checked_div(d).unwrap_or(0)
-        })
-        .collect();
     Ok(Decoded {
-        frames: frames.into_iter().map(|f| f.into_buffer()).collect(),
+        frames: images,
         delays_ms,
         format,
         icc: None,
@@ -405,6 +452,7 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
         }
         _ => AppError::Corrupt(e.message),
     };
+    let hevc = super::heic::hevc_available();
     let lib = LibHeif::new();
     let ctx = HeifContext::read_from_bytes(bytes).map_err(map)?;
     let handle = ctx.primary_image_handle().map_err(map)?;
@@ -412,7 +460,13 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
     // O libheif já aplica as transformações do contêiner (irot/imir): não há EXIF a aplicar.
     let img = lib
         .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgba), None)
-        .map_err(map)?;
+        .map_err(|e| match map(e) {
+            // Sem libde265 a libheif não tem decodificador HEVC: mensagem própria na interface.
+            AppError::Unsupported(m) if format == SourceFormat::Heic && !hevc => {
+                AppError::HeicDecoderMissing(m)
+            }
+            other => other,
+        })?;
     let (w, h) = (img.width(), img.height());
     check_budget(w, h, 0)?;
     let planes = img.planes();
@@ -747,4 +801,87 @@ pub fn folder_images(path: &Path) -> AppResult<Vec<String>> {
         .collect();
     files.sort_by(|a, b| natural_cmp(&a.0, &b.0));
     Ok(files.into_iter().map(|(_, p)| p).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Teto de teste: imagens pequenas e válidas estouram só na soma.
+    fn with_max<T>(max: usize, f: impl FnOnce() -> T) -> T {
+        TEST_MAX.with(|c| c.set(Some(max)));
+        let r = f();
+        TEST_MAX.with(|c| c.set(None));
+        r
+    }
+
+    fn tiff_pages(n: usize, w: u32, h: u32) -> Vec<u8> {
+        use tiff::encoder::{TiffEncoder, colortype::Gray8};
+        let mut out = Cursor::new(Vec::new());
+        let mut enc = TiffEncoder::new(&mut out).unwrap();
+        for _ in 0..n {
+            enc.write_image::<Gray8>(w, h, &vec![128; (w * h) as usize])
+                .unwrap();
+        }
+        out.into_inner()
+    }
+
+    #[test]
+    fn tiff_multipagina_estoura_so_na_soma() {
+        let bytes = tiff_pages(3, 100, 100); // 40 KB de RGBA por página
+        let r = with_max(100_000, || decode_tiff(&bytes));
+        assert!(matches!(r, Err(AppError::Unsupported(_))), "{:?}", r.err());
+        let ok = with_max(130_000, || decode_tiff(&bytes)).unwrap();
+        assert_eq!(ok.frames.len(), 3);
+    }
+
+    #[test]
+    fn tiff_com_cabecalho_gigante_e_unsupported() {
+        let mut b = tiff_pages(1, 4, 4);
+        // ImageWidth/ImageLength (tags 256/257) do único IFD passam a 100000x100000.
+        let ifd = u32::from_le_bytes(b[4..8].try_into().unwrap()) as usize;
+        let n = u16::from_le_bytes(b[ifd..ifd + 2].try_into().unwrap()) as usize;
+        for e in 0..n {
+            let at = ifd + 2 + e * 12;
+            let tag = u16::from_le_bytes(b[at..at + 2].try_into().unwrap());
+            if tag == 256 || tag == 257 {
+                b[at + 2..at + 4].copy_from_slice(&4u16.to_le_bytes()); // LONG
+                b[at + 8..at + 12].copy_from_slice(&100_000u32.to_le_bytes());
+            }
+        }
+        let r = decode_tiff(&b);
+        assert!(matches!(r, Err(AppError::Unsupported(_))), "{:?}", r.err());
+    }
+
+    #[test]
+    fn psd_com_cabecalho_gigante_e_unsupported() {
+        let mut b = b"8BPS\0\x01\0\0\0\0\0\0\0\x03".to_vec();
+        b.extend_from_slice(&30_000u32.to_be_bytes());
+        b.extend_from_slice(&30_000u32.to_be_bytes());
+        b.extend_from_slice(&[0, 8, 0, 3]);
+        b.extend_from_slice(&[0; 16]);
+        let r = decode_psd(&b);
+        assert!(matches!(r, Err(AppError::Unsupported(_))), "{:?}", r.err());
+    }
+
+    #[test]
+    fn gif_animado_soma_os_quadros_contra_o_teto() {
+        use ::image::{Delay, Frame, codecs::gif::GifEncoder};
+        let mut buf = Vec::new();
+        {
+            let mut enc = GifEncoder::new(&mut buf);
+            let frames = (0..5u8).map(|i| {
+                let img = RgbaImage::from_pixel(50, 50, ::image::Rgba([i * 40, 0, 0, 255]));
+                Frame::from_parts(img, 0, 0, Delay::from_numer_denom_ms(100, 1))
+            });
+            enc.encode_frames(frames).unwrap();
+        }
+        // 5 quadros de 10 KB: com teto de 30 KB o quarto já estoura.
+        let r = with_max(30_000, || decode_gif(&buf));
+        assert!(matches!(r, Err(AppError::Unsupported(_))), "{:?}", r.err());
+        assert_eq!(
+            with_max(60_000, || decode_gif(&buf)).unwrap().frames.len(),
+            5
+        );
+    }
 }

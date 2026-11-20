@@ -1,12 +1,11 @@
 //! Limites de memória e segurança: orçamento de decodificação, deduplicação de render,
-//! arquivos hostis (TIFF/PSD gigantes, SVG lendo arquivo local) e prévia de RAW.
+//! SVG lendo arquivo local, orçamento e prévia de RAW (TIFF/PSD/GIF: testes em decode.rs).
 #[path = "make_fixtures.rs"]
 mod make_fixtures;
 
 use gera_view_image_lib::{
     commands::docs::Startup,
     doc::{cache::RenderCache, model::Op, store::DocStore},
-    error::AppError,
     image::decode::{self, decode, decode_jpeg_preview},
 };
 use image::{ImageEncoder, Rgba, RgbaImage};
@@ -108,77 +107,6 @@ fn renders_concorrentes_executam_o_pipeline_uma_vez() {
         1,
         "o mesmo (doc, ops, quadro) calculado mais de uma vez"
     );
-}
-
-/// TIFF de 1 amostra/pixel, 8 bits, com dimensões declaradas e só 16 bytes de dados.
-fn tiff_header(w: u32, h: u32, paginas: usize) -> Vec<u8> {
-    let mut b = b"II*\0".to_vec();
-    b.extend_from_slice(&8u32.to_le_bytes());
-    let entries: [(u16, u16, u32); 8] = [
-        (256, 4, w),  // ImageWidth
-        (257, 4, h),  // ImageLength
-        (258, 3, 8),  // BitsPerSample
-        (259, 3, 1),  // Compression
-        (262, 3, 1),  // Photometric
-        (273, 4, 0),  // StripOffsets (preenchido abaixo)
-        (278, 4, h),  // RowsPerStrip
-        (279, 4, 16), // StripByteCounts
-    ];
-    let ifd_len = 2 + entries.len() * 12 + 4;
-    for p in 0..paginas {
-        let start = b.len();
-        let data_off = (start + ifd_len) as u32;
-        let next = if p + 1 < paginas { data_off + 16 } else { 0 };
-        b.extend_from_slice(&(entries.len() as u16).to_le_bytes());
-        for (tag, typ, val) in entries {
-            b.extend_from_slice(&tag.to_le_bytes());
-            b.extend_from_slice(&typ.to_le_bytes());
-            b.extend_from_slice(&1u32.to_le_bytes());
-            let v = if tag == 273 { data_off } else { val };
-            if typ == 3 {
-                b.extend_from_slice(&(v as u16).to_le_bytes());
-                b.extend_from_slice(&[0, 0]);
-            } else {
-                b.extend_from_slice(&v.to_le_bytes());
-            }
-        }
-        b.extend_from_slice(&next.to_le_bytes());
-        b.extend_from_slice(&[0u8; 16]);
-    }
-    b
-}
-
-#[test]
-fn tiff_com_dimensoes_gigantes_retorna_erro() {
-    let dir = tmp("tiff-gigante");
-    let p = dir.join("gigante.tiff");
-    std::fs::write(&p, tiff_header(100_000, 100_000, 1)).unwrap();
-    let e = decode(&p).unwrap_err();
-    assert!(
-        matches!(e, AppError::Unsupported(_) | AppError::Corrupt(_)),
-        "{e:?}"
-    );
-    // Várias páginas que somadas estouram o orçamento.
-    let lado = ((decode::MAX_DECODE_BYTES / 4 / 3) as f64).sqrt() as u32 + 1;
-    std::fs::write(&p, tiff_header(lado, lado, 4)).unwrap();
-    assert!(decode(&p).is_err());
-    std::fs::remove_dir_all(&dir).ok();
-}
-
-#[test]
-fn psd_com_dimensoes_enormes_retorna_erro() {
-    let dir = tmp("psd-enorme");
-    let p = dir.join("enorme.psd");
-    let mut b = make_fixtures::psd_rgb(4, 4);
-    b[14..18].copy_from_slice(&30_000u32.to_be_bytes()); // altura
-    b[18..22].copy_from_slice(&30_000u32.to_be_bytes()); // largura
-    std::fs::write(&p, b).unwrap();
-    let e = decode(&p).unwrap_err();
-    assert!(
-        matches!(e, AppError::Unsupported(_) | AppError::Corrupt(_)),
-        "{e:?}"
-    );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -289,6 +217,29 @@ fn raw_abre_pela_previa_embutida_e_revela_em_segundo_plano() {
         (64, 48),
         "dimensões da revelação completa"
     );
+}
+
+#[test]
+fn orcamento_de_raw_usa_o_sensor_e_nao_a_miniatura_do_ifd0() {
+    // Como as câmeras gravam: IFD0 = miniatura; o sensor (2000x1500) fica num SubIFD.
+    let bytes = make_fixtures::dng_sensor_em_subifd(2000, 1500);
+    let ifd0 = imagesize::blob_size(&bytes).unwrap();
+    assert!(
+        ifd0.width * ifd0.height < 100_000,
+        "IFD0 deveria ser a miniatura: {ifd0:?}"
+    );
+    // Sem isto o teste passaria só pelo piso de 8x o arquivo.
+    assert!(
+        bytes.len() * 8 < 2000 * 1500 * 12,
+        "DNG grande demais: {}",
+        bytes.len()
+    );
+    let est = decode::estimate_bytes(Path::new("sensor.dng"), &bytes);
+    assert!(
+        est >= 2000 * 1500 * 12,
+        "reservou {est} bytes, menos que o sensor x 12"
+    );
+    assert!(est >= bytes.len() * 8);
 }
 
 #[test]

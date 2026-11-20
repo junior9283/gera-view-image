@@ -15,6 +15,9 @@ pub enum AppError {
     Permission(String),
     #[error("{0}")]
     ChangedOnDisk(String),
+    /// HEIC (HEVC) sem a libde265 instalada; a interface explica como instalar.
+    #[error("{0}")]
+    HeicDecoderMissing(String),
 }
 
 impl AppError {
@@ -27,6 +30,7 @@ impl AppError {
             AppError::Io(_) => "io",
             AppError::Permission(_) => "permission",
             AppError::ChangedOnDisk(_) => "changed_on_disk",
+            AppError::HeicDecoderMissing(_) => "heic_decoder_missing",
         }
     }
 

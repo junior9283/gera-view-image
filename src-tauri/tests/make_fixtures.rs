@@ -139,8 +139,8 @@ fn generate(dir: &Path) {
         "isto não é uma imagem\n".as_bytes().to_vec()
     });
     write_if_missing(&p("img.psd"), || psd_rgb(40, 30));
-    write_if_missing(&p("img.dng"), || dng_linear(64, 48, false));
-    write_if_missing(&p("img_previa.dng"), || dng_linear(64, 48, true));
+    write_if_missing(&p("img.dng"), || dng_linear(64, 48, false, false));
+    write_if_missing(&p("img_previa.dng"), || dng_linear(64, 48, true, false));
 
     let acc = dir.join(DIR_ACENTOS);
     for n in ["img2.png", "img10.png"] {
@@ -235,9 +235,15 @@ pub fn psd_rgb(w: u32, h: u32) -> Vec<u8> {
     b
 }
 
-/// DNG "LinearRaw" (RGB já demosaicado) escrito pelo próprio `rawler`,
-/// opcionalmente com prévia JPEG embutida (subframe 1), como as câmeras gravam.
-fn dng_linear(w: usize, h: usize, preview: bool) -> Vec<u8> {
+/// DNG com IFD0 = miniatura e o sensor num SubIFD, como as câmeras gravam
+/// (gerado em memória: não vai para `fixtures/`).
+pub fn dng_sensor_em_subifd(w: usize, h: usize) -> Vec<u8> {
+    dng_linear(w, h, false, true)
+}
+
+/// DNG "LinearRaw" (RGB já demosaicado) escrito pelo próprio `rawler`, opcionalmente
+/// com prévia JPEG embutida (subframe 1) e com o sensor num SubIFD (IFD0 = miniatura).
+fn dng_linear(w: usize, h: usize, preview: bool, sensor_em_subifd: bool) -> Vec<u8> {
     use rawler::{
         dng::{DngCompression, writer::DngWriter},
         formats::tiff::{Rational, SRational},
@@ -264,8 +270,22 @@ fn dng_linear(w: usize, h: usize, preview: bool) -> Vec<u8> {
             Rational::new(1, 1),
             Rational::new(1, 1),
         ]);
-        let mut sub = dng.subframe_on_root(0);
-        sub.rgb_image_u8(img.as_raw(), w, h, DngCompression::Uncompressed, 0)
+        if sensor_em_subifd {
+            dng.thumbnail(&image::DynamicImage::ImageRgb8(gradient(64, 48)))
+                .unwrap();
+        }
+        let mut sub = if sensor_em_subifd {
+            dng.subframe(0)
+        } else {
+            dng.subframe_on_root(0)
+        };
+        // Sensor em SubIFD comprimido (como nas câmeras): o arquivo fica bem menor que o sensor.
+        let compression = if sensor_em_subifd {
+            DngCompression::Lossless
+        } else {
+            DngCompression::Uncompressed
+        };
+        sub.rgb_image_u8(img.as_raw(), w, h, compression, 1)
             .unwrap();
         sub.finalize().unwrap();
         if preview {

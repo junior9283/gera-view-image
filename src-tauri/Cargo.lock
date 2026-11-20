@@ -1725,12 +1725,14 @@ name = "gera-view-image"
 version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
+ "cc",
  "fast_image_resize",
  "gtk",
  "image",
  "imagesize",
  "jpeg-decoder",
  "libheif-rs",
+ "libheif-sys",
  "notify",
  "psd",
  "rawler",

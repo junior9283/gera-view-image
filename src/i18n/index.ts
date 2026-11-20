@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import type { ErrorCode } from "../ipc/types";
 import { getPrefs, subscribePrefs, type Prefs } from "../store/prefs";
 import en from "./en.json";
 import ptBR from "./pt-BR.json";
@@ -27,5 +28,8 @@ subscribePrefs(() => {
   const lng = current();
   if (i18n.language !== lng) void i18n.changeLanguage(lng);
 });
+
+/** Mensagem traduzida de um código de erro do núcleo (`DocInfo.error`, `AppError.code`). */
+export const errorMessage = (code: ErrorCode): string => i18n.t(`errors.${code}`);
 
 export default i18n;

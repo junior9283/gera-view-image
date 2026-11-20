@@ -265,7 +265,7 @@ fn open_file(path: &Path, budget: &DecodeBudget) -> AppResult<Opened> {
             });
         }
     }
-    let _r = budget.reserve(decode::estimate_bytes(&bytes));
+    let _r = budget.reserve(decode::estimate_bytes(path, &bytes));
     decode::decode_bytes(path, &bytes).map(Opened::Ready)
 }
 
@@ -374,7 +374,10 @@ impl DocStore {
             // Thread própria: esperar o orçamento não pode prender o pool do rayon.
             std::thread::spawn(move || {
                 let full = {
-                    let _r = store.inner.budget.reserve(decode::estimate_bytes(&bytes));
+                    let _r = store
+                        .inner
+                        .budget
+                        .reserve(decode::estimate_bytes(Path::new(&path), &bytes));
                     decode::decode_bytes(Path::new(&path), &bytes)
                 };
                 drop(bytes);
