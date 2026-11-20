@@ -2,8 +2,8 @@
 //! abertura de HEIC (ver `native/heic/de265_dl.cc`). Sem ela, o app funciona e HEIC
 //! retorna `AppError::HeicDecoderMissing`. AVIF não depende disto (aom é ligado direto).
 use std::{
-    ffi::{CStr, c_char, c_int},
-    sync::{Mutex, OnceLock},
+    ffi::{CStr, CString, c_char, c_int},
+    sync::OnceLock,
 };
 
 unsafe extern "C" {
@@ -11,21 +11,25 @@ unsafe extern "C" {
     fn gvi_de265_plugin() -> *const libheif_sys::heif_decoder_plugin;
 }
 
-static SONAME: Mutex<&'static CStr> = Mutex::new(c"libde265.so.0");
+/// Troca a biblioteca procurada (usado pelo teste "libde265 ausente"). Lida só na
+/// primeira abertura de HEIC do processo; aceita só um nome, nunca um caminho.
+pub const SONAME_ENV: &str = "GVI_LIBDE265_SONAME";
+const DEFAULT_SONAME: &CStr = c"libde265.so.0";
+
 static AVAILABLE: OnceLock<bool> = OnceLock::new();
 
-/// SÓ PARA TESTES (caso "libde265 ausente"): troca a biblioteca procurada.
-/// Só vale se chamada antes da primeira abertura de HEIC no processo. Fica pública
-/// (oculta da doc) porque os testes de integração não enxergam `cfg(test)` da lib.
-#[doc(hidden)]
-pub fn set_libde265_soname(soname: &'static CStr) {
-    *SONAME.lock().unwrap_or_else(|e| e.into_inner()) = soname;
+/// Soname a carregar: o da env se for um nome de arquivo simples (sem `/`, sem NUL,
+/// não vazio), para não abrir uma biblioteca arbitrária por caminho; senão o padrão.
+fn soname(env: Option<String>) -> CString {
+    env.filter(|s| !s.is_empty() && !s.contains('/'))
+        .and_then(|s| CString::new(s).ok())
+        .unwrap_or_else(|| DEFAULT_SONAME.to_owned())
 }
 
 /// Carrega a libde265 e registra o plugin uma vez por processo.
 pub fn hevc_available() -> bool {
     *AVAILABLE.get_or_init(|| {
-        let soname = *SONAME.lock().unwrap_or_else(|e| e.into_inner());
+        let soname = soname(std::env::var(SONAME_ENV).ok());
         // SAFETY: funções C sem pré-condições. O `heif_init` nunca é desfeito: um
         // `heif_deinit` que zere o contador desregistraria o plugin.
         unsafe {
@@ -34,4 +38,19 @@ pub fn hevc_available() -> bool {
                 && libheif_sys::heif_register_decoder_plugin(gvi_de265_plugin()).code == 0
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn soname_da_env_so_aceita_nome_sem_caminho() {
+        let s = |v: &str| soname(Some(v.to_string()));
+        assert_eq!(s("libde265-teste.so.0").as_c_str(), c"libde265-teste.so.0");
+        for ruim in ["/tmp/evil.so", "./evil.so", "../lib/evil.so", "a/b.so", "", "lib\0x.so"] {
+            assert_eq!(s(ruim).as_c_str(), DEFAULT_SONAME, "{ruim:?}");
+        }
+        assert_eq!(soname(None).as_c_str(), DEFAULT_SONAME);
+    }
 }

@@ -1,6 +1,6 @@
 //! Ajustes de cor, histograma e níveis automáticos.
 use crate::doc::model::{ColorAdjust, Levels};
-use crate::error::{AppError, AppResult};
+use crate::image::thumb::{HEADER_LEN, view_buffer_size};
 use ::image::RgbaImage;
 use rayon::prelude::*;
 use serde::Serialize;
@@ -32,9 +32,10 @@ fn luma_u8(p: &[u8]) -> usize {
     ((2126 * p[0] as u32 + 7152 * p[1] as u32 + 722 * p[2] as u32 + 5000) / 10000) as usize
 }
 
-pub fn histogram(img: &RgbaImage) -> Histogram {
+/// Histograma de pixels RGBA crus (ex.: o RGBA de um buffer do IPC).
+pub fn histogram(rgba: &[u8]) -> Histogram {
     let mut h = Histogram { r: vec![0; 256], g: vec![0; 256], b: vec![0; 256], l: vec![0; 256] };
-    for p in img.as_raw().chunks_exact(4) {
+    for p in rgba.chunks_exact(4) {
         h.r[p[0] as usize] += 1;
         h.g[p[1] as usize] += 1;
         h.b[p[2] as usize] += 1;
@@ -44,8 +45,8 @@ pub fn histogram(img: &RgbaImage) -> Histogram {
 }
 
 /// Níveis que esticam a luminância entre os percentis 0,5 % e 99,5 %.
-pub fn auto_levels(img: &RgbaImage) -> ColorAdjust {
-    let h = histogram(img);
+pub fn auto_levels(rgba: &[u8]) -> ColorAdjust {
+    let h = histogram(rgba);
     let n: u64 = h.l.iter().map(|&c| c as u64).sum();
     if n == 0 {
         return ColorAdjust::default();
@@ -69,33 +70,29 @@ pub fn auto_levels(img: &RgbaImage) -> ColorAdjust {
 }
 
 /// Aplica `adjust` ao RGBA de um buffer do IPC (`u32 LE w`, `u32 LE h`, RGBA), no lugar.
-pub fn adjust_view_buffer(buf: &mut Vec<u8>, a: &ColorAdjust) {
-    if let Ok(img) = view_buffer_image(buf) {
-        buf.truncate(8);
-        buf.extend_from_slice(adjust(&img, a).as_raw());
+pub fn adjust_view_buffer(buf: &mut [u8], a: &ColorAdjust) {
+    if let Some((w, h)) = view_buffer_size(buf) {
+        adjust_in_place(&mut buf[HEADER_LEN..], w, h, a);
     }
-}
-
-/// Lê um buffer do IPC como imagem.
-pub fn view_buffer_image(buf: &[u8]) -> AppResult<RgbaImage> {
-    let bad = || AppError::Io("buffer de prévia inválido".into());
-    let head: [u8; 8] = buf.get(..8).and_then(|h| h.try_into().ok()).ok_or_else(bad)?;
-    let w = u32::from_le_bytes([head[0], head[1], head[2], head[3]]);
-    let h = u32::from_le_bytes([head[4], head[5], head[6], head[7]]);
-    RgbaImage::from_raw(w, h, buf[8..].to_vec()).ok_or_else(bad)
 }
 
 /// Aplica todos os ajustes, na ordem fixa: níveis, exposição, contraste, realces/sombras,
 /// temperatura/matiz, saturação, sépia e nitidez. O alfa não muda.
 pub fn adjust(img: &RgbaImage, a: &ColorAdjust) -> RgbaImage {
-    if *a == ColorAdjust::default() {
-        return img.clone();
-    }
-    let (w, h) = img.dimensions();
     let mut out = img.clone();
+    let (w, h) = out.dimensions();
+    adjust_in_place(&mut out, w, h, a);
+    out
+}
+
+/// `adjust` sobre RGBA cru de `w`x`h`, no lugar.
+fn adjust_in_place(px: &mut [u8], w: u32, h: u32, a: &ColorAdjust) {
+    if *a == ColorAdjust::default() {
+        return;
+    }
     // Só a nitidez ligada: pula a passada por pixel.
     if (ColorAdjust { sharpness: 0.0, ..*a }) != ColorAdjust::default() {
-        out.par_chunks_exact_mut(4 * w.max(1) as usize).for_each(|row| {
+        px.par_chunks_exact_mut(4 * w.max(1) as usize).for_each(|row| {
             for p in row.chunks_exact_mut(4) {
                 let rgb = pixel(a, [p[0], p[1], p[2]]);
                 p[..3].copy_from_slice(&rgb);
@@ -103,9 +100,8 @@ pub fn adjust(img: &RgbaImage, a: &ColorAdjust) -> RgbaImage {
         });
     }
     if a.sharpness > 0.0 {
-        unsharp(&mut out, w, h, a.sharpness.clamp(0.0, 1.0));
+        unsharp(px, w, h, a.sharpness.clamp(0.0, 1.0));
     }
-    out
 }
 
 fn pixel(a: &ColorAdjust, rgb: [u8; 3]) -> [u8; 3] {
@@ -198,14 +194,14 @@ fn saturate([r, g, b]: [f32; 3], amount: f32) -> [f32; 3] {
 }
 
 /// *Unsharp mask* de raio 1 (desfoque 3x3 binomial), `amount` em 0..1.
-fn unsharp(img: &mut RgbaImage, w: u32, h: u32, amount: f32) {
+fn unsharp(px: &mut [u8], w: u32, h: u32, amount: f32) {
     let (w, h) = (w as usize, h as usize);
     if w < 3 || h < 3 {
         return;
     }
-    let src = img.as_raw().clone();
+    let src = px.to_vec();
     const K: [[u32; 3]; 3] = [[1, 2, 1], [2, 4, 2], [1, 2, 1]];
-    img.par_chunks_exact_mut(w * 4).enumerate().for_each(|(y, row)| {
+    px.par_chunks_exact_mut(w * 4).enumerate().for_each(|(y, row)| {
         for x in 0..w {
             for ch in 0..3 {
                 let mut acc = 0u32;
@@ -264,7 +260,7 @@ mod tests {
             let v = 50 + x as u8;
             Rgba([v, v, v, 255])
         });
-        let a = auto_levels(&img);
+        let a = auto_levels(img.as_raw());
         assert!((a.levels.black as i32 - 50).abs() <= 3, "{:?}", a.levels);
         assert!((a.levels.white as i32 - 200).abs() <= 3, "{:?}", a.levels);
         assert_eq!(a.exposure, 0.0);
@@ -273,11 +269,36 @@ mod tests {
     #[test]
     fn histogram_soma_igual_pixels() {
         let img = RgbaImage::from_fn(13, 7, |x, y| Rgba([x as u8, y as u8, 3, 255]));
-        let h = histogram(&img);
+        let h = histogram(img.as_raw());
         for c in [&h.r, &h.g, &h.b, &h.l] {
             assert_eq!(c.len(), 256);
             assert_eq!(c.iter().sum::<u32>(), 13 * 7);
         }
+    }
+
+    #[test]
+    fn ajuste_no_buffer_do_ipc_igual_ao_da_imagem() {
+        use crate::doc::model::Rect;
+        use crate::image::thumb::view_buffer;
+        let img = RgbaImage::from_fn(37, 23, |x, y| Rgba([(x * 7) as u8, (y * 11) as u8, (x ^ y) as u8, 180]));
+        let a = ColorAdjust {
+            exposure: 0.4,
+            contrast: 0.3,
+            saturation: -0.2,
+            sepia: 0.25,
+            sharpness: 0.6,
+            levels: Levels { black: 10, gamma: 1.2, white: 240 },
+            ..Default::default()
+        };
+        let mut buf = view_buffer(&img, Rect { x: 0, y: 0, w: 37, h: 23 }, 37, 23);
+        adjust_view_buffer(&mut buf, &a);
+        assert_eq!(&buf[HEADER_LEN..], adjust(&img, &a).as_raw().as_slice());
+        // Cabeçalho inconsistente: não mexe.
+        let mut ruim = buf.clone();
+        ruim.pop();
+        let antes = ruim.clone();
+        adjust_view_buffer(&mut ruim, &a);
+        assert_eq!(ruim, antes);
     }
 
     #[test]

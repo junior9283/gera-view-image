@@ -49,31 +49,22 @@ impl Decoded {
 /// Arquivos que declaram mais que isso falham com erro antes de alocar.
 pub const MAX_DECODE_BYTES: usize = 2 << 30;
 
-#[cfg(test)]
-thread_local! {
-    /// Teto menor nos testes unitários, para provar a soma de páginas/quadros sem gigabytes.
-    static TEST_MAX: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
-}
-
-fn max_decode_bytes() -> usize {
-    #[cfg(test)]
-    if let Some(m) = TEST_MAX.with(|c| c.get()) {
-        return m;
-    }
-    MAX_DECODE_BYTES
-}
-
 /// Recusa dimensões cujo RGBA8 (somado a `already` bytes de páginas anteriores) passe do teto.
 fn check_budget(w: u32, h: u32, already: usize) -> AppResult<usize> {
+    check_budget_max(w, h, already, MAX_DECODE_BYTES)
+}
+
+/// Como `check_budget`, com teto explícito (os testes usam um teto pequeno).
+fn check_budget_max(w: u32, h: u32, already: usize, max: usize) -> AppResult<usize> {
     let bytes = (w as usize)
         .checked_mul(h as usize)
         .and_then(|p| p.checked_mul(4))
         .and_then(|b| b.checked_add(already))
-        .filter(|&b| b <= max_decode_bytes());
+        .filter(|&b| b <= max);
     bytes.ok_or_else(|| {
         AppError::Unsupported(format!(
             "imagem grande demais ({w}x{h}); o limite é {} MiB",
-            max_decode_bytes() >> 20
+            max >> 20
         ))
     })
 }
@@ -306,12 +297,16 @@ fn into_rgba(img: DynamicImage) -> RgbaImage {
 }
 
 /// Quadros de uma animação, somando cada um contra o teto antes de guardar o próximo.
-fn frames_of<'a>(frames: ::image::Frames<'a>, format: SourceFormat) -> AppResult<Decoded> {
+fn frames_of<'a>(
+    frames: ::image::Frames<'a>,
+    format: SourceFormat,
+    max: usize,
+) -> AppResult<Decoded> {
     let (mut images, mut delays_ms, mut total) = (Vec::new(), Vec::new(), 0);
     for f in frames {
         let f = f?;
         let (w, h) = f.buffer().dimensions();
-        total = check_budget(w, h, total)?;
+        total = check_budget_max(w, h, total, max)?;
         let (n, d) = f.delay().numer_denom_ms();
         delays_ms.push(n.checked_div(d).unwrap_or(0));
         images.push(f.into_buffer());
@@ -330,14 +325,18 @@ fn frames_of<'a>(frames: ::image::Frames<'a>, format: SourceFormat) -> AppResult
 }
 
 fn decode_gif(bytes: &[u8]) -> AppResult<Decoded> {
+    decode_gif_max(bytes, MAX_DECODE_BYTES)
+}
+
+fn decode_gif_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
     let dec = ::image::codecs::gif::GifDecoder::new(Cursor::new(bytes))?;
-    frames_of(dec.into_frames(), SourceFormat::Gif)
+    frames_of(dec.into_frames(), SourceFormat::Gif, max)
 }
 
 fn decode_webp(bytes: &[u8]) -> AppResult<Decoded> {
     let dec = ::image::codecs::webp::WebPDecoder::new(Cursor::new(bytes))?;
     if dec.has_animation() {
-        frames_of(dec.into_frames(), SourceFormat::Webp)
+        frames_of(dec.into_frames(), SourceFormat::Webp, MAX_DECODE_BYTES)
     } else {
         decode_image_crate(bytes, ImageFormat::WebP, SourceFormat::Webp)
     }
@@ -345,6 +344,10 @@ fn decode_webp(bytes: &[u8]) -> AppResult<Decoded> {
 
 /// TIFF com todas as páginas (a crate `image` só lê a primeira).
 fn decode_tiff(bytes: &[u8]) -> AppResult<Decoded> {
+    decode_tiff_max(bytes, MAX_DECODE_BYTES)
+}
+
+fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
     use tiff::{
         ColorType as C,
         decoder::{Decoder, DecodingResult as R, Limits as TL},
@@ -366,7 +369,7 @@ fn decode_tiff(bytes: &[u8]) -> AppResult<Decoded> {
     loop {
         let (w, h) = dec.dimensions().map_err(map)?;
         // Antes de `read_image`: o cabeçalho pode declarar dimensões absurdas.
-        total = check_budget(w, h, total)?;
+        total = check_budget_max(w, h, total, max)?;
         let color = dec.colortype().map_err(map)?;
         let orientation = dec.find_tag_unsigned::<u8>(Tag::Orientation).ok().flatten();
         if frames.is_empty() {
@@ -789,17 +792,14 @@ pub fn folder_images(path: &Path) -> AppResult<Vec<String>> {
     };
     let mut files: Vec<(String, String)> = std::fs::read_dir(dir)?
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file() || t.is_symlink()))
-        .map(|e| e.path())
-        .filter(|p| is_supported_path(p) && p.is_file())
-        .map(|p| {
-            (
-                p.file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-                p.to_string_lossy().into_owned(),
-            )
+        .filter_map(|e| {
+            let p = e.path();
+            // Arquivo comum já basta; link só se apontar para um arquivo.
+            let file = e
+                .file_type()
+                .is_ok_and(|t| t.is_file() || (t.is_symlink() && p.is_file()));
+            (file && is_supported_path(&p))
+                .then(|| (e.file_name().to_string_lossy().into_owned(), p.to_string_lossy().into_owned()))
         })
         .collect();
     files.sort_by(|a, b| natural_cmp(&a.0, &b.0));
@@ -809,14 +809,6 @@ pub fn folder_images(path: &Path) -> AppResult<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Teto de teste: imagens pequenas e válidas estouram só na soma.
-    fn with_max<T>(max: usize, f: impl FnOnce() -> T) -> T {
-        TEST_MAX.with(|c| c.set(Some(max)));
-        let r = f();
-        TEST_MAX.with(|c| c.set(None));
-        r
-    }
 
     fn tiff_pages(n: usize, w: u32, h: u32) -> Vec<u8> {
         use tiff::encoder::{TiffEncoder, colortype::Gray8};
@@ -832,9 +824,9 @@ mod tests {
     #[test]
     fn tiff_multipagina_estoura_so_na_soma() {
         let bytes = tiff_pages(3, 100, 100); // 40 KB de RGBA por página
-        let r = with_max(100_000, || decode_tiff(&bytes));
+        let r = decode_tiff_max(&bytes, 100_000);
         assert!(matches!(r, Err(AppError::Unsupported(_))), "{:?}", r.err());
-        let ok = with_max(130_000, || decode_tiff(&bytes)).unwrap();
+        let ok = decode_tiff_max(&bytes, 130_000).unwrap();
         assert_eq!(ok.frames.len(), 3);
     }
 
@@ -902,10 +894,10 @@ mod tests {
             enc.encode_frames(frames).unwrap();
         }
         // 5 quadros de 10 KB: com teto de 30 KB o quarto já estoura.
-        let r = with_max(30_000, || decode_gif(&buf));
+        let r = decode_gif_max(&buf, 30_000);
         assert!(matches!(r, Err(AppError::Unsupported(_))), "{:?}", r.err());
         assert_eq!(
-            with_max(60_000, || decode_gif(&buf)).unwrap().frames.len(),
+            decode_gif_max(&buf, 60_000).unwrap().frames.len(),
             5
         );
     }
