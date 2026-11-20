@@ -11,7 +11,9 @@ use gera_view_image_lib::{
 
 #[test]
 fn heic_sem_libde265_pede_para_instalar_e_avif_continua() {
-    heic::set_libde265_soname(c"libde265-ausente-de-proposito.so.0");
+    // SAFETY: nenhum outro teste deste binário lê o ambiente; a env vale na primeira
+    // abertura de HEIC do processo, logo abaixo.
+    unsafe { std::env::set_var(heic::SONAME_ENV, "libde265-ausente-de-proposito.so.0") };
     let dir = make_fixtures::ensure_fixtures();
     let e = decode(&dir.join("img.heic")).unwrap_err();
     assert!(matches!(e, AppError::HeicDecoderMissing(_)), "{e:?}");
