@@ -304,5 +304,8 @@
   },
   "toast": {
     "close": "Fechar aviso"
+  },
+  "dialog": {
+    "images": "Imagens"
   }
 }

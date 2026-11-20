@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useWindowEvent } from "../lib/events";
-import { commandsVersion, isEnabled, runCommand, subscribeCommands, type CommandId } from "../shortcuts/commands";
+import { COMMAND_IDS, commandsVersion, isEnabled, runCommand, type CommandId } from "../shortcuts/commands";
+import { subscribeEnabled } from "../shortcuts/useEnabled";
 import { KEYMAP, formatShortcut } from "../shortcuts/keymap";
 import { MENUS, type MenuItem } from "./menus";
 
@@ -132,8 +133,11 @@ export function MenuList({ label, items, level, autoFocus, onRun, onClose, onClo
 /** Barra de menus (Arquivo … Ajuda). Alt ou F10 abre; setas navegam; Esc fecha e devolve o foco. */
 export function MenuBar() {
   const { t } = useTranslation();
-  useSyncExternalStore(subscribeCommands, commandsVersion);
   const [open, setOpen] = useState<number | null>(null);
+  // Aberto, re-renderiza quando a habilitação de algum comando muda; fechado, só com o registro.
+  useSyncExternalStore(subscribeEnabled, () =>
+    open === null ? String(commandsVersion()) : COMMAND_IDS.map((id) => (isEnabled(id) ? 1 : 0)).join(""),
+  );
   const bar = useRef<HTMLDivElement>(null);
   /** Quem tinha o foco antes do menu: recebe-o de volta ao fechar. */
   const restore = useRef<HTMLElement | null>(null);
@@ -171,10 +175,15 @@ export function MenuBar() {
     e.preventDefault();
     toggle();
   });
-  useWindowEvent("blur", () => (armed.current = false));
+  // Alt+clique (girar à direita), Alt+roda e Alt+arraste não são "Alt sozinho".
+  const disarm = () => (armed.current = false);
+  useWindowEvent("blur", disarm);
+  useWindowEvent("pointerdown", disarm);
+  useWindowEvent("wheel", disarm);
 
   // Clique fora fecha (o foco fica onde o usuário clicou).
   useWindowEvent("mousedown", (e) => {
+    disarm();
     if (open !== null && !bar.current?.contains(e.target as Node)) close(false);
   });
 

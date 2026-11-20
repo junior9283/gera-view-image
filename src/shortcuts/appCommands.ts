@@ -1,6 +1,9 @@
 // Liga ao registro de comandos as ações que já existem. Itens de tarefas futuras (Salvar, Exportar,
 // Imprimir, Colar, Anotar ▸…) ficam sem registro e, por isso, desabilitados nos menus.
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { SUPPORTED_EXTENSIONS } from "../file/extensions";
+import i18n from "../i18n";
 import { openAdjustColor, openResize } from "../adjust/actions";
 import { canRedo, canUndo, redo, undo } from "../edit/history";
 import type { Op } from "../ipc/types";
@@ -62,7 +65,20 @@ const nav = (dir: "next" | "prev") => () => view[dir]({ wrap: useUi.getState().s
 
 type Entry = [CommandId, () => unknown, (() => boolean)?];
 
+/** Arquivo › Abrir…: diálogo do sistema filtrado pelas extensões que o núcleo abre. */
+async function openFiles() {
+  const picked = await openDialog({
+    multiple: true,
+    directory: false,
+    filters: [{ name: i18n.t("dialog.images"), extensions: [...SUPPORTED_EXTENSIONS] }],
+  });
+  if (!picked?.length) return;
+  const [first] = await useDocs.getState().open(picked);
+  if (first) view.activate(first.id);
+}
+
 const ENTRIES: Entry[] = [
+  ["file.open", openFiles],
   ["file.close", withActive((id) => view.closeDocs([id])), () => !!view.activeDoc()],
 
   ["edit.undo", withActive(undo), activeCan(canUndo)],
@@ -71,7 +87,10 @@ const ENTRIES: Entry[] = [
   ["edit.copy", sel.copySelection, hasSelection],
   ["edit.delete", sel.deleteSelection, hasSelection],
   ["edit.selectAll", sel.selectAll, hasDoc],
-  ["edit.deselect", escape],
+  ["edit.deselect", escape, () => {
+    const { slideshow, fullscreen } = useUi.getState();
+    return slideshow || fullscreen || !!useSelection.getState().selection;
+  }],
   ["edit.invertSelection", sel.invertSelection, hasSelection],
   ["edit.preferences", openPreferences],
 

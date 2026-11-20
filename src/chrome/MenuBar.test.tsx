@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import en from "../i18n/en.json";
 import ptBR from "../i18n/pt-BR.json";
 import { COMMAND_IDS, registerCommand, resetCommandsForTests } from "../shortcuts/commands";
+import { useSelection } from "../store/selection";
 import { MenuBar } from "./MenuBar";
 import { MENUS, type MenuItem } from "./menus";
 
@@ -97,6 +98,26 @@ describe("MenuBar", () => {
     fireEvent.keyDown(window, { key: "1", altKey: true, ctrlKey: true });
     fireEvent.keyUp(window, { key: "Alt" });
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("Alt + clique, roda ou arraste não abre o menu ao soltar o Alt", () => {
+    render(<MenuBar />);
+    for (const ev of ["mouseDown", "pointerDown", "wheel"] as const) {
+      fireEvent.keyDown(window, { key: "Alt", altKey: true });
+      fireEvent[ev](document.body, { altKey: true });
+      fireEvent.keyUp(window, { key: "Alt" });
+      expect(screen.queryByRole("menu"), ev).toBeNull();
+    }
+  });
+
+  it("menu aberto reflete mudanças de estado (habilitação ao vivo)", () => {
+    registerCommand("edit.copy", () => {}, () => useSelection.getState().selection !== null);
+    render(<MenuBar />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Editar" }));
+    expect(screen.getByRole("menuitem", { name: /Copiar/ }).getAttribute("aria-disabled")).toBe("true");
+    act(() => useSelection.getState().setSelection({ type: "rect", data: { x: 0, y: 0, w: 1, h: 1 } }));
+    expect(screen.getByRole("menuitem", { name: /Copiar/ }).getAttribute("aria-disabled")).toBe("false");
+    act(() => useSelection.getState().setSelection(null));
   });
 
   it("submenu Anotar fica desabilitado até a Marcação registrar comandos", () => {

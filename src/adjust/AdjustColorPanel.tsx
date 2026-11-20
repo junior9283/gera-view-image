@@ -128,7 +128,18 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
   };
 
   return (
-    <div className="adjust-panel" role="dialog" aria-labelledby={titleId} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+    <div
+      className="adjust-panel"
+      role="dialog"
+      aria-labelledby={titleId}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        // O Esc é do painel: não pode também desmarcar a seleção pelo keymap global.
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }}
+    >
       <h3 id={titleId}>{t("adjust.title")}</h3>
 
       <canvas ref={previewRef} className="adjust-preview" aria-label={t("adjust.preview")} />

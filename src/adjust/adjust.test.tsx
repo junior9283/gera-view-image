@@ -60,6 +60,17 @@ describe("AdjustColorPanel", () => {
     expect((screen.getByLabelText("Nível de preto") as HTMLInputElement).value).toBe("0");
   });
 
+  it("Esc fecha o painel e consome a tecla (o keymap global não desmarca a seleção)", () => {
+    const onClose = vi.fn();
+    const global = vi.fn((e: KeyboardEvent) => e.defaultPrevented);
+    window.addEventListener("keydown", global);
+    render(createElement(AdjustColorPanel, { docId: 1, onClose }));
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    window.removeEventListener("keydown", global);
+    expect(onClose).toHaveBeenCalled();
+    expect(global.mock.results.every((r) => r.value)).toBe(true);
+  });
+
   it("OK sem mudanças não grava operação", () => {
     const onClose = vi.fn();
     render(createElement(AdjustColorPanel, { docId: 1, onClose }));

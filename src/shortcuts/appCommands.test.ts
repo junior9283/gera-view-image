@@ -6,6 +6,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 const win = { setFullscreen: vi.fn(async () => {}), minimize: vi.fn(async () => {}), toggleMaximize: vi.fn(async () => {}) };
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => win }));
+const dialogOpen = vi.fn();
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: (...a: unknown[]) => dialogOpen(...a) }));
 
 import { getToasts, resetToastsForTests } from "../chrome/notify";
 import { resetDocsForTests, useDocs } from "../store/docs";
@@ -23,6 +25,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 let off: () => void;
 beforeEach(() => {
   invoke.mockReset();
+  dialogOpen.mockReset();
   invoke.mockImplementation(async (cmd: string) => (["apply_op", "undo", "redo"].includes(cmd) ? info(1, { rev: 1 }) : undefined));
   resetCommandsForTests();
   resetDocsForTests();
@@ -35,7 +38,7 @@ afterEach(() => off());
 
 describe("comandos do app", () => {
   it("itens de tarefas futuras ficam sem registro (desabilitados)", () => {
-    for (const id of ["file.save", "file.export", "file.print", "file.newFromClipboard", "edit.paste", "tools.annotate.arrow"] as const) {
+    for (const id of ["file.save", "file.export", "file.print", "file.newFromClipboard", "file.openRecent", "edit.paste", "tools.annotate.arrow"] as const) {
       expect(isRegistered(id)).toBe(false);
       expect(isEnabled(id)).toBe(false);
     }
@@ -87,6 +90,35 @@ describe("comandos do app", () => {
     expect(useSelection.getState().selection).not.toBeNull();
     runCommand("edit.deselect");
     expect(useSelection.getState().selection).toBeNull();
+  });
+
+  it("Desmarcar Tudo só fica habilitado com seleção, apresentação ou tela cheia", () => {
+    expect(isEnabled("edit.deselect")).toBe(false);
+    useUi.setState({ fullscreen: true });
+    expect(isEnabled("edit.deselect")).toBe(true);
+    useUi.setState({ fullscreen: false, slideshow: true });
+    expect(isEnabled("edit.deselect")).toBe(true);
+    useUi.setState({ slideshow: false });
+    useSelection.getState().setSelection({ type: "rect", data: { x: 0, y: 0, w: 1, h: 1 } });
+    expect(isEnabled("edit.deselect")).toBe(true);
+  });
+
+  it("Abrir… usa o diálogo com filtro das extensões suportadas e abre os arquivos escolhidos", async () => {
+    dialogOpen.mockResolvedValueOnce(["/a/x.png", "/a/y.jpg"]);
+    expect(isEnabled("file.open")).toBe(true);
+    runCommand("file.open");
+    await flush();
+    const opts = dialogOpen.mock.calls[0][0] as { multiple: boolean; filters: { extensions: string[] }[] };
+    expect(opts.multiple).toBe(true);
+    expect(opts.filters[0].extensions).toEqual(expect.arrayContaining(["png", "jpg", "heic", "dng", "svg"]));
+    expect(invoke).toHaveBeenCalledWith("open_documents", { paths: ["/a/x.png", "/a/y.jpg"] });
+  });
+
+  it("Abrir… cancelado não chama o núcleo", async () => {
+    dialogOpen.mockResolvedValueOnce(null);
+    runCommand("file.open");
+    await flush();
+    expect(invoke).not.toHaveBeenCalledWith("open_documents", expect.anything());
   });
 
   it("barra de Marcação dispara gvi:toggle-markup", () => {

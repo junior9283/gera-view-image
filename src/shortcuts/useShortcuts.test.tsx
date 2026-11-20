@@ -56,6 +56,18 @@ describe("useShortcuts", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("modal aberto com o foco fora dele (body) também bloqueia os atalhos", () => {
+    const run = vi.fn();
+    registerCommand("go.next", run);
+    render(<Host />);
+    const dlg = document.createElement("div");
+    dlg.setAttribute("aria-modal", "true");
+    document.body.append(dlg);
+    press("ArrowRight", {}, document.body);
+    dlg.remove();
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("respeita quem já tratou a tecla (defaultPrevented)", () => {
     const run = vi.fn();
     registerCommand("edit.delete", run);

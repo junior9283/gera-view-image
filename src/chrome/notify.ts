@@ -7,13 +7,23 @@ export interface Toast {
 }
 
 const TOAST_MS = 5000;
+/** Mais que isso, o mais antigo sai (uma rajada de erros não cobre a janela). */
+const MAX_TOASTS = 3;
 let toasts: Toast[] = [];
 let nextId = 1;
+const timers = new Map<number, ReturnType<typeof setTimeout>>();
 const listeners = new Set<() => void>();
-const emit = (list: Toast[]) => {
+
+function emit(list: Toast[]) {
+  for (const [id, timer] of timers) {
+    if (!list.some((t) => t.id === id)) {
+      clearTimeout(timer);
+      timers.delete(id);
+    }
+  }
   toasts = list;
   listeners.forEach((l) => l());
-};
+}
 
 export const subscribeToasts = (l: () => void) => {
   listeners.add(l);
@@ -23,10 +33,18 @@ export const getToasts = () => toasts;
 
 export const dismissToast = (id: number) => emit(toasts.filter((t) => t.id !== id));
 
+function schedule(id: number) {
+  clearTimeout(timers.get(id));
+  timers.set(id, setTimeout(() => dismissToast(id), TOAST_MS));
+}
+
+/** Mostra um aviso; o mesmo texto já visível só renova o prazo. */
 export function notify(text: string): void {
+  const same = toasts.find((t) => t.text === text);
+  if (same) return schedule(same.id);
   const id = nextId++;
-  emit([...toasts, { id, text }]);
-  setTimeout(() => dismissToast(id), TOAST_MS);
+  schedule(id);
+  emit([...toasts, { id, text }].slice(-MAX_TOASTS));
 }
 
 const codeOf = (e: unknown): string | null => {

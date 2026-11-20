@@ -155,7 +155,9 @@ describe("Viewport", () => {
     expect(useUi.getState().view).toMatchObject({ panX: -100 });
     drag(1, -10);
     expect(useUi.getState().view).toMatchObject({ panX: -110 });
-    fireEvent.keyDown(window, { key: " ", code: "Space" });
+    const armed = new KeyboardEvent("keydown", { key: " ", code: "Space", cancelable: true });
+    window.dispatchEvent(armed);
+    expect(armed.defaultPrevented).toBe(true);
     expect(vp.classList.contains("space-pan")).toBe(true);
     drag(0, -10);
     expect(useUi.getState().view).toMatchObject({ panX: -120 });

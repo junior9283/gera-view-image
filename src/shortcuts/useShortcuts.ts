@@ -10,8 +10,8 @@ export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      // Diálogo modal aberto: as teclas são dele.
-      if (e.target instanceof Element && e.target.closest("[aria-modal=true]")) return;
+      // Diálogo modal aberto (com ou sem foco dentro dele): as teclas são dele.
+      if (document.querySelector('[aria-modal="true"]')) return;
       const id = matchShortcut(e);
       if (!id) return;
       // Um Ctrl+tecla do app nunca cai no WebView (Ctrl+P imprime, Ctrl+R recarrega), mesmo desabilitado.

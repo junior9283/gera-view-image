@@ -86,11 +86,12 @@ export const ALIASES: Partial<Record<CommandId, string[]>> = {
 
 const MODIFIERS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "OS"]);
 
-/** Nome da tecla: letras em maiúsculas; com Alt (que muda o caractere em alguns layouts) ou no
- *  teclado numérico sem NumLock, o dígito vem do código físico. Shift+8 continua sendo "*". */
+/** Nome da tecla: letras em maiúsculas. Com Ctrl/Alt (Alt muda o caractere em alguns layouts; o
+ *  numérico sem NumLock manda "Insert"), o dígito vem do código físico. Sem modificador, o numérico
+ *  sem NumLock fica com a tecla lógica (setas, Home, PageUp…). Shift+8 continua sendo "*". */
 function keyName(e: KeyboardEvent): string {
   const digit = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
-  if (digit && (e.altKey || e.key.length > 1)) return digit[1];
+  if (digit && (e.altKey || (e.ctrlKey && e.key.length > 1))) return digit[1];
   return e.key.length === 1 ? e.key.toUpperCase() : e.key;
 }
 

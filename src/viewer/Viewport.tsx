@@ -202,7 +202,9 @@ export function Viewport() {
       el.classList.toggle("space-pan", on);
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !e.repeat && !isTyping(e.target) && !(e.target instanceof HTMLButtonElement)) setSpace(true);
+      if (e.code !== "Space" || isTyping(e.target) || e.target instanceof HTMLButtonElement) return;
+      e.preventDefault(); // o Espaço arma o pan; não rola nem ativa nada
+      if (!space) setSpace(true);
     };
     const onKeyUp = (e: KeyboardEvent) => e.code === "Space" && setSpace(false);
     const onBlur = () => setSpace(false);
@@ -226,7 +228,7 @@ export function Viewport() {
     };
     const onDown = (e: PointerEvent) => {
       if (e.button !== 1 && (e.button !== 0 || selecting())) return;
-      drag ={ x: e.clientX, y: e.clientY, id: e.pointerId };
+      drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
       el.classList.add("dragging");
       try {
         el.setPointerCapture(e.pointerId);

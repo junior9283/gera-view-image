@@ -68,6 +68,15 @@ describe("matchShortcut", () => {
     expect(matchShortcut(key("3", { ctrlKey: true, altKey: true }, "Digit3"))).toBe("view.contactSheet");
   });
 
+  it("teclado numérico sem NumLock navega (setas/Home/End), e o dígito físico só vale com Ctrl/Alt", () => {
+    expect(matchShortcut(key("ArrowLeft", {}, "Numpad4"))).toBe("go.prev");
+    expect(matchShortcut(key("ArrowRight", {}, "Numpad6"))).toBe("go.next");
+    expect(matchShortcut(key("Home", {}, "Numpad7"))).toBe("go.first");
+    expect(matchShortcut(key("End", {}, "Numpad1"))).toBe("go.last");
+    expect(matchShortcut(key("PageUp", {}, "Numpad9"))).toBe("go.prev");
+    expect(matchShortcut(key("Insert", { ctrlKey: true }, "Numpad0"))).toBe("view.actualSize");
+  });
+
   it("Ctrl+Shift+M é a barra de Marcação; Delete e Backspace apagam", () => {
     expect(matchShortcut(key("M", { ctrlKey: true, shiftKey: true }, "KeyM"))).toBe("view.markupBar");
     expect(matchShortcut(key("Delete", {}, "Delete"))).toBe("edit.delete");
