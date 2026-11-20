@@ -1,47 +1,38 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { usePrefs } from "../store/prefs";
 
-/** Provisório: a Task 12 migra a decisão para as prefs (`prefs.nativeDecorations`). */
-const KEY = "gvi.nativeDecorations";
-
-function readStored(): boolean {
-  try {
-    return localStorage.getItem(KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-let native = readStored();
+// Fallback automático (spec §13.3): vale só nesta sessão e nunca é gravado, para não virar a
+// escolha do usuário (`prefs.nativeDecorations`) nem sobreviver a um falso negativo da sonda.
+let forcedNative = false;
 const listeners = new Set<() => void>();
-
-/** Fallback automático (spec §13.3): decoração nativa, guardada para as próximas aberturas. */
-export function enableNativeDecorations(): void {
-  if (native) return;
-  native = true;
-  try {
-    localStorage.setItem(KEY, "1");
-  } catch {
-    /* sem armazenamento: vale só nesta sessão */
-  }
-  listeners.forEach((l) => l());
-}
-
-/** Só para testes: relê o armazenamento. */
-export function resetNativeDecorations(): void {
-  native = readStored();
-  listeners.forEach((l) => l());
-}
-
 const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => listeners.delete(l);
 };
 
-/** `override` é o ajuste manual (prop); o fallback automático também liga o modo nativo. */
+export function enableNativeDecorations(): void {
+  if (forcedNative) return;
+  forcedNative = true;
+  listeners.forEach((l) => l());
+}
+
+/** Só para testes. */
+export function resetForcedNative(): void {
+  forcedNative = false;
+  listeners.forEach((l) => l());
+}
+
+/** Verdadeiro quando o sistema não suporta a janela sem decoração (nesta sessão). */
+export function useForcedNative(): boolean {
+  return useSyncExternalStore(subscribe, () => forcedNative);
+}
+
+/** `override` é o ajuste manual (prop); a preferência do usuário e o fallback da sessão também ligam o modo nativo. */
 export function useNativeDecorations(override = false): boolean {
-  return useSyncExternalStore(subscribe, () => native) || override;
+  const forced = useForcedNative();
+  return usePrefs().nativeDecorations || forced || override;
 }
 
 /** Na inicialização: sem compositor/visual RGBA a janela transparente não funciona. */
@@ -53,9 +44,11 @@ export function useCompositingProbe(): void {
   }, []);
 }
 
-/** Liga `setDecorations(true)` sempre que o modo nativo estiver ativo. */
+/** Aplica `setDecorations` ao ligar o modo nativo e o desfaz (`false`) quando a preferência é desligada. */
 export function useApplyNativeDecorations(active: boolean): void {
+  const wasActive = useRef(false);
   useEffect(() => {
-    if (active) getCurrentWindow().setDecorations(true).catch(() => {});
+    if (active || wasActive.current) getCurrentWindow().setDecorations(active).catch(() => {});
+    wasActive.current = active;
   }, [active]);
 }

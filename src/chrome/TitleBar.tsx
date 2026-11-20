@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WindowButtons, type WindowAction } from "./WindowButtons";
 import { enableNativeDecorations, useApplyNativeDecorations, useCompositingProbe, useNativeDecorations } from "./nativeDecorations";
@@ -39,6 +40,7 @@ export function useMaximized(): boolean {
 }
 
 export function TitleBar({ title, children, nativeDecorations: override = false }: Props) {
+  const { t } = useTranslation();
   const nativeDecorations = useNativeDecorations(override);
   useCompositingProbe();
   useApplyNativeDecorations(nativeDecorations);
@@ -84,9 +86,9 @@ export function TitleBar({ title, children, nativeDecorations: override = false 
             }}
           />
           <ul className="wm-menu" style={{ left: menu.x, top: menu.y }} role="menu">
-            <li role="menuitem" onClick={() => run("minimize")}>Minimizar</li>
-            <li role="menuitem" onClick={() => run("maximize")}>{maximized ? "Restaurar" : "Maximizar"}</li>
-            <li role="menuitem" onClick={() => run("close")}>Fechar</li>
+            <li role="menuitem" onClick={() => run("minimize")}>{t("window.minimize")}</li>
+            <li role="menuitem" onClick={() => run("maximize")}>{t(maximized ? "window.restore" : "window.maximize")}</li>
+            <li role="menuitem" onClick={() => run("close")}>{t("window.close")}</li>
           </ul>
         </>
       )}

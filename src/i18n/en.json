@@ -1,0 +1,57 @@
+{
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
+  },
+  "update": {
+    "title": "New version available",
+    "install": "Install and Restart",
+    "later": "Later",
+    "skip": "Skip this version",
+    "installing": "Installing…",
+    "failed": "Could not install automatically",
+    "installed": "Update installed. Restart the app to finish.",
+    "openPage": "Open release page",
+    "upToDate": "You are already on the latest version.",
+    "close": "Close"
+  },
+  "prefs": {
+    "title": "Preferences",
+    "close": "Close",
+    "background": "Viewer background",
+    "bg": {
+      "window": "Window color",
+      "black": "Black",
+      "white": "White",
+      "gray": "Gray",
+      "custom": "Custom"
+    },
+    "customBg": "Custom color",
+    "browseFolder": "Browse images in the folder",
+    "openBehavior": "When opening an image",
+    "open": {
+      "fit": "Fit to window",
+      "actual": "Actual size"
+    },
+    "slideshowSeconds": "Seconds per image in slideshow",
+    "autoUpdate": "Check for updates automatically",
+    "nativeUnavailable": "Unavailable: the system does not support transparent windows",
+    "nativeDecorations": "Use the system title bar",
+    "language": "Language",
+    "lang": {
+      "system": "System language",
+      "pt-BR": "Português (Brasil)",
+      "en": "English"
+    }
+  },
+  "about": {
+    "title": "About Gera View Image",
+    "version": "Version {{version}}",
+    "license": "MIT License",
+    "repository": "GitHub repository",
+    "logoAlt": "Gera View Image logo",
+    "close": "Close"
+  }
+}

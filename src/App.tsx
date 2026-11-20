@@ -1,6 +1,7 @@
 import { TitleBar, WindowFrame } from "./chrome/TitleBar";
 import { Viewport } from "./viewer/Viewport";
 import { UpdateHost } from "./updater/UpdateDialog";
+import { DialogHost } from "./prefs/DialogHost";
 
 export default function App() {
   return (
@@ -10,6 +11,7 @@ export default function App() {
         <Viewport />
       </div>
       <UpdateHost />
+      <DialogHost />
     </WindowFrame>
   );
 }

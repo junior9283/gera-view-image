@@ -1,15 +1,24 @@
-/// Aplica contornos para bugs do WebKitGTK (tela branca/pisca com DMABUF).
-/// Deve ser chamada antes de criar qualquer janela.
+/// Aplica contornos para bugs do WebKitGTK. Deve ser chamada antes de criar qualquer janela.
+///
+/// Por padrão define `WEBKIT_DISABLE_DMABUF_RENDERER=1` (tela branca/pisca com DMABUF) e
+/// `WEBKIT_DISABLE_COMPOSITING_MODE=1` (janela transparente e sem decoração fica toda branca
+/// em sessões Wayland, redesenhando só a região sob o mouse). Valores já presentes no
+/// ambiente são respeitados; `GVI_GPU_ACCEL=1` desliga os dois contornos.
+/// `GVI_SAFE_RENDER=1` ainda é aceito, mas é redundante: o modo seguro já é o padrão.
 pub fn apply_webkit_workarounds(
     env: &dyn Fn(&str) -> Option<String>,
     set: &mut dyn FnMut(&str, &str),
 ) {
-    const DMABUF: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
-    if env("GVI_GPU_ACCEL").as_deref() != Some("1") && env(DMABUF).is_none() {
-        set(DMABUF, "1");
+    if env("GVI_GPU_ACCEL").as_deref() == Some("1") {
+        return;
     }
-    if env("GVI_SAFE_RENDER").as_deref() == Some("1") {
-        set("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    for var in [
+        "WEBKIT_DISABLE_DMABUF_RENDERER",
+        "WEBKIT_DISABLE_COMPOSITING_MODE",
+    ] {
+        if env(var).is_none() {
+            set(var, "1");
+        }
     }
 }
 
@@ -34,25 +43,38 @@ mod tests {
         (k.to_string(), v.to_string())
     }
 
+    const DMABUF: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+    const COMPOSITING: &str = "WEBKIT_DISABLE_COMPOSITING_MODE";
+
     #[test]
     fn define_dmabuf_quando_ausente() {
-        assert_eq!(roda(&[]), vec![par("WEBKIT_DISABLE_DMABUF_RENDERER", "1")]);
+        assert!(roda(&[]).contains(&par(DMABUF, "1")));
+    }
+
+    #[test]
+    fn define_compositing_por_padrao() {
+        assert!(roda(&[]).contains(&par(COMPOSITING, "1")));
     }
 
     #[test]
     fn respeita_valor_existente() {
-        assert!(roda(&[("WEBKIT_DISABLE_DMABUF_RENDERER", "0")]).is_empty());
+        assert!(!roda(&[(DMABUF, "0")]).iter().any(|(k, _)| k == DMABUF));
     }
 
     #[test]
-    fn gpu_accel_desliga_contorno() {
+    fn respeita_compositing_existente() {
+        let r = roda(&[(COMPOSITING, "0")]);
+        assert!(!r.iter().any(|(k, _)| k == COMPOSITING));
+        assert!(r.contains(&par(DMABUF, "1")));
+    }
+
+    #[test]
+    fn gpu_accel_desliga_ambos() {
         assert!(roda(&[("GVI_GPU_ACCEL", "1")]).is_empty());
     }
 
     #[test]
-    fn safe_render_desliga_compositing() {
-        let r = roda(&[("GVI_SAFE_RENDER", "1")]);
-        assert!(r.contains(&par("WEBKIT_DISABLE_DMABUF_RENDERER", "1")));
-        assert!(r.contains(&par("WEBKIT_DISABLE_COMPOSITING_MODE", "1")));
+    fn safe_render_e_redundante() {
+        assert_eq!(roda(&[("GVI_SAFE_RENDER", "1")]), roda(&[]));
     }
 }

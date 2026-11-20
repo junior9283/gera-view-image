@@ -1,7 +1,7 @@
 {
   "name": "gera-view-image",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,9 +19,12 @@
     "@tauri-apps/api": "~2.12",
     "@tauri-apps/plugin-opener": "^2.7.3",
     "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-store": "^2.5.1",
     "@tauri-apps/plugin-updater": "^2.14.1",
+    "i18next": "^27.2.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-i18next": "^18.0.3",
     "zustand": "^5.1.0"
   },
   "devDependencies": {
