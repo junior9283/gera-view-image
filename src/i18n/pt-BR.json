@@ -58,6 +58,7 @@
     "label": "Visualização da imagem",
     "empty": "Arraste imagens para esta janela para abri-las",
     "zoomLevel": "Zoom {{pct}}%",
+    "zoomPercent": "{{pct}}%",
     "dropHere": "Solte para abrir"
   },
   "error": {

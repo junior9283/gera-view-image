@@ -58,6 +58,7 @@
     "label": "Image view",
     "empty": "Drag images into this window to open them",
     "zoomLevel": "Zoom {{pct}}%",
+    "zoomPercent": "{{pct}}%",
     "dropHere": "Drop to open"
   },
   "error": {

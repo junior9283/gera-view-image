@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const targetDir = process.env.CARGO_TARGET_DIR ?? path.join(root, "src-tauri", "target");
@@ -13,6 +14,15 @@ export const fixtures = path.join(root, "src-tauri", "tests", "fixtures");
 // Portas próprias: outros agentes/execuções usam 4446/4447 (e o padrão 4444 do WebKitWebDriver).
 const PORT = Number(process.env.GVI_E2E_PORT ?? 4445);
 const NATIVE_PORT = PORT + 100;
+
+/** `TAURI_DRIVER`, senão o primeiro `tauri-driver` do PATH, senão `~/.cargo/bin`. */
+const driverPath =
+  process.env.TAURI_DRIVER ??
+  (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .map((d) => path.join(d, "tauri-driver"))
+    .find((p) => existsSync(p)) ??
+  path.join(os.homedir(), ".cargo", "bin", "tauri-driver");
 
 let driver: ChildProcess | undefined;
 let exiting = false;
@@ -37,7 +47,7 @@ export const config: WebdriverIO.Config = {
   logLevel: "warn",
 
   beforeSession: () => {
-    driver = spawn(path.join(os.homedir(), ".cargo", "bin", "tauri-driver"), ["--port", String(PORT), "--native-port", String(NATIVE_PORT)], {
+    driver = spawn(driverPath, ["--port", String(PORT), "--native-port", String(NATIVE_PORT)], {
       stdio: [null, process.stdout, process.stderr],
     });
     driver.on("error", (e) => {

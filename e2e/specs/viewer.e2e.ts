@@ -11,7 +11,7 @@ describe("visualizador", () => {
   });
 
   it("o erro aparece só no item ruim", async () => {
-    expect(await $$('[data-testid="thumb-error"]').length).toBe(1);
+    await browser.waitUntil(async () => (await $$('[data-testid="thumb-error"]').length) === 1, { timeout: 5000 });
     expect(await activeName()).toBe("alpha.png");
     expect(await $('[data-testid="doc-error"]').isExisting()).toBe(false);
   });

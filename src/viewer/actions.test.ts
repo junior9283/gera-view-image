@@ -4,7 +4,8 @@ import type { DocInfo } from "../ipc/types";
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 const setFullscreen = vi.fn(async () => {});
-vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ setFullscreen }) }));
+const isFullscreen = vi.fn(async () => false);
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ setFullscreen, isFullscreen }) }));
 
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { resetPrefsForTests, setPrefs } from "../store/prefs";
@@ -68,9 +69,10 @@ describe("navegação entre os abertos", () => {
 });
 
 describe("navegação na pasta", () => {
-  const folder = ["/pasta/0.png", "/pasta/1.png", "/pasta/2.png"];
+  let folder: string[];
 
   beforeEach(() => {
+    folder = ["/pasta/0.png", "/pasta/1.png", "/pasta/2.png"];
     invoke.mockImplementation(async (cmd: string, args: { paths?: string[]; id?: number }) => {
       if (cmd === "folder_images") return folder;
       if (cmd === "open_documents") return args.paths!.map((p) => info(Number(p.match(/(\d+)\.png/)![1]) + 10, { path: p }));
@@ -87,6 +89,17 @@ describe("navegação na pasta", () => {
     expect(ids()).toEqual([12]);
     expect(active()).toBe(12);
     await actions.first();
+    expect(ids()).toEqual([10]);
+  });
+
+  it("doc atual sumiu da listagem: usa a posição dele na ordem natural", async () => {
+    folder = ["/pasta/0.png", "/pasta/2.png", "/pasta/10.png"];
+    useDocs.getState().add([info(1, { path: "/pasta/1.png" })]);
+    await actions.next();
+    expect(ids()).toEqual([12]);
+    resetDocsForTests();
+    useDocs.getState().add([info(1, { path: "/pasta/1.png" })]);
+    await actions.prev();
     expect(ids()).toEqual([10]);
   });
 
@@ -156,6 +169,14 @@ describe("barra lateral, tela cheia e apresentação", () => {
     expect(useUi.getState().fullscreen).toBe(true);
     await actions.toggleFullscreen();
     expect(setFullscreen).toHaveBeenLastCalledWith(false);
+    expect(useUi.getState().fullscreen).toBe(false);
+  });
+
+  it("syncFullscreen copia o estado real da janela", async () => {
+    isFullscreen.mockResolvedValueOnce(true);
+    await actions.syncFullscreen();
+    expect(useUi.getState().fullscreen).toBe(true);
+    await actions.syncFullscreen();
     expect(useUi.getState().fullscreen).toBe(false);
   });
 

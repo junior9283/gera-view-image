@@ -88,13 +88,33 @@ export async function closeDocs(ids: DocId[]): Promise<void> {
 }
 
 /** Um só documento aberto: anda pela pasta dele, fechando o anterior (se não estiver sujo). */
+const baseName = (p: string) => p.slice(p.lastIndexOf("/") + 1);
+/** Aproxima a ordem natural do Rust (`folder_images`). */
+const natural = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+/** Índice do vizinho na pasta; `null` = fica onde está. */
+function folderTarget(list: string[], doc: DocInfo, dir: Dir, wrap: boolean): number | null {
+  const n = list.length;
+  let i = list.indexOf(doc.path);
+  if (i < 0) i = list.findIndex((p) => baseName(p) === doc.name);
+  if (i >= 0) {
+    const j = targetIndex(i, n, dir, wrap);
+    return j === i ? null : j;
+  }
+  // O arquivo saiu da pasta (apagado/renomeado por fora): anda a partir da posição em que estaria.
+  if (!n) return null;
+  const at = list.findIndex((p) => natural.compare(baseName(p), doc.name) > 0);
+  const ins = at < 0 ? n : at;
+  if (dir === "first") return 0;
+  if (dir === "last") return n - 1;
+  if (dir === "next") return ins < n ? ins : wrap ? 0 : null;
+  return ins > 0 ? ins - 1 : wrap ? n - 1 : null;
+}
+
 async function goFolder(doc: DocInfo, dir: Dir, wrap: boolean): Promise<void> {
   const list = await ipc.folderImages(doc.path);
-  let i = list.indexOf(doc.path);
-  if (i < 0) i = list.findIndex((p) => p.slice(p.lastIndexOf("/") + 1) === doc.name);
-  if (i < 0) return;
-  const j = targetIndex(i, list.length, dir, wrap);
-  if (j === i) return;
+  const j = folderTarget(list, doc, dir, wrap);
+  if (j === null) return;
   const [opened] = await useDocs.getState().open([list[j]]);
   if (!opened) return;
   activate(opened.id);
@@ -136,6 +156,12 @@ export const last = () => go("last");
 export async function setFullscreen(on: boolean): Promise<void> {
   await getCurrentWindow().setFullscreen(on);
   useUi.setState({ fullscreen: on });
+}
+
+/** Copia o estado real da janela (o gerenciador de janelas também pode mudar a tela cheia). */
+export async function syncFullscreen(): Promise<void> {
+  const on = await getCurrentWindow().isFullscreen();
+  if (useUi.getState().fullscreen !== on) useUi.setState({ fullscreen: on });
 }
 
 export const toggleFullscreen = () => setFullscreen(!useUi.getState().fullscreen);

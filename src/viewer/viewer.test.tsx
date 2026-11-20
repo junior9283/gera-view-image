@@ -170,6 +170,18 @@ describe("Slideshow", () => {
     expect(useUi.getState().slideshow).toBe(false);
   });
 
+  it("Space pausa, mas não quando o foco está num botão", () => {
+    useDocs.getState().add([info(1), info(2)]);
+    useUi.setState({ slideshow: true });
+    render(<Slideshow />);
+    fireEvent.keyDown(document.body, { key: " " });
+    expect(screen.getByLabelText("Continuar")).toBeTruthy();
+    const btn = screen.getByLabelText("Continuar");
+    btn.focus();
+    fireEvent.keyDown(btn, { key: " " });
+    expect(screen.getByLabelText("Continuar")).toBeTruthy();
+  });
+
   it("avança sozinho depois de slideshowSeconds", async () => {
     vi.useFakeTimers();
     try {

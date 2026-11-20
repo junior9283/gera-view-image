@@ -9,6 +9,7 @@ import { panBy, syncView, toggleFitActual, zoomBy } from "./actions";
 import { DocError } from "./DocError";
 import { bufferToCanvas, checkerPattern, dpr, useAnimatedFrame } from "./paint";
 import { visibleRegion, type Size, type ViewState } from "./zoom";
+import { ByteLru } from "../lib/byteLru";
 import "./viewer.css";
 
 /** Buffer já recebido do `render_view`: cobre `region` (px da imagem) de um documento/revisão/quadro. */
@@ -86,7 +87,7 @@ export function Viewport() {
 
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const buffers = useRef(new Map<number, Buf>());
+  const buffers = useRef(new ByteLru<number, Buf>(CACHE_BYTES, (b) => b.canvas.width * b.canvas.height * 4));
   /** Último buffer pintado: continua na tela (escalado) até chegar o novo, sem piscar. */
   const shown = useRef<Buf | null>(null);
   const seq = useRef(0);
@@ -172,14 +173,12 @@ export function Viewport() {
         const old = buffers.current.get(frame);
         if (old && old.id === id && old.rev === rev && old.seq > my) return;
         const b: Buf = { canvas: bufferToCanvas(v), id, rev, frame, region: need.rect, img: { w: doc.width, h: doc.height }, seq: my };
-        const map = buffers.current;
-        for (const [f, x] of map) if (x.id !== id || x.rev !== rev) map.delete(f);
-        map.set(frame, b);
-        let bytes = 0;
-        for (const [f, x] of [...map].reverse()) {
-          bytes += x.canvas.width * x.canvas.height * 4;
-          if (bytes > CACHE_BYTES && f !== frame) map.delete(f);
+        const cache = buffers.current;
+        for (const f of [...cache.keys()]) {
+          const x = cache.get(f)!;
+          if (x.id !== id || x.rev !== rev) cache.delete(f);
         }
+        cache.set(frame, b);
         paint.current();
       } catch (e) {
         console.error("falha ao desenhar a imagem:", e);
@@ -258,7 +257,7 @@ export function Viewport() {
         data-scale={scale ?? ""}
         aria-label={t("viewer.zoomLevel", { pct: Math.round((scale ?? 0) * 100) })}
       >
-        {Math.round((scale ?? 0) * 100)}%
+        {t("viewer.zoomPercent", { pct: Math.round((scale ?? 0) * 100) })}
       </div>
     </div>
   );

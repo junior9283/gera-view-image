@@ -11,6 +11,8 @@ import { UpdateHost } from "./updater/UpdateDialog";
 import { DialogHost } from "./prefs/DialogHost";
 import { initDocs, useDocs } from "./store/docs";
 import { useUi } from "./store/ui";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { syncFullscreen } from "./viewer/actions";
 
 let autoShown = false;
 
@@ -37,6 +39,21 @@ export default function App() {
 
   useEffect(() => {
     initDocs().catch((e) => console.error("falha ao abrir imagens:", e));
+  }, []);
+
+  // A tela cheia também muda por fora (gerenciador de janelas): o estado segue a janela real.
+  useEffect(() => {
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    const sync = () => void syncFullscreen().catch(() => {});
+    getCurrentWindow()
+      .onResized(sync)
+      .then((u) => (alive ? (unlisten = u) : u()))
+      .catch(() => {});
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {

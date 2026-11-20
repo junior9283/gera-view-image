@@ -52,7 +52,8 @@ export function Slideshow() {
   useEffect(() => {
     hideTimer.current = setTimeout(() => setControls(false), CONTROLS_MS);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== " ") return;
+      // Com foco num botão, o Space é dele (ativa o botão).
+      if (e.key !== " " || (e.target instanceof HTMLElement && e.target.closest("button"))) return;
       e.preventDefault();
       setPlaying((p) => !p);
     };

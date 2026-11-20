@@ -3,20 +3,23 @@ import { thumbnail } from "../ipc/commands";
 import type { DocInfo, ViewBuffer } from "../ipc/types";
 import { ErrorIcon } from "../viewer/DocError";
 import { bufferToCanvas, dpr } from "../viewer/paint";
+import { ByteLru } from "../lib/byteLru";
 
-/** Miniaturas recentes (LRU pela ordem de inserção do Map). */
-const cache = new Map<string, Promise<ViewBuffer>>();
-const CACHE_MAX = 150;
+/** Orçamento das miniaturas já recebidas (RGBA), em bytes. */
+export const THUMB_CACHE_BYTES = 96 * 1024 * 1024;
+export const thumbCache = new ByteLru<string, ViewBuffer>(THUMB_CACHE_BYTES, (v) => v.data.byteLength);
+const inflight = new Map<string, Promise<ViewBuffer>>();
 
 function load(key: string, get: () => Promise<ViewBuffer>): Promise<ViewBuffer> {
-  let p = cache.get(key);
-  if (p) cache.delete(key);
-  else {
-    p = get();
-    p.catch(() => cache.delete(key));
+  const hit = thumbCache.get(key);
+  if (hit) return Promise.resolve(hit);
+  let p = inflight.get(key);
+  if (!p) {
+    p = get()
+      .then((v) => (thumbCache.set(key, v), v))
+      .finally(() => inflight.delete(key));
+    inflight.set(key, p);
   }
-  cache.set(key, p);
-  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
   return p;
 }
 
@@ -29,7 +32,10 @@ interface Props {
   fetchSize?: number;
 }
 
-/** Miniatura sob demanda: só pede `thumbnail` quando entra na área visível. */
+/**
+ * Miniatura sob demanda: só pede `thumbnail` quando está na área visível e libera o canvas
+ * (0×0) quando sai dela; ao voltar, redesenha do cache.
+ */
 export function Thumb({ doc, frame = 0, size, fetchSize = size }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -39,12 +45,7 @@ export function Thumb({ doc, frame = 0, size, fetchSize = size }: Props) {
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setVisible(true);
-          io.disconnect();
-        }
-      },
+      (entries) => setVisible(entries[entries.length - 1].isIntersecting),
       { rootMargin: "200px" },
     );
     io.observe(el);
@@ -53,7 +54,11 @@ export function Thumb({ doc, frame = 0, size, fetchSize = size }: Props) {
 
   const { id, rev, error } = doc;
   useEffect(() => {
-    if (!visible || error) return;
+    if (error) return;
+    if (!visible) {
+      if (canvas.current) canvas.current.width = canvas.current.height = 0;
+      return;
+    }
     const px = Math.round(fetchSize * dpr());
     let alive = true;
     load(`${id}:${rev}:${frame}:${px}`, () => thumbnail(id, frame, px))
