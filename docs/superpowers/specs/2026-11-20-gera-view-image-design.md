@@ -111,10 +111,22 @@ visualização rápida, marcação, ajustes de cor/tamanho e exportação.
 
 ## 6. Visual
 
-- Janela sem a decoração do sistema, com **barra de título unificada no estilo macOS**: três botões
-  coloridos à esquerda (fechar/minimizar/maximizar), nome do arquivo ao centro e a barra de ferramentas
-  do Preview à direita (barra lateral, zoom, compartilhar/exportar, marcação, girar, buscar/inspetor).
-  Os botões e ícones são desenhados para o projeto.
+- Janela sem a decoração do sistema, com **barra de título unificada no estilo macOS**: nome do arquivo
+  e a barra de ferramentas do Preview (barra lateral, zoom, compartilhar/exportar, marcação, girar,
+  buscar/inspetor). Os ícones da barra de ferramentas são desenhados para o projeto.
+- **Botões fechar/minimizar/maximizar dinâmicos, seguindo o tema do Linux** (decisão do usuário, 2026-11-20):
+  - **Lado e ordem**: lidos do sistema. No KDE, `~/.config/kwinrc` `[org.kde.kdecoration2] ButtonsOnLeft/ButtonsOnRight`
+    (letras `I`=minimizar, `A`=maximizar, `X`=fechar). No GNOME e outros, `org.gnome.desktop.wm.preferences button-layout`
+    (ex.: `'icon:minimize,maximize,close'`). Botões ausentes na configuração não aparecem.
+  - **Aparência**: estilo do decorador ativo. No KDE `kwinrc` `[org.kde.kdecoration2] library/theme` (ex.: Breeze), e no
+    GNOME/GTK o tema GTK (Adwaita etc.). Há estilos embutidos para **Breeze, Adwaita e elementary**. Para outros temas,
+    usar os ícones `window-close-symbolic`, `window-minimize-symbolic`, `window-maximize-symbolic` e
+    `window-restore-symbolic` do **tema de ícones** ativo, coloridos pelas cores do esquema
+    (`kdeglobals [WM]`/`[Colors:Window]` ou portal).
+  - **Claro/escuro e cor de destaque**: via portal `org.freedesktop.appearance` (`color-scheme`, `accent-color`).
+  - **Ao vivo**: mudanças de tema ou configuração (sinal `SettingChanged` do portal + monitoramento de `kwinrc`,
+    `kdeglobals` e gsettings) atualizam os botões sem reiniciar o app.
+  - Máquina do usuário: KDE Plasma Wayland, decoração Breeze, `ButtonsOnRight` = minimizar, maximizar, fechar.
 - *(Minha decisão)*: o Linux não tem barra de menus global como o macOS, então o menu
   (Arquivo, Editar, Visualizar, Ir, Ferramentas, Janela, Ajuda) fica numa linha compacta dentro
   da barra de título. Há uma preferência para usar a decoração nativa do sistema.
