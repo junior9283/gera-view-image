@@ -1,5 +1,6 @@
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useForcedNative } from "../chrome/nativeDecorations";
 import { setPrefs, usePrefs, type Prefs } from "../store/prefs";
 import "./prefs.css";
 
@@ -20,6 +21,14 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const prefs = usePrefs();
   const titleId = useId();
+  const forcedNative = useForcedNative();
+  // Edição local: deixa o campo ficar vazio/parcial; só ao confirmar vira inteiro entre 1 e 60.
+  const [secs, setSecs] = useState<string | null>(null);
+  const commitSecs = () => {
+    const n = Math.round(Number(secs));
+    if (secs !== null && secs !== "" && Number.isFinite(n)) setPrefs({ slideshowSeconds: Math.min(60, Math.max(1, n)) });
+    setSecs(null);
+  };
 
   return (
     <div className="prefs-backdrop" role="presentation">
@@ -52,8 +61,10 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
             type="number"
             min={1}
             max={60}
-            value={prefs.slideshowSeconds}
-            onChange={(e) => setPrefs({ slideshowSeconds: e.target.valueAsNumber })}
+            value={secs ?? prefs.slideshowSeconds}
+            onChange={(e) => setSecs(e.target.value)}
+            onBlur={commitSecs}
+            onKeyDown={(e) => e.key === "Enter" && commitSecs()}
           />
         </Row>
 
@@ -66,7 +77,9 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
         <Row label={t("prefs.nativeDecorations")}>
           <input
             type="checkbox"
-            checked={prefs.nativeDecorations}
+            checked={prefs.nativeDecorations || forcedNative}
+            disabled={forcedNative}
+            title={forcedNative ? t("prefs.nativeUnavailable") : undefined}
             onChange={(e) => setPrefs({ nativeDecorations: e.target.checked })}
           />
         </Row>

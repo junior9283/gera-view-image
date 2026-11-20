@@ -1,16 +1,38 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { setPrefs, usePrefs } from "../store/prefs";
+import { usePrefs } from "../store/prefs";
 
-/** Fallback automático (spec §13.3): decoração nativa, guardada nas prefs para as próximas aberturas. */
+// Fallback automático (spec §13.3): vale só nesta sessão e nunca é gravado, para não virar a
+// escolha do usuário (`prefs.nativeDecorations`) nem sobreviver a um falso negativo da sonda.
+let forcedNative = false;
+const listeners = new Set<() => void>();
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => listeners.delete(l);
+};
+
 export function enableNativeDecorations(): void {
-  setPrefs({ nativeDecorations: true });
+  if (forcedNative) return;
+  forcedNative = true;
+  listeners.forEach((l) => l());
 }
 
-/** `override` é o ajuste manual (prop); `prefs.nativeDecorations` também liga o modo nativo. */
+/** Só para testes. */
+export function resetForcedNative(): void {
+  forcedNative = false;
+  listeners.forEach((l) => l());
+}
+
+/** Verdadeiro quando o sistema não suporta a janela sem decoração (nesta sessão). */
+export function useForcedNative(): boolean {
+  return useSyncExternalStore(subscribe, () => forcedNative);
+}
+
+/** `override` é o ajuste manual (prop); a preferência do usuário e o fallback da sessão também ligam o modo nativo. */
 export function useNativeDecorations(override = false): boolean {
-  return usePrefs().nativeDecorations || override;
+  const forced = useForcedNative();
+  return usePrefs().nativeDecorations || forced || override;
 }
 
 /** Na inicialização: sem compositor/visual RGBA a janela transparente não funciona. */

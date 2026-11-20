@@ -70,10 +70,21 @@ describe("prefs", () => {
     expect(p.autoUpdate).toBe(false);
     expect(p.lastUpdateCheck).toBe("2026-01-01T00:00:00.000Z");
     expect(p.skippedVersion).toBe("0.3.0");
-    expect(p.nativeDecorations).toBe(true);
+    expect(p.nativeDecorations).toBe(false);
     expect(disk.get("skippedVersion")).toBe("0.3.0");
     expect(localStorage.getItem("update.skipped")).toBeNull();
     expect(localStorage.getItem("gvi.nativeDecorations")).toBeNull();
+  });
+
+  it("setPrefs antes do carregamento terminar não se perde e é gravado", async () => {
+    disk.set("browseFolder", true);
+    disk.set("openBehavior", "actual");
+    const loading = loadPrefs();
+    setPrefs({ browseFolder: false });
+    const p = await loading;
+    expect(p.browseFolder).toBe(false);
+    expect(p.openBehavior).toBe("actual");
+    await vi.waitFor(() => expect(disk.get("browseFolder")).toBe(false));
   });
 
   it("o store tem precedência sobre o localStorage", async () => {

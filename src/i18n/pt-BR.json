@@ -37,6 +37,7 @@
     },
     "slideshowSeconds": "Segundos por imagem na apresentação",
     "autoUpdate": "Verificar atualizações automaticamente",
+    "nativeUnavailable": "Indisponível: o sistema não suporta janelas transparentes",
     "nativeDecorations": "Usar a barra de título do sistema",
     "language": "Idioma",
     "lang": {

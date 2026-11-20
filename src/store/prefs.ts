@@ -63,6 +63,9 @@ export function sanitize(raw: Record<string, unknown>): Prefs {
 }
 
 let state: Prefs = DEFAULT_PREFS;
+let loaded = false;
+/** Mudanças feitas antes de o `prefs.json` terminar de carregar: valem sobre o disco e são gravadas depois. */
+let dirty: Partial<Prefs> = {};
 let store: Store | null = null;
 let loading: Promise<Prefs> | null = null;
 const listeners = new Set<() => void>();
@@ -80,7 +83,10 @@ export function usePrefs(): Prefs {
   return useSyncExternalStore(subscribePrefs, getPrefs);
 }
 
-/** Chaves antigas do `localStorage` (updater e decoração nativa): lidas uma vez e removidas. */
+/**
+ * Chaves antigas do `localStorage` do updater: lidas uma vez e removidas. `gvi.nativeDecorations` só é
+ * removida: vinha do fallback automático e não dá para distingui-la de uma escolha do usuário.
+ */
 function legacyValues(): Partial<Record<keyof Prefs, unknown>> {
   try {
     const get = (k: string) => localStorage.getItem(k);
@@ -88,7 +94,6 @@ function legacyValues(): Partial<Record<keyof Prefs, unknown>> {
     if (get("update.auto") !== null) found.autoUpdate = get("update.auto") !== "false";
     if (get("update.lastCheck") !== null) found.lastUpdateCheck = get("update.lastCheck");
     if (get("update.skipped") !== null) found.skippedVersion = get("update.skipped");
-    if (get("gvi.nativeDecorations") === "1") found.nativeDecorations = true;
     return found;
   } catch {
     return {};
@@ -124,10 +129,16 @@ async function doLoad(): Promise<Prefs> {
   } catch {
     // Sem store (ex.: fora do Tauri): segue em memória, e o localStorage continua intacto.
     store = null;
+    loaded = true;
+    dirty = {};
     return state;
   }
-  state = sanitize(raw);
+  const pending = dirty;
+  dirty = {};
+  loaded = true;
+  state = sanitize({ ...raw, ...pending });
   emit();
+  persist(Object.keys(pending) as (keyof Prefs)[]);
   return state;
 }
 
@@ -138,21 +149,27 @@ export function loadPrefs(): Promise<Prefs> {
 
 let pendingSave: Promise<void> = Promise.resolve();
 
-/** Atualiza na hora (memória) e grava no store em segundo plano. */
+function persist(keys: (keyof Prefs)[]) {
+  const s = store;
+  if (!s || !keys.length) return;
+  const values = state;
+  pendingSave = pendingSave
+    .then(async () => {
+      await Promise.all(keys.map((k) => s.set(k, values[k])));
+      await s.save();
+    })
+    .catch(() => {});
+}
+
+/** Atualiza na hora (memória) e grava no store em segundo plano (após o carregamento, se ainda não houve). */
 export function setPrefs(patch: Partial<Prefs>): void {
   const clean = sanitize({ ...state, ...patch });
   const changed = KEYS.filter((k) => JSON.stringify(clean[k]) !== JSON.stringify(state[k]));
   if (!changed.length) return;
   state = clean;
   emit();
-  const s = store;
-  if (!s) return;
-  pendingSave = pendingSave
-    .then(async () => {
-      await Promise.all(changed.map((k) => s.set(k, clean[k])));
-      await s.save();
-    })
-    .catch(() => {});
+  if (loaded) persist(changed);
+  else for (const k of changed) (dirty as Record<string, unknown>)[k] = clean[k];
 }
 
 /** Põe o arquivo no topo dos recentes, sem duplicatas e no máximo 20. */
@@ -163,6 +180,8 @@ export function addRecent(path: string): void {
 /** Só para testes. */
 export function resetPrefsForTests(): void {
   state = DEFAULT_PREFS;
+  loaded = false;
+  dirty = {};
   store = null;
   loading = null;
   pendingSave = Promise.resolve();

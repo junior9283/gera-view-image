@@ -37,6 +37,7 @@
     },
     "slideshowSeconds": "Seconds per image in slideshow",
     "autoUpdate": "Check for updates automatically",
+    "nativeUnavailable": "Unavailable: the system does not support transparent windows",
     "nativeDecorations": "Use the system title bar",
     "language": "Language",
     "lang": {

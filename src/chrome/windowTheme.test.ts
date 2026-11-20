@@ -43,6 +43,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => win }));
 
 const { TitleBar, WindowFrame } = await import("./TitleBar");
 const { getPrefs, resetPrefsForTests, setPrefs } = await import("../store/prefs");
+const { resetForcedNative } = await import("./nativeDecorations");
 
 const buttons = (side: "left" | "right") =>
   Array.from(document.querySelectorAll(`[data-side="${side}"] [data-button]`)).map((b) =>
@@ -52,6 +53,7 @@ const buttons = (side: "left" | "right") =>
 beforeEach(() => {
   localStorage.clear();
   resetPrefsForTests();
+  resetForcedNative();
   compositing = true;
   current = base;
   maximized = false;
@@ -130,7 +132,7 @@ describe("barra de título", () => {
 });
 
 describe("fallback para a decoração nativa", () => {
-  it("startResizeDragging rejeitado liga o modo nativo, esconde botões e bordas e guarda a decisão", async () => {
+  it("startResizeDragging rejeitado liga o modo nativo, esconde botões e bordas, sem gravar a preferência", async () => {
     win.startResizeDragging.mockRejectedValueOnce(new Error("sem suporte"));
     render(createElement(WindowFrame, null, createElement(TitleBar, { title: "x" })));
     await waitFor(() => expect(document.querySelector("[data-button]")).not.toBeNull());
@@ -138,7 +140,7 @@ describe("fallback para a decoração nativa", () => {
     await waitFor(() => expect(win.setDecorations).toHaveBeenCalledWith(true));
     await waitFor(() => expect(document.querySelector("[data-button]")).toBeNull());
     expect(document.querySelector(".resize-edge")).toBeNull();
-    expect(getPrefs().nativeDecorations).toBe(true);
+    expect(getPrefs().nativeDecorations).toBe(false);
   });
 
   it("sem composição (transparência indisponível) cai na decoração nativa na inicialização", async () => {
@@ -148,11 +150,27 @@ describe("fallback para a decoração nativa", () => {
     expect(document.querySelector("[data-button]")).toBeNull();
   });
 
-  it("decisão guardada vale na próxima abertura", async () => {
+  it("sonda falha, usuário desliga e reabre: segue nativo pela sessão e a pref continua false", async () => {
+    compositing = false;
+    const first = render(createElement(TitleBar, { title: "x" }));
+    await waitFor(() => expect(document.querySelector("[data-button]")).toBeNull());
+    setPrefs({ nativeDecorations: false });
+    first.unmount();
+    render(createElement(TitleBar, { title: "x" }));
+    expect(document.querySelector("[data-button]")).toBeNull();
+    expect(getPrefs().nativeDecorations).toBe(false);
+  });
+
+  it("com compositor, a escolha do usuário vale na próxima abertura", async () => {
     setPrefs({ nativeDecorations: true });
+    const first = render(createElement(TitleBar, { title: "x" }));
+    first.unmount();
     render(createElement(TitleBar, { title: "x" }));
     await waitFor(() => expect(win.setDecorations).toHaveBeenCalledWith(true));
     expect(document.querySelector("[data-button]")).toBeNull();
+    setPrefs({ nativeDecorations: false });
+    await waitFor(() => expect(win.setDecorations).toHaveBeenLastCalledWith(false));
+    expect(document.querySelector("[data-button]")).not.toBeNull();
   });
 });
 
