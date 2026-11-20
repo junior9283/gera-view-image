@@ -6,7 +6,7 @@
 
 ## Marco 0: validação WebKitGTK (spec §13.2)
 Máquina: KDE Plasma Wayland, Intel UHD + Nvidia GTX 1650 (híbrida). Binário release, JPEG 24 MP (6000x4000, 6,1 MiB, plasma ImageMagick).
-Contorno aplicado por padrão: `WEBKIT_DISABLE_DMABUF_RENDERER=1` (desligar com `GVI_GPU_ACCEL=1`; `GVI_SAFE_RENDER=1` soma `WEBKIT_DISABLE_COMPOSITING_MODE=1`).
+Contornos aplicados por padrão: `WEBKIT_DISABLE_DMABUF_RENDERER=1` e `WEBKIT_DISABLE_COMPOSITING_MODE=1` (desligar ambos com `GVI_GPU_ACCEL=1`; `GVI_SAFE_RENDER=1` segue aceito, mas é redundante). Esta tabela foi medida só com o DMABUF desligado: ver bug em `bugs.md`.
 
 | GPU | decodificado | buffer pronto | imagem exibida (ms desde o início do processo) | Captura |
 |---|---|---|---|---|
@@ -18,6 +18,7 @@ Contorno aplicado por padrão: `WEBKIT_DISABLE_DMABUF_RENDERER=1` (desligar com 
 - Tempo de abertura (~0,8-1,2 s) fica acima da meta de 400 ms; o decode do image crate (24 MP) domina (0,5-0,9 s). Otimizar na Tarefa 4 (zune-jpeg com redução de escala/DCT scaling).
 
 ## Armadilhas
+- Validar renderização/GPU com a janela transparente e sem decoração (como em produção) e num pacote instalado, sem variáveis de ambiente; o Marco 0 passou e o app instalado ainda ficava em branco (ver `bugs.md`).
 - `bundle.category` do Tauri usa nomes do enum (`GraphicsAndDesign`), não da freedesktop; `Categories=` do `.desktop` vem do template próprio.
 - Build release com LTO leva ~14 min com a máquina carregada; só o bundling falha ao final se a config estiver inválida.
 - TODO(Tarefa 4): smoke do CI usa `dpkg -I`/`rpm -qi` até existir `gera-view-image --version`.
