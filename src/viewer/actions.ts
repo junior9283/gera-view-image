@@ -1,12 +1,12 @@
-// Ações do visualizador. A Task 6 liga estas funções aos menus e ao keymap completo.
+// Ações do visualizador, ligadas aos menus e ao keymap em src/shortcuts/appCommands.ts.
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as ipc from "../ipc/commands";
-import type { DocId, DocInfo } from "../ipc/types";
+import type { DocId, DocInfo, Rect } from "../ipc/types";
 import { confirmClose } from "../file/unsaved";
 import { useDocs } from "../store/docs";
 import { getPrefs } from "../store/prefs";
 import { useUi, type SidebarMode } from "../store/ui";
-import { clampPan, fitState, nextStep, zoomAt, type Size, type ViewState } from "./zoom";
+import { clampPan, fitState, nextStep, rectState, zoomAt, type Size, type ViewState } from "./zoom";
 
 export function activeDoc(): DocInfo | null {
   const { docs, activeId } = useDocs.getState();
@@ -50,6 +50,9 @@ export const zoomIn = stepZoom(1);
 export const zoomOut = stepZoom(-1);
 export const actualSize = () => changeView((v, _img, size) => ({ ...zoomAt(v, 1 / v.scale, center(size)), mode: "actual" }));
 export const fitToWindow = () => changeView((_v, img, size) => fitState(img, size, "fit"));
+
+/** Ampliar Seleção: enquadra o retângulo (px da imagem). */
+export const zoomToRect = (r: Rect) => changeView((_v, _img, size) => rectState(r, size));
 
 /** Zoom contínuo (Ctrl+roda, pinça) ancorado no cursor. */
 export const zoomBy = (factor: number, anchor: { x: number; y: number }) => changeView((v) => zoomAt(v, factor, anchor));

@@ -10,6 +10,9 @@ import { DocError } from "./DocError";
 import { bufferToCanvas, checkerPattern, dpr, useAnimatedFrame } from "./paint";
 import { visibleRegion, type Size, type ViewState } from "./zoom";
 import { ByteLru } from "../lib/byteLru";
+import { Slot, type OverlayProps } from "../lib/slots";
+import { useSelection } from "../store/selection";
+import { isTyping } from "../shortcuts/keymap";
 import "./viewer.css";
 
 /** Buffer já recebido do `render_view`: cobre `region` (px da imagem) de um documento/revisão/quadro. */
@@ -187,10 +190,23 @@ export function Viewport() {
     return () => clearTimeout(timer);
   }, [doc, frame, view, viewSize]);
 
-  // Roda, pinça e arraste (listeners nativos: a roda precisa de passive: false).
+  // Roda, pinça e arraste (listeners nativos: a roda precisa de passive: false). O botão esquerdo só
+  // faz pan na ferramenta "mover" (nenhuma ferramenta de seleção) ou com Espaço pressionado; com uma
+  // ferramenta de seleção, o ponteiro é da camada de seleção. O botão do meio sempre faz pan.
   useEffect(() => {
     const el = box.current!;
     let drag: { x: number; y: number; id: number } | null = null;
+    let space = false;
+    const setSpace = (on: boolean) => {
+      space = on;
+      el.classList.toggle("space-pan", on);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space" && !e.repeat && !isTyping(e.target) && !(e.target instanceof HTMLButtonElement)) setSpace(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => e.code === "Space" && setSpace(false);
+    const onBlur = () => setSpace(false);
+    const selecting = () => useSelection.getState().selectionTool !== null && !space;
     const anchor = (e: MouseEvent) => {
       const r = el.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -209,8 +225,8 @@ export function Viewport() {
       }
     };
     const onDown = (e: PointerEvent) => {
-      if (e.button !== 0 && e.button !== 1) return;
-      drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      if (e.button !== 1 && (e.button !== 0 || selecting())) return;
+      drag ={ x: e.clientX, y: e.clientY, id: e.pointerId };
       el.classList.add("dragging");
       try {
         el.setPointerCapture(e.pointerId);
@@ -227,7 +243,7 @@ export function Viewport() {
       drag = null;
       el.classList.remove("dragging");
     };
-    const onDouble = (e: MouseEvent) => toggleFitActual(anchor(e));
+    const onDouble = (e: MouseEvent) => selecting() || toggleFitActual(anchor(e));
     const listeners: [string, EventListener, AddEventListenerOptions?][] = [
       ["wheel", onWheel as EventListener, { passive: false }],
       ["pointerdown", onDown as EventListener],
@@ -237,16 +253,31 @@ export function Viewport() {
       ["lostpointercapture", onEnd],
       ["dblclick", onDouble as EventListener],
     ];
+    const winListeners: [string, EventListener][] = [
+      ["keydown", onKeyDown as EventListener],
+      ["keyup", onKeyUp as EventListener],
+      ["blur", onBlur],
+    ];
     for (const [n, f, o] of listeners) el.addEventListener(n, f, o);
+    for (const [n, f] of winListeners) window.addEventListener(n, f);
     return () => {
       for (const [n, f] of listeners) el.removeEventListener(n, f);
+      for (const [n, f] of winListeners) window.removeEventListener(n, f);
     };
   }, []);
+
+  const overlay: OverlayProps | null =
+    doc && !doc.error && view ? { scale: view.scale, panX: view.panX, panY: view.panY, imageW: doc.width, imageH: doc.height } : null;
 
 
   return (
     <div ref={box} className="viewport" data-testid="viewport" aria-label={t("viewer.label")} style={{ background }}>
       <canvas ref={canvas} className="viewport-canvas" />
+      {overlay && (
+        <div className="viewport-overlay">
+          <Slot name="viewport-overlay" props={overlay} />
+        </div>
+      )}
       {doc?.error && <DocError doc={doc} />}
       {!hasDocs && <div className="viewport-empty">{t("viewer.empty")}</div>}
       <div

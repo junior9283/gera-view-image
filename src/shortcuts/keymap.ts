@@ -115,7 +115,7 @@ export const isTyping = (t: EventTarget | null) =>
 export function matchShortcut(e: KeyboardEvent): CommandId | null {
   if (isTyping(e.target)) return null;
   const c = comboOf(e);
-  return (c && BY_COMBO.get(c)) ?? null;
+  return c ? (BY_COMBO.get(c) ?? null) : null;
 }
 
 const SYMBOLS: Record<string, string> = { ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓", Escape: "Esc", Delete: "Del" };

@@ -5,7 +5,14 @@ import { Viewport } from "./viewer/Viewport";
 import { Slideshow } from "./viewer/Slideshow";
 import { Sidebar } from "./sidebar/Sidebar";
 import { ContactSheet } from "./sidebar/ContactSheet";
-import { useViewerShortcuts } from "./viewer/shortcuts";
+import { MenuBar } from "./chrome/MenuBar";
+import { Toolbar } from "./chrome/Toolbar";
+import { ToastHost } from "./chrome/Toast";
+import { ShortcutsDialog } from "./chrome/ShortcutsDialog";
+import { Slot } from "./lib/slots";
+import { useShortcuts } from "./shortcuts/useShortcuts";
+import { registerAppCommands } from "./shortcuts/appCommands";
+import "./select/register";
 import { useFileDrop } from "./viewer/fileDrop";
 import { UpdateHost } from "./updater/UpdateDialog";
 import { DialogHost } from "./prefs/DialogHost";
@@ -37,7 +44,8 @@ export default function App() {
   const fullscreen = useUi((s) => s.fullscreen);
   const slideshow = useUi((s) => s.slideshow);
   const dropping = useFileDrop();
-  useViewerShortcuts();
+  useEffect(registerAppCommands, []);
+  useShortcuts();
   useAutoSidebar();
 
   useEffect(() => {
@@ -56,7 +64,14 @@ export default function App() {
 
   return (
     <WindowFrame>
-      {!fullscreen && <TitleBar title={title ?? "Gera View Image"} />}
+      {!fullscreen && (
+        <>
+          <TitleBar title={title ?? "Gera View Image"} leading={<MenuBar />}>
+            <Toolbar />
+          </TitleBar>
+          <Slot name="below-toolbar" props={{}} />
+        </>
+      )}
       <div className="app-body">
         {sidebar === "thumbs" && <Sidebar />}
         {sidebar === "contact" ? <ContactSheet /> : <Viewport />}
@@ -67,6 +82,8 @@ export default function App() {
       <DialogHost />
       <AdjustHost />
       <InspectorHost />
+      <ShortcutsDialog />
+      <ToastHost />
     </WindowFrame>
   );
 }

@@ -11,6 +11,8 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ setFullscr
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { resetPrefsForTests, setPrefs } from "../store/prefs";
 import { resetUiForTests, useUi } from "../store/ui";
+import { useSelection } from "../store/selection";
+import { registerSlot, type OverlayProps } from "../lib/slots";
 import { Viewport } from "./Viewport";
 import { Slideshow } from "./Slideshow";
 import { Sidebar } from "../sidebar/Sidebar";
@@ -30,7 +32,7 @@ beforeAll(() => {
     observe(el: Element) {
       Object.defineProperty(el, "clientWidth", { configurable: true, value: 800 });
       Object.defineProperty(el, "clientHeight", { configurable: true, value: 600 });
-      this.cb([], this as unknown as ResizeObserver);
+      this.cb([{ target: el, contentRect: { width: 800, height: 600 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
     }
     unobserve() {}
     disconnect() {}
@@ -56,6 +58,7 @@ beforeEach(() => {
   resetPrefsForTests();
   setPrefs({ language: "pt-BR" });
   resetUiForTests();
+  useSelection.setState({ selection: null, selectionTool: null });
 });
 afterEach(cleanup);
 
@@ -118,6 +121,50 @@ describe("Viewport", () => {
     render(<Viewport />);
     fireEvent.wheel(screen.getByTestId("viewport"), { ctrlKey: true, deltaY: -100, clientX: 400, clientY: 300 });
     expect(useUi.getState().view!.scale).toBeGreaterThan(0.2);
+  });
+
+  it("monta o slot viewport-overlay com a transformação da imagem", () => {
+    const off = registerSlot<OverlayProps>("viewport-overlay", "teste", (p) => <div data-testid="ov" data-p={JSON.stringify(p)} />);
+    useDocs.getState().add([info(1)]);
+    render(<Viewport />);
+    act(() => useUi.getState().setView({ scale: 0.5, panX: 10, panY: 20, mode: "free" }));
+    expect(JSON.parse(screen.getByTestId("ov").dataset.p!)).toEqual({ scale: 0.5, panX: 10, panY: 20, imageW: 4000, imageH: 3000 });
+    off();
+  });
+
+  it("a camada de seleção registrada por src/select aparece sobre a imagem", async () => {
+    await import("../select/register");
+    useDocs.getState().add([info(1)]);
+    render(<Viewport />);
+    expect(screen.getByTestId("viewport").querySelector(".viewport-overlay canvas")).not.toBeNull();
+  });
+
+  it("com ferramenta de seleção o botão esquerdo não faz pan; o do meio e Espaço+esquerdo fazem", () => {
+    useDocs.getState().add([info(1)]);
+    useSelection.getState().setSelectionTool("rect");
+    render(<Viewport />);
+    act(() => useUi.getState().setView({ scale: 1, panX: -100, panY: -100, mode: "actual" }));
+    const vp = screen.getByTestId("viewport");
+    vp.setPointerCapture = () => {};
+    const drag = (button: number, dx: number) => {
+      fireEvent.pointerDown(vp, { button, clientX: 100, clientY: 100, pointerId: 1 });
+      fireEvent.pointerMove(vp, { clientX: 100 + dx, clientY: 100, pointerId: 1 });
+      fireEvent.pointerUp(vp, { pointerId: 1 });
+    };
+    drag(0, -10);
+    expect(useUi.getState().view).toMatchObject({ panX: -100 });
+    drag(1, -10);
+    expect(useUi.getState().view).toMatchObject({ panX: -110 });
+    fireEvent.keyDown(window, { key: " ", code: "Space" });
+    expect(vp.classList.contains("space-pan")).toBe(true);
+    drag(0, -10);
+    expect(useUi.getState().view).toMatchObject({ panX: -120 });
+    fireEvent.keyUp(window, { key: " ", code: "Space" });
+    drag(0, -10);
+    expect(useUi.getState().view).toMatchObject({ panX: -120 });
+    useSelection.getState().setSelectionTool(null);
+    drag(0, -10);
+    expect(useUi.getState().view).toMatchObject({ panX: -130 });
   });
 });
 

@@ -214,13 +214,15 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
     };
   }, [shown, size, view, scale, tool, alphaSprite, bitmapEdges]);
 
-  // Alfa Instantâneo pendente: Enter/Delete aplica, Escape descarta.
+  // Alfa Instantâneo pendente: Enter/Delete aplica, Escape descarta. Ouve na captura e consome a
+  // tecla, para o keymap global (Delete = Apagar, Esc = Desmarcar) não agir em dobro.
   useEffect(() => {
     if (!alpha) return;
     const onKey = (e: KeyboardEvent) => {
       // Digitar num campo de texto não pode aplicar nem descartar o Alfa Instantâneo.
       if ((e.target as Element | null)?.closest?.("input, textarea, [contenteditable]:not([contenteditable=false])")) return;
       if (e.key === "Escape") {
+        e.preventDefault();
         clearAlpha();
         setSelection(null);
       } else if (e.key === "Enter" || e.key === "Delete" || e.key === "Backspace") {
@@ -231,8 +233,8 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
         });
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [alpha, applyOp, docId, setSelection, clearAlpha]);
 
   const local = (e: ReactPointerEvent): [number, number] => {

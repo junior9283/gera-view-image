@@ -10,7 +10,9 @@ import { subscribe } from "../lib/events";
 interface Props {
   /** Nome do arquivo, mostrado ao centro. */
   title: string;
-  /** Slot da Tarefa 6: menus e barra de ferramentas ficam entre o título e os botões. */
+  /** Barra de menus, à esquerda do título. */
+  leading?: ReactNode;
+  /** Barra de ferramentas, entre o título e os botões. */
   children?: ReactNode;
   /** `prefs.nativeDecorations`: usa a decoração do sistema e esconde os botões próprios. */
   nativeDecorations?: boolean;
@@ -36,7 +38,7 @@ export function useMaximized(): boolean {
   return maximized;
 }
 
-export function TitleBar({ title, children, nativeDecorations: override = false }: Props) {
+export function TitleBar({ title, leading, children, nativeDecorations: override = false }: Props) {
   const { t } = useTranslation();
   const nativeDecorations = useNativeDecorations(override);
   useCompositingProbe();
@@ -63,12 +65,14 @@ export function TitleBar({ title, children, nativeDecorations: override = false 
 
   // Duplo clique para maximizar: o drag.js do Tauri já trata (e.detail === 2) quando o alvo tem
   // data-tauri-drag-region. Por isso não há onDoubleClick aqui, e só o header e o título levam o
-  // atributo; botões e o slot de ferramentas (children) ficam fora da região de arrasto.
+  // atributo; botões, menus e ferramentas ficam fora da região de arrasto. Na decoração nativa o
+  // sistema já mostra o título: o espaço continua (empurra as ferramentas), mas vazio.
   return (
     <header className="titlebar" data-tauri-drag-region onContextMenu={onContext}>
       {buttons("left")}
+      {leading && <div className="titlebar-leading">{leading}</div>}
       <div className="titlebar-title" data-tauri-drag-region>
-        {title}
+        {nativeDecorations ? null : title}
       </div>
       {children && <div className="titlebar-slot">{children}</div>}
       {buttons("right")}
