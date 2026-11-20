@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react"
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "../ipc/types";
 import type { OverlayProps } from "../lib/slots";
+import { toImage } from "../select/tools";
 import { useDocs } from "../store/docs";
 import { dpr } from "../viewer/paint";
 import { addAnnotation, commit, deleteSelected } from "./actions";
@@ -123,10 +124,9 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
   // Ponteiro: ouvintes nativos, para impedir o pan do Viewport (ouvinte nativo no ancestral).
   useEffect(() => {
     const el = wrap.current!;
-    const toImage = (e: MouseEvent): Point => {
+    const at = (e: MouseEvent): Point => {
       const r = el.getBoundingClientRect();
-      const { scale, panX, panY } = cur.current.view;
-      return [(e.clientX - r.left - panX) / scale, (e.clientY - r.top - panY) / scale];
+      return toImage(cur.current.view, e.clientX - r.left, e.clientY - r.top);
     };
 
     const onDown = (e: PointerEvent) => {
@@ -137,7 +137,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       const id = cur.current.docId;
       const st = useMarkup.getState();
       if (!st.visible || id === null || e.button !== 0) return;
-      const p = toImage(e);
+      const p = at(e);
       const { scale } = cur.current.view;
       const items = getItems(id);
       let d: Drag | null = null;
@@ -186,13 +186,13 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       const d = drag.current;
       const id = cur.current.docId;
       if (!d || id === null) return;
-      const p = toImage(e);
+      const p = at(e);
       const { scale } = cur.current.view;
       const st = useMarkup.getState();
       if (d.kind === "create") setDraft(createShape(d.tool, d.start, p, st.style, scale));
       else if (d.kind === "stroke") {
         d.points.push(p);
-        setDraft({ id: "draft", kind: "freehand", geom: { points: [...d.points] }, style: toImageStyle(st.style, scale) });
+        setDraft({ id: "draft", kind: "freehand", geom: { points: d.points }, style: toImageStyle(st.style, scale) });
       } else if (d.kind === "move") st.setItems(id, moveItems(d.before, d.ids, p[0] - d.start[0], p[1] - d.start[1]));
       else {
         const next = dragHandle(d.orig, d.handle, p[0], p[1], d.start, scale);
@@ -206,7 +206,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       drag.current = null;
       setDraft(null);
       if (!d || id === null) return;
-      const p = toImage(e);
+      const p = at(e);
       const { scale } = cur.current.view;
       const st = useMarkup.getState();
       if (d.kind === "create") {
@@ -222,7 +222,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       const id = cur.current.docId;
       const st = useMarkup.getState();
       if (!st.visible || id === null) return;
-      const p = toImage(e);
+      const p = at(e);
       const hit = hitTest(getItems(id), p[0], p[1], HIT_PX / cur.current.view.scale);
       if (hit?.kind === "text") {
         e.stopPropagation();

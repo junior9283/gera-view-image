@@ -1,5 +1,6 @@
 // Esboço: reconhece formas em um traço livre (linha, seta, retângulo, oval, estrela, balão).
 // Se nada bater, quem chama mantém o traço como mão livre.
+import { simplifyPath } from "../select/lasso";
 import { boxOf, clamp, distToSegment, type Box, type Point, type Seg } from "./model";
 
 export type Recognized =
@@ -35,20 +36,6 @@ function resample(p: readonly Point[], n: number): Point[] {
   }
   while (out.length < n) out.push(p[p.length - 1]);
   return out;
-}
-
-/** Ramer–Douglas–Peucker. */
-function rdp(p: readonly Point[], eps: number): Point[] {
-  if (p.length < 3) return [...p];
-  const [a, b] = [p[0], p[p.length - 1]];
-  let idx = 0;
-  let max = 0;
-  for (let i = 1; i < p.length - 1; i++) {
-    const d = distToSegment(p[i][0], p[i][1], a[0], a[1], b[0], b[1]);
-    if (d > max) [max, idx] = [d, i];
-  }
-  if (max <= eps) return [a, b];
-  return [...rdp(p.slice(0, idx + 1), eps).slice(0, -1), ...rdp(p.slice(idx), eps)];
 }
 
 const mean = (v: number[]) => v.reduce((s, x) => s + x, 0) / (v.length || 1);
@@ -96,7 +83,7 @@ function recognizeOpen(p: readonly Point[], length: number): Recognized | null {
 
 function recognizeStar(p: readonly Point[], b: Box): Recognized | null {
   const diag = Math.hypot(b.w, b.h);
-  const v = rdp(p, 0.04 * diag).slice(0, -1); // o último repete o primeiro (traço fechado)
+  const v = simplifyPath([...p], 0.04 * diag).slice(0, -1); // o último repete o primeiro (traço fechado)
   if (v.length < 6 || v.length > 40 || v.length % 2) return null;
   const c = mean(v.map((q) => q[0]));
   const d = mean(v.map((q) => q[1]));

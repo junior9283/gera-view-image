@@ -24,7 +24,7 @@ export async function flattenAnnotations(id: DocId): Promise<boolean> {
   if (!items.length || !doc) return false;
   const source = items.some((a) => a.kind === "loupe") ? await loadSource(id, doc.width, doc.height) : null;
   const png = await flattenToPng(items, doc.width, doc.height, source);
-  // Direto pelo IPC: o passo entra como "achatar", não como uma Op comum.
+  // Direto pelo IPC: o passo leva as anotações (desfazer as devolve), não é uma Op comum.
   const info = await ipc.applyOp(id, { type: "composite", data: { png } });
   useDocs.getState().update(info);
   pushOp(id, { before: items, after: [] });

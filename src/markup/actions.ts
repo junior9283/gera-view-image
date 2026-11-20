@@ -24,10 +24,6 @@ export function addAnnotation(id: DocId, a: Annotation, select = true): void {
   if (select) useMarkup.getState().select(id, [a.id]);
 }
 
-export function replaceAnnotation(id: DocId, a: Annotation, before?: Annotation[]): void {
-  commit(id, getItems(id).map((x) => (x.id === a.id ? a : x)), before);
-}
-
 export function moveSelected(id: DocId, dx: number, dy: number): void {
   commit(id, moveItems(getItems(id), getSelected(id), dx, dy));
 }

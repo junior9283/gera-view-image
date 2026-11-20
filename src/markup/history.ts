@@ -80,7 +80,7 @@ export const canRedo = (id: DocId) => of(id).redo.length > 0;
 export const unifiedHistory: HistoryProvider = { undo, redo, canUndo, canRedo };
 
 /** Esquece a pilha (documento fechado). */
-export function forget(id: DocId): void {
+function forget(id: DocId): void {
   stacks.delete(id);
   chains.delete(id);
 }
