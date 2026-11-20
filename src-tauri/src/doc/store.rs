@@ -241,20 +241,22 @@ enum Opened {
         preview: Decoded,
         /// `None` quando só a revelação completa sabe (RAW).
         full_size: Option<(u32, u32)>,
-        bytes: Vec<u8>,
+        /// Reserva (`estimate_bytes`) da decodificação completa, que relê o arquivo.
+        estimate: usize,
     },
 }
 
 fn open_file(path: &Path, budget: &DecodeBudget) -> AppResult<Opened> {
     let bytes = std::fs::read(path)?;
     let format = decode::detect_format(path, &bytes);
+    let estimate = || decode::estimate_bytes(path, &bytes);
     if format == Some(SourceFormat::Raw)
         && let Some(img) = decode::raw_preview(&bytes)
     {
         return Ok(Opened::Preview {
             preview: Decoded::single(img, SourceFormat::Raw),
             full_size: None,
-            bytes,
+            estimate: estimate(),
         });
     }
     if format == Some(SourceFormat::Jpeg)
@@ -270,11 +272,11 @@ fn open_file(path: &Path, budget: &DecodeBudget) -> AppResult<Opened> {
             return Ok(Opened::Preview {
                 preview,
                 full_size: Some(p.full_size),
-                bytes,
+                estimate: estimate(),
             });
         }
     }
-    let _r = budget.reserve(decode::estimate_bytes(path, &bytes));
+    let _r = budget.reserve(estimate());
     decode::decode_bytes(path, &bytes).map(Opened::Ready)
 }
 
@@ -346,7 +348,7 @@ impl DocStore {
     /// Abre os arquivos em paralelo. Cada um vira um `DocInfo`; os que falham vêm com `error`.
     pub fn open_documents(&self, paths: &[String]) -> Vec<DocInfo> {
         let ids: Vec<DocId> = paths.iter().map(|_| self.next_id()).collect();
-        let opened: Vec<(Document, Option<Vec<u8>>)> = paths
+        let opened: Vec<(Document, Option<usize>)> = paths
             .par_iter()
             .zip(ids)
             .map(
@@ -358,10 +360,10 @@ impl DocStore {
                     Ok(Opened::Preview {
                         preview,
                         full_size,
-                        bytes,
+                        estimate,
                     }) => {
                         let size = full_size.unwrap_or_else(|| preview.frames[0].dimensions());
-                        (Document::new(id, path, preview, size, true), Some(bytes))
+                        (Document::new(id, path, preview, size, true), Some(estimate))
                     }
                     Err(e) => (Document::failed(id, path, e), None),
                 },
@@ -371,26 +373,24 @@ impl DocStore {
         let mut pending = Vec::new();
         {
             let mut map = self.lock();
-            for (doc, bytes) in opened {
+            for (doc, estimate) in opened {
                 infos.push(doc.info.clone());
-                if let Some(b) = bytes {
-                    pending.push((doc.info.id, doc.info.path.clone(), b));
+                if let Some(e) = estimate {
+                    pending.push((doc.info.id, doc.info.path.clone(), e));
                 }
                 map.insert(doc.info.id, doc);
             }
         }
-        for (id, path, bytes) in pending {
+        for (id, path, estimate) in pending {
             let store = self.clone();
             // Thread própria: esperar o orçamento não pode prender o pool do rayon.
+            // Relê o arquivo (em geral ainda no page cache) em vez de reter os bytes
+            // da abertura até a decodificação completa.
             std::thread::spawn(move || {
                 let full = {
-                    let _r = store
-                        .inner
-                        .budget
-                        .reserve(decode::estimate_bytes(Path::new(&path), &bytes));
-                    decode::decode_bytes(Path::new(&path), &bytes)
+                    let _r = store.inner.budget.reserve(estimate);
+                    decode::decode(Path::new(&path))
                 };
-                drop(bytes);
                 store.finish_loading(id, full);
             });
         }
@@ -711,5 +711,29 @@ mod tests {
         assert_eq!(px(0, 0), [0, 0, 7, 255]);
         assert_eq!(px(399, 299), [99, 74, 7, 255]);
         assert_eq!(px(42, 21), [11, 5, 7, 255]);
+    }
+
+    /// A decodificação completa relê o arquivo no próprio thread (os bytes da abertura
+    /// não ficam retidos): se ele sumir antes, o documento termina com erro, sem travar.
+    #[test]
+    fn decodificacao_completa_rele_o_arquivo() {
+        let dir = std::env::temp_dir().join(format!("gvi-rele-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("grande.jpg");
+        let img = ::image::RgbImage::from_pixel(2100, 2000, ::image::Rgb([90, 120, 30]));
+        img.save(&path).unwrap();
+
+        let store = DocStore::new();
+        // Orçamento cheio: o thread do decode completo espera antes de ler o arquivo.
+        let cheio = store.inner.budget.reserve(DEFAULT_DECODE_BUDGET);
+        let info = store
+            .open_documents(&[path.to_string_lossy().into_owned()])
+            .remove(0);
+        assert_eq!(info.error, None);
+        assert!(store.with_doc(info.id, |d| d.loading).unwrap(), "abre pela prévia");
+        std::fs::remove_dir_all(&dir).unwrap();
+        drop(cheio);
+        assert!(store.wait_ready(info.id).is_err());
+        assert!(store.info(info.id).unwrap().error.is_some());
     }
 }
