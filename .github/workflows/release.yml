@@ -65,6 +65,7 @@ jobs:
           path: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
   smoke-packages:
@@ -79,6 +80,9 @@ jobs:
           - { name: deb-sem-libde265, image: "ubuntu:24.04", pattern: "*.deb" }
           # Fedora oficial não tem libde265 (só RPM Fusion): a weak dep é ignorada.
           - { name: rpm, image: "fedora:latest", pattern: "*.rpm" }
+          # Contêiner sem FUSE: --appimage-extract-and-run extrai e roda sem montar.
+          # O AppImage não leva GTK/GL (excludelist): vêm do sistema, como num desktop.
+          - { name: appimage, image: "ubuntu:24.04", pattern: "*.AppImage" }
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -88,6 +92,7 @@ jobs:
       - name: Instalar e rodar --version em ${{ matrix.image }}
         run: |
           docker run --rm -v "$PWD/pkg:/pkg" ${{ matrix.image }} bash -euxc '
+            app=gera-view-image
             case "${{ matrix.name }}" in
               deb) apt-get update && apt-get install -y /pkg/*.deb ;;
               deb-sem-libde265)
@@ -97,10 +102,16 @@ jobs:
               rpm)
                 dnf install -y /pkg/*.rpm
                 if ldconfig -p | grep -q libde265; then echo "libde265 presente" >&2; exit 1; fi ;;
+              appimage)
+                apt-get update
+                DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgtk-3-0t64 libgl1 libegl1 libgbm1
+                # O nome do arquivo tem espaços (productName): copia para um caminho simples.
+                cp /pkg/*.AppImage /gvi.AppImage && chmod +x /gvi.AppImage
+                app="/gvi.AppImage --appimage-extract-and-run" ;;
             esac
             # --version sai antes de iniciar GTK/WebKit: não precisa de display,
             # mas exige que todas as bibliotecas dinâmicas do pacote estejam instaladas.
-            gera-view-image --version | grep -E "^gera-view-image [0-9]+\.[0-9]+\.[0-9]+"
+            $app --version | grep -E "^gera-view-image [0-9]+\.[0-9]+\.[0-9]+"
           '
 
   publish:
