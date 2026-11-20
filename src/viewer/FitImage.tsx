@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { renderView } from "../ipc/commands";
 import type { DocInfo } from "../ipc/types";
 import { DocError } from "./DocError";
-import { bufferToCanvas, useAnimatedFrame } from "./paint";
+import { bufferToCanvas, dpr, useAnimatedFrame } from "./paint";
 
 /** Imagem ajustada (sem ampliar) e centralizada na caixa; GIF animado toca. Usada na apresentação. */
 export function FitImage({ doc, className }: { doc: DocInfo; className?: string }) {
@@ -21,7 +21,7 @@ export function FitImage({ doc, className }: { doc: DocInfo; className?: string 
   const { id, rev, error } = doc;
   useEffect(() => {
     if (error || size.w <= 0 || size.h <= 0) return;
-    const k = window.devicePixelRatio || 1;
+    const k = dpr();
     let alive = true;
     renderView(id, frame, Math.round(size.w * k), Math.round(size.h * k))
       .then((v) => {

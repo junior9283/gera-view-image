@@ -12,6 +12,8 @@ import { DialogHost } from "./prefs/DialogHost";
 import { initDocs, useDocs } from "./store/docs";
 import { useUi } from "./store/ui";
 
+let autoShown = false;
+
 /** Com mais de uma imagem aberta, a barra de miniaturas aparece uma vez (como no Preview). */
 function useAutoSidebar() {
   const many = useDocs((s) => s.docs.length > 1);
@@ -22,7 +24,6 @@ function useAutoSidebar() {
     }
   }, [many]);
 }
-let autoShown = false;
 
 export default function App() {
   const { t } = useTranslation();

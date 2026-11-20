@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { thumbnail } from "../ipc/commands";
 import type { DocInfo, ViewBuffer } from "../ipc/types";
 import { ErrorIcon } from "../viewer/DocError";
-import { bufferToCanvas } from "../viewer/paint";
+import { bufferToCanvas, dpr } from "../viewer/paint";
 
 /** Miniaturas recentes (LRU pela ordem de inserção do Map). */
 const cache = new Map<string, Promise<ViewBuffer>>();
@@ -54,7 +54,7 @@ export function Thumb({ doc, frame = 0, size, fetchSize = size }: Props) {
   const { id, rev, error } = doc;
   useEffect(() => {
     if (!visible || error) return;
-    const px = Math.round(fetchSize * (window.devicePixelRatio || 1));
+    const px = Math.round(fetchSize * dpr());
     let alive = true;
     load(`${id}:${rev}:${frame}:${px}`, () => thumbnail(id, frame, px))
       .then((v) => alive && canvas.current && bufferToCanvas(v, canvas.current))

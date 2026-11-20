@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import type { DocInfo, ViewBuffer } from "../ipc/types";
 
+/** Pixels físicos por px CSS. */
+export const dpr = () => window.devicePixelRatio || 1;
+
 /** Copia o buffer RGBA do IPC para um canvas (novo ou reaproveitado). */
 export function bufferToCanvas(v: ViewBuffer, canvas: HTMLCanvasElement = document.createElement("canvas")): HTMLCanvasElement {
   canvas.width = v.width;

@@ -7,7 +7,7 @@ import { usePrefs, type Prefs } from "../store/prefs";
 import { useUi } from "../store/ui";
 import { panBy, syncView, toggleFitActual, zoomBy } from "./actions";
 import { DocError } from "./DocError";
-import { bufferToCanvas, checkerPattern, useAnimatedFrame } from "./paint";
+import { bufferToCanvas, checkerPattern, dpr, useAnimatedFrame } from "./paint";
 import { visibleRegion, type Size, type ViewState } from "./zoom";
 import "./viewer.css";
 
@@ -42,8 +42,6 @@ const BACKGROUNDS: Record<Exclude<Prefs["background"], "custom">, string> = {
   white: "#fff",
   gray: "#808080",
 };
-
-const dpr = () => window.devicePixelRatio || 1;
 
 /** Área visível com margem de 25 % (menos pedidos ao arrastar), na densidade que a tela usa. */
 function needFor(view: ViewState, doc: DocInfo, size: Size): Need {
