@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Gera View Image</title>
+  <defs>
+    <!-- squircle (superelipse n=5), margem segura de ~10% -->
+    <path id="squircle" d="M924 512C924 713.9 928.3 813 870.7 870.7C813 928.3 713.9 924 512 924C310.1 924 211 928.3 153.3 870.7C95.7 813 100 713.9 100 512C100 310.1 95.7 211 153.3 153.3C211 95.7 310.1 100 512 100C713.9 100 813 95.7 870.7 153.3C928.3 211 924 310.1 924 512Z"/>
+
+    <linearGradient id="bg" x1="150" y1="110" x2="874" y2="914" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#18D6CC"/>
+      <stop offset="0.5" stop-color="#3D8BF2"/>
+      <stop offset="1" stop-color="#7B3CF0"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="100" x2="0" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.45"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#2A0E7A" stop-opacity="0.35"/>
+    </linearGradient>
+    <linearGradient id="sky" x1="0" y1="324" x2="0" y2="636" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#DDF9FF"/>
+      <stop offset="1" stop-color="#E6E0FF"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="486" y1="356" x2="558" y2="428" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD966"/>
+      <stop offset="1" stop-color="#FF9A3D"/>
+    </linearGradient>
+    <linearGradient id="mtBack" x1="0" y1="440" x2="0" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A699FF"/>
+      <stop offset="1" stop-color="#7563EE"/>
+    </linearGradient>
+    <linearGradient id="mtFront" x1="0" y1="490" x2="0" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1FCBD0"/>
+      <stop offset="1" stop-color="#168CC6"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="690" y1="626" x2="800" y2="736" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E3DDFF"/>
+    </linearGradient>
+
+    <clipPath id="photoClip">
+      <rect x="264" y="324" width="432" height="312" rx="22"/>
+    </clipPath>
+    <clipPath id="lensClip">
+      <circle cx="612" cy="548" r="92"/>
+    </clipPath>
+
+    <!-- foto: moldura branca + paisagem (coordenadas sem rotação) -->
+    <g id="photo">
+      <rect x="232" y="292" width="496" height="376" rx="50" fill="#FFFFFF"/>
+      <g clip-path="url(#photoClip)">
+        <rect x="264" y="324" width="432" height="312" fill="url(#sky)"/>
+        <circle cx="522" cy="392" r="42" fill="url(#sun)"/>
+        <path d="M250 640L398 450Q414 430 430 450L562 614L640 522Q656 504 672 522L760 640Z" fill="url(#mtBack)"/>
+        <path d="M250 640L328 548Q344 530 360 548L432 626L520 508Q536 488 552 508L704 640Z" fill="url(#mtFront)"/>
+      </g>
+    </g>
+
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="16"/>
+      <feOffset dy="16" result="blur"/>
+      <feFlood flood-color="#1A0B5E" flood-opacity="0.32"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- base -->
+  <use xlink:href="#squircle" fill="url(#bg)"/>
+  <use xlink:href="#squircle" fill="url(#gloss)"/>
+  <use xlink:href="#squircle" fill="none" stroke="url(#rim)" stroke-width="6"/>
+
+  <!-- foto levemente inclinada -->
+  <g filter="url(#shadow)">
+    <use xlink:href="#photo" transform="rotate(-8 480 480)"/>
+  </g>
+
+  <!-- lupa -->
+  <g filter="url(#shadow)">
+    <path d="M700 636L786 722" stroke="url(#handle)" stroke-width="60" stroke-linecap="round"/>
+    <circle cx="612" cy="548" r="92" fill="#FFFFFF"/>
+    <g clip-path="url(#lensClip)">
+      <g transform="translate(612 548) scale(1.45) translate(-612 -548)">
+        <use xlink:href="#photo" transform="rotate(-8 480 480)"/>
+      </g>
+      <path d="M546 500A84 84 0 0 1 616 466" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="12" stroke-linecap="round"/>
+    </g>
+    <circle cx="612" cy="548" r="111" fill="none" stroke="#FFFFFF" stroke-width="38"/>
+  </g>
+</svg>
