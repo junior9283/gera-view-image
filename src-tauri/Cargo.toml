@@ -1,6 +1,6 @@
 [package]
 name = "gera-view-image"
-version = "0.1.0"
+version = "0.1.1"
 description = "Visualizador de imagens para Linux"
 authors = ["junior9283"]
 license = "MIT"

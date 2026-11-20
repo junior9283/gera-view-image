@@ -5,6 +5,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+## [0.1.1] - 2026-11-20
+
 ### Adicionado
 - Teste do atualizador.
 
