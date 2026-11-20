@@ -112,4 +112,48 @@ describe("SelectionLayer", () => {
     await act(async () => {});
     expect(invoke).toHaveBeenCalledWith("apply_op", { id: 1, op: { type: "makeTransparent", data: bitmap } });
   });
+
+  describe("formigas marchando", () => {
+    const setHidden = (hidden: boolean) => Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    const ctx = () => ({
+      setTransform: vi.fn(), clearRect: vi.fn(), drawImage: vi.fn(), putImageData: vi.fn(),
+      createImageData: vi.fn((w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) })),
+    });
+    let c: ReturnType<typeof ctx>;
+    beforeEach(() => {
+      vi.useFakeTimers();
+      c = ctx();
+      vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(c as never);
+      useSelection.setState({ selection: bitmap });
+    });
+    afterEach(() => {
+      setHidden(false);
+      vi.useRealTimers();
+    });
+
+    it("pausam com a aba oculta e retomam ao voltar", () => {
+      render(<SelectionLayer {...props} />);
+      const draws = () => c.clearRect.mock.calls.length;
+      vi.advanceTimersByTime(300);
+      const running = draws();
+      expect(running).toBeGreaterThan(1);
+      setHidden(true);
+      vi.advanceTimersByTime(1000);
+      expect(draws()).toBe(running);
+      setHidden(false);
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(draws()).toBe(running + 1);
+      vi.advanceTimersByTime(200);
+      expect(draws()).toBe(running + 3);
+    });
+
+    it("o contorno Bitmap usa canvases pré-renderizados: no máximo 1 por fase, reaproveitados", () => {
+      render(<SelectionLayer {...props} />);
+      vi.advanceTimersByTime(100 * 40); // várias voltas completas das fases
+      const edgeDraws = c.drawImage.mock.calls.length;
+      expect(edgeDraws).toBeGreaterThan(30);
+      // createImageData: só os frames de contorno (<= 8 fases); nada por célula/por quadro.
+      expect(c.createImageData.mock.calls.length).toBeLessThanOrEqual(8);
+    });
+  });
 });

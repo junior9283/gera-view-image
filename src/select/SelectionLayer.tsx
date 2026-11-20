@@ -26,6 +26,8 @@ import {
 const ALPHA_THROTTLE_MS = 60;
 const ALPHA_FILL = [255, 0, 255, 110] as const; // magenta translúcido
 const ANTS_MS = 100;
+/** `((x + y + fase) >> 2) & 1` repete a cada 8 fases. */
+const ANTS_PHASES = 8;
 
 interface Props extends ViewTransform {
   docId: number;
@@ -103,16 +105,31 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
     return { cv, step };
   }, [alpha]);
 
-  // Contorno de seleções Bitmap: células de borda da grade amostrada.
+  // Contorno de seleções Bitmap: células de borda da grade amostrada, pré-renderizadas em canvases
+  // offscreen (um por fase das formigas, criados sob demanda); cada quadro é só um `drawImage`.
   const bitmapEdges = useMemo(() => {
-    if (shown?.type !== "bitmap") return null;
+    if (shown?.type !== "bitmap" || typeof document === "undefined") return null;
     const { cells, tw, th, step } = sampleBitmap(shown);
     const at = (x: number, y: number) => (x < 0 || y < 0 || x >= tw || y >= th ? 0 : cells[y * tw + x]);
     const edges: [number, number][] = [];
     for (let y = 0; y < th; y++)
       for (let x = 0; x < tw; x++)
         if (at(x, y) && !(at(x - 1, y) && at(x + 1, y) && at(x, y - 1) && at(x, y + 1))) edges.push([x, y]);
-    return { edges, step };
+    const frames: (HTMLCanvasElement | null)[] = Array(ANTS_PHASES).fill(null);
+    const frame = (phase: number): HTMLCanvasElement | null => {
+      const p = phase % ANTS_PHASES;
+      if (frames[p]) return frames[p];
+      const cv = document.createElement("canvas");
+      cv.width = tw;
+      cv.height = th;
+      const ctx = cv.getContext("2d");
+      if (!ctx) return null;
+      const img = ctx.createImageData(tw, th);
+      for (const [x, y] of edges) img.data.set(((x + y + p) >> 2) & 1 ? [0, 0, 0, 255] : [255, 255, 255, 255], (y * tw + x) * 4);
+      ctx.putImageData(img, 0, 0);
+      return (frames[p] = cv);
+    };
+    return { frame, tw, th, step };
   }, [shown]);
 
   useEffect(() => {
@@ -150,13 +167,13 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
         }
       };
       if (shown.type === "bitmap") {
-        if (bitmapEdges) {
-          const px = Math.max(1, bitmapEdges.step * scale);
-          for (const [tx, ty] of bitmapEdges.edges) {
-            const [x, y] = toScreen(view, tx * bitmapEdges.step, ty * bitmapEdges.step);
-            ctx.fillStyle = ((tx + ty + phase) >> 2) & 1 ? "#000" : "#fff";
-            ctx.fillRect(x, y, px, px);
-          }
+        const edges = bitmapEdges?.frame(phase);
+        if (bitmapEdges && edges) {
+          const cell = bitmapEdges.step * scale;
+          const [x, y] = toScreen(view, 0, 0);
+          // Células menores que 1 px: com suavização o contorno some menos do que com vizinho mais próximo.
+          ctx.imageSmoothingEnabled = cell < 1;
+          ctx.drawImage(edges, x, y, bitmapEdges.tw * cell, bitmapEdges.th * cell);
         }
       } else {
         ctx.lineWidth = 1;
@@ -183,11 +200,18 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
     };
     draw();
     if (!shown) return;
+    // Aba/janela oculta: as formigas pausam (sem redesenho nem avanço de fase) e retomam ao voltar.
     const timer = setInterval(() => {
+      if (document.hidden) return;
       phase += 1;
       draw();
     }, ANTS_MS);
-    return () => clearInterval(timer);
+    const onVisible = () => !document.hidden && draw();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [shown, size, view, scale, tool, alphaSprite, bitmapEdges]);
 
   // Alfa Instantâneo pendente: Enter/Delete aplica, Escape descarta.
