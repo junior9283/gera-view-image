@@ -8,38 +8,12 @@ use gera_view_image_lib::{
     doc::{cache::RenderCache, model::Op, store::DocStore},
     image::decode::{self, decode, decode_jpeg_preview},
 };
-use image::{ImageEncoder, Rgba, RgbaImage};
-use make_fixtures::ensure_fixtures;
+use image::{Rgba, RgbaImage};
+use make_fixtures::{ensure_fixtures, png, s, tmp};
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, Barrier},
 };
-
-fn tmp(nome: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("gvi-{nome}-{}", std::process::id()));
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
-fn s(p: &Path) -> String {
-    p.to_string_lossy().into_owned()
-}
-
-fn png(path: &Path, img: &RgbaImage) {
-    let f = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
-    image::codecs::png::PngEncoder::new_with_quality(
-        f,
-        image::codecs::png::CompressionType::Fast,
-        Default::default(),
-    )
-    .write_image(
-        img.as_raw(),
-        img.width(),
-        img.height(),
-        image::ExtendedColorType::Rgba8,
-    )
-    .unwrap();
-}
 
 #[test]
 fn abrir_4_grandes_respeita_orcamento_de_decodificacao() {

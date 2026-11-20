@@ -16,15 +16,11 @@ use gera_view_image_lib::{
     },
 };
 use image::{Rgba, RgbaImage};
-use make_fixtures::{DIR_ACENTOS, ensure_fixtures};
+use make_fixtures::{DIR_ACENTOS, ensure_fixtures, png, s, tmp};
 use std::{path::PathBuf, sync::Arc};
 
 fn fx(name: &str) -> PathBuf {
     ensure_fixtures().join(name)
-}
-
-fn s(p: &std::path::Path) -> String {
-    p.to_string_lossy().into_owned()
 }
 
 fn header(buf: &[u8]) -> (u32, u32) {
@@ -176,6 +172,25 @@ fn folder_images_ordenacao_natural_e_acentos() {
     let infos = DocStore::new().open_documents(&lista);
     assert!(infos.iter().all(|i| i.error.is_none()), "{infos:?}");
     assert_eq!(infos[0].name, "Ação 1.jpg");
+}
+
+#[cfg(unix)]
+#[test]
+fn folder_images_segue_link_so_para_arquivo() {
+    use std::os::unix::fs::symlink;
+    let dir = tmp("links");
+    png(&dir.join("a.png"), &RgbaImage::new(2, 2));
+    std::fs::create_dir_all(dir.join("pasta.png")).ok();
+    symlink(dir.join("a.png"), dir.join("b.png")).ok();
+    symlink(dir.join("pasta.png"), dir.join("c.png")).ok();
+    symlink(dir.join("sumiu.png"), dir.join("d.png")).ok();
+    let nomes: Vec<String> = folder_images(&dir)
+        .unwrap()
+        .iter()
+        .map(|p| PathBuf::from(p).file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(nomes, ["a.png", "b.png"]);
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -469,8 +484,7 @@ fn cache_respeita_limite() {
 
 #[test]
 fn jpeg_abre_com_previa_e_completa_em_segundo_plano() {
-    let dir = std::env::temp_dir().join(format!("gvi-previa-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = tmp("previa");
     let path = dir.join("grande foto.jpg");
     let src = image::RgbImage::from_fn(4000, 3000, |x, y| {
         image::Rgb([(x % 256) as u8, (y % 256) as u8, 90])
@@ -497,23 +511,14 @@ fn jpeg_abre_com_previa_e_completa_em_segundo_plano() {
 
 #[test]
 fn imagem_enorme_nao_aloca_copias() {
-    let dir = std::env::temp_dir().join(format!("gvi-enorme-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = tmp("enorme");
     let path = dir.join("enorme.png");
-    {
-        let img = RgbaImage::from_fn(12000, 9000, |x, y| {
+    png(
+        &path,
+        &RgbaImage::from_fn(12000, 9000, |x, y| {
             Rgba([(x / 47) as u8, (y / 35) as u8, 0, 255])
-        });
-        let f = std::io::BufWriter::new(std::fs::File::create(&path).unwrap());
-        image::codecs::png::PngEncoder::new_with_quality(
-            f,
-            image::codecs::png::CompressionType::Fast,
-            Default::default(),
-        )
-        .write_image(img.as_raw(), 12000, 9000, image::ExtendedColorType::Rgba8)
-        .unwrap();
-    }
-    use image::ImageEncoder as _;
+        }),
+    );
     let orig = 12000usize * 9000 * 4;
     let store = DocStore::new();
     let info = store.open_documents(&[s(&path)]).remove(0);
@@ -578,8 +583,7 @@ fn op_serializa_com_type_e_data() {
 
 #[test]
 fn arquivos_malformados_nao_dao_panic() {
-    let dir = std::env::temp_dir().join(format!("gvi-malformado-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = tmp("malformado");
     let mut seed = 0x9E37_79B9_u32;
     let mut lixo = |n: usize| -> Vec<u8> {
         (0..n)

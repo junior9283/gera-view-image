@@ -12,6 +12,34 @@ use std::{
 
 pub const DIR_ACENTOS: &str = "Ação com espaço";
 
+/// Pasta temporária própria do processo, criada se faltar.
+pub fn tmp(nome: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("gvi-{nome}-{}", std::process::id()));
+    fs::create_dir_all(&d).unwrap();
+    d
+}
+
+pub fn s(p: &Path) -> String {
+    p.to_string_lossy().into_owned()
+}
+
+/// Grava `img` como PNG RGBA com compressão rápida.
+pub fn png(path: &Path, img: &RgbaImage) {
+    let f = std::io::BufWriter::new(fs::File::create(path).unwrap());
+    image::codecs::png::PngEncoder::new_with_quality(
+        f,
+        image::codecs::png::CompressionType::Fast,
+        Default::default(),
+    )
+    .write_image(
+        img.as_raw(),
+        img.width(),
+        img.height(),
+        image::ExtendedColorType::Rgba8,
+    )
+    .unwrap();
+}
+
 pub fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
