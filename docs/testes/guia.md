@@ -38,7 +38,9 @@ Contornos aplicados por padrão: `WEBKIT_DISABLE_DMABUF_RENDERER=1` e `WEBKIT_DI
 
 ## E2E (Tarefa 5): WebdriverIO + tauri-driver
 - `npm run test:e2e` (`wdio.conf.ts`) roda contra o binário **release** (`$CARGO_TARGET_DIR/release/gera-view-image` ou `GVI_BINARY`). Build: `npm run build && cargo build --release --features tauri/custom-protocol --manifest-path src-tauri/Cargo.toml`.
-- Portas: `tauri-driver --port 4445 --native-port 4545` (`GVI_E2E_PORT` muda as duas). O padrão do WebKitWebDriver (4444) colide com outras execuções em paralelo.
+- Portas: `tauri-driver --port 4445 --native-port 4545` (`TAURI_DRIVER_PORT` ou `GVI_E2E_PORT` muda as duas; nativa = porta + 100). O padrão do WebKitWebDriver (4444) colide com outras execuções em paralelo (T5 4445, T8 4446, T11 4447).
+- **Build do E2E com `VITE_E2E=1`** (ex.: `VITE_E2E=1 npm run build && cargo build --release …`). Só nesse build existe o gancho `window.__gviMarkup` (`activeId`, `count`, `texts`, `flatten`) que o `markup.e2e.ts` usa para contar anotações e achatar; o build normal não o expõe.
+- Se o `data-scale` nunca aparece e o rAF/`ResizeObserver` não disparam, a janela não está sendo apresentada (tela bloqueada/ociosa): o E2E não vale nessa condição, rode com a sessão gráfica ativa.
 - Os arquivos entram por `argv` (`tauri:options.args`); o spec espera os 3 itens na barra lateral antes de começar.
 - Seletores estáveis: `data-testid` (`zoom-level` com `data-scale`, `doc-error`, `thumb-error`, `sidebar`), não textos (o idioma segue o sistema).
 - WebdriverIO fica no 9: o 10 dá ERESOLVE com as dependências atuais. As vulnerabilidades do `npm audit` são todas transitivas do wdio (só dev); `npm audit --omit=dev` = 0.

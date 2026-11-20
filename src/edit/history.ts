@@ -12,6 +12,8 @@ export interface HistoryProvider {
   redo(id: DocId): Promise<void>;
   canUndo(id: DocId): boolean;
   canRedo(id: DocId): boolean;
+  /** Avisa quando `canUndo`/`canRedo` podem ter mudado fora do store de documentos. */
+  subscribe?(cb: () => void): () => void;
 }
 
 export const opsHistory: HistoryProvider = {
@@ -26,9 +28,21 @@ export const opsHistory: HistoryProvider = {
 };
 
 let provider: HistoryProvider = opsHistory;
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((l) => l());
+let offProvider: (() => void) | undefined;
 
 export function setHistoryProvider(p: HistoryProvider | null): void {
+  offProvider?.();
   provider = p ?? opsHistory;
+  offProvider = provider.subscribe?.(notify);
+  notify();
+}
+
+/** Para menus/atalhos reativos (`useEnabled`): muda com o provedor e com a pilha dele. */
+export function subscribeHistory(l: () => void): () => void {
+  listeners.add(l);
+  return () => listeners.delete(l);
 }
 
 export const undo = (id: DocId) => provider.undo(id);

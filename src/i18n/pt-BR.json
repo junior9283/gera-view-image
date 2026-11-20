@@ -190,6 +190,99 @@
     "noKeywords": "Nenhuma palavra-chave.",
     "noAnnotations": "Nenhuma anotação."
   },
+  "markup": {
+    "bar": "Barra de Marcação",
+    "layer": "Anotações",
+    "tool": {
+      "select": "Seleção",
+      "sketch": "Esboço",
+      "draw": "Desenho",
+      "shapes": "Formas",
+      "text": "Texto",
+      "signature": "Assinatura",
+      "lineStyle": "Estilo da linha",
+      "stroke": "Cor da borda",
+      "fill": "Cor de preenchimento",
+      "textStyle": "Estilo do texto",
+      "rotate": "Girar para a esquerda",
+      "crop": "Recortar"
+    },
+    "kind": {
+      "line": "Linha",
+      "arrow": "Seta",
+      "rect": "Retângulo",
+      "roundRect": "Retângulo arredondado",
+      "oval": "Oval",
+      "bubble": "Balão de fala",
+      "star": "Estrela",
+      "polygon": "Polígono",
+      "freehand": "Mão livre",
+      "text": "Texto",
+      "loupe": "Lupa",
+      "highlight": "Realce",
+      "highlightOval": "Realce oval",
+      "signature": "Assinatura",
+      "image": "Imagem"
+    },
+    "width": "Espessura",
+    "widthPx": "{{px}} px",
+    "dash": {
+      "solid": "Contínua",
+      "dashed": "Tracejada",
+      "dotted": "Pontilhada"
+    },
+    "arrowStart": "Ponta inicial",
+    "arrowEnd": "Ponta final",
+    "end": {
+      "none": "Sem ponta",
+      "arrow": "Seta",
+      "circle": "Círculo"
+    },
+    "shadow": "Sombra",
+    "noFill": "Sem preenchimento",
+    "customColor": "Outra cor",
+    "font": "Fonte",
+    "fontSize": "Tamanho",
+    "textColor": "Cor do texto",
+    "bold": "Negrito",
+    "italic": "Itálico",
+    "underline": "Sublinhado",
+    "boldShort": "N",
+    "italicShort": "I",
+    "underlineShort": "S",
+    "align": {
+      "left": "Alinhar à esquerda",
+      "center": "Centralizar",
+      "right": "Alinhar à direita"
+    },
+    "newText": "Texto",
+    "textEditor": "Editar texto",
+    "sig": {
+      "title": "Assinaturas",
+      "none": "Nenhuma assinatura salva.",
+      "insert": "Inserir assinatura",
+      "remove": "Apagar assinatura",
+      "create": "Criar assinatura",
+      "draw": "Desenhar",
+      "import": "Importar Imagem",
+      "clear": "Limpar",
+      "save": "Salvar",
+      "drawHint": "Assine aqui com o mouse ou o touchpad",
+      "importHint": "Escolha uma imagem com a assinatura sobre fundo claro; o fundo é removido.",
+      "importButton": "Escolher Imagem…",
+      "importFailed": "Não foi possível importar a assinatura.",
+      "limit": "Até {{n}} assinaturas; a mais antiga sai.",
+      "pad": "Área de desenho da assinatura"
+    },
+    "selectTool": {
+      "pointer": "Selecionar anotações",
+      "rect": "Seleção retangular",
+      "ellipse": "Seleção elíptica",
+      "lasso": "Laço",
+      "smartLasso": "Laço inteligente",
+      "instantAlpha": "Alfa Instantâneo"
+    }
+  },
   "menu": {
     "bar": "Menu principal",
     "file": {
