@@ -42,9 +42,10 @@ describe("marcação", () => {
   before(async () => {
     await browser.waitUntil(async () => (await $$(".sidebar-item[data-doc-index]").length) === 3, { timeout: 20000 });
     // img.svg (2048×1024): imagem grande o bastante para desenhar.
-    await browser.keys(Key.ArrowRight);
-    await browser.keys(Key.ArrowRight);
-    await browser.waitUntil(async () => (await activeName()) === "img.svg", { timeout: 5000 });
+    for (const name of ["truncado.jpg", "img.svg"]) {
+      await browser.keys(Key.ArrowRight);
+      await browser.waitUntil(async () => (await activeName()) === name, { timeout: 5000 });
+    }
     await browser.waitUntil(async () => (await scale()) > 0, { timeout: 5000 });
   });
 
