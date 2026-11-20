@@ -792,17 +792,14 @@ pub fn folder_images(path: &Path) -> AppResult<Vec<String>> {
     };
     let mut files: Vec<(String, String)> = std::fs::read_dir(dir)?
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file() || t.is_symlink()))
-        .map(|e| e.path())
-        .filter(|p| is_supported_path(p) && p.is_file())
-        .map(|p| {
-            (
-                p.file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-                p.to_string_lossy().into_owned(),
-            )
+        .filter_map(|e| {
+            let p = e.path();
+            // Arquivo comum já basta; link só se apontar para um arquivo.
+            let file = e
+                .file_type()
+                .is_ok_and(|t| t.is_file() || (t.is_symlink() && p.is_file()));
+            (file && is_supported_path(&p))
+                .then(|| (e.file_name().to_string_lossy().into_owned(), p.to_string_lossy().into_owned()))
         })
         .collect();
     files.sort_by(|a, b| natural_cmp(&a.0, &b.0));

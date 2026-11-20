@@ -4,6 +4,7 @@ use super::decode::Decoded;
 use crate::error::AppResult;
 use ::image::{ImageDecoder, ImageReader};
 use exif::{Context, In, Reader, Tag, Value};
+use rayon::prelude::*;
 use serde::Serialize;
 use std::{
     io::Cursor,
@@ -359,7 +360,7 @@ fn color_info(bytes: &[u8], decoded: &Decoded) -> (String, u8, bool) {
             let alpha = decoded
                 .frames
                 .first()
-                .is_some_and(|f| f.pixels().any(|p| p.0[3] < 255));
+                .is_some_and(|f| f.as_raw().par_chunks_exact(4).any(|p| p[3] < 255));
             ("RGB".to_string(), 8, alpha)
         }
     }
