@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DocId, DocInfo, Op, Rect, ViewBuffer } from "./types";
+import type { DocId, DocInfo, Mask, Op, Rect, ViewBuffer } from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -38,3 +38,14 @@ export const applyOp = (id: DocId, op: Op) => invoke<DocInfo>("apply_op", { id, 
 export const undo = (id: DocId) => invoke<DocInfo>("undo", { id });
 
 export const redo = (id: DocId) => invoke<DocInfo>("redo", { id });
+
+/** Alfa Instantâneo: máscara contígua à cor do pixel (x, y); tolerância 0..1. */
+export const instantAlpha = (id: DocId, x: number, y: number, tolerance: number) =>
+  invoke<Mask>("instant_alpha", { id, x, y, tolerance });
+
+/** Laço magnético: devolve o caminho colado nas bordas. */
+export const snapLasso = (id: DocId, points: [number, number][]) =>
+  invoke<[number, number][]>("snap_lasso", { id, points });
+
+/** Copia a região (ou a imagem toda, sem máscara) para a área de transferência como PNG. */
+export const copyRegion = (id: DocId, mask: Mask | null) => invoke<void>("copy_region", { id, mask });

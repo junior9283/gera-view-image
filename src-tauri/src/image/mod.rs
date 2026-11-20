@@ -2,4 +2,5 @@
 pub mod decode;
 pub mod heic;
 pub mod ops;
+pub mod select;
 pub mod thumb;

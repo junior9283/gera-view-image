@@ -13,7 +13,8 @@ export type ErrorCode =
   | "io"
   | "permission"
   | "changed_on_disk"
-  | "heic_decoder_missing";
+  | "heic_decoder_missing"
+  | "empty_selection";
 
 export interface AppError {
   code: ErrorCode;
@@ -66,7 +67,8 @@ export type Op =
   | { type: "rotate"; data: { quarterTurns: number } }
   | { type: "flipH" }
   | { type: "flipV" }
-  | { type: "crop"; data: Rect }
+  /** Com `mask`, o que fica fora dela vira transparente antes do corte (uma op só, um desfazer). */
+  | { type: "crop"; data: Rect & { mask?: Mask | null } }
   | { type: "resize"; data: { w: number; h: number; filter: ResizeFilter; dpi: number | null } }
   | { type: "adjust"; data: ColorAdjust }
   | { type: "erase"; data: Mask }

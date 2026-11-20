@@ -95,5 +95,11 @@
     "play": "Resume",
     "exit": "Exit slideshow",
     "index": "{{i}} of {{n}}"
+  },
+  "select": {
+    "layer": "Selection layer",
+    "instantAlphaHint": "Drag to adjust the tolerance. Enter or Delete makes it transparent.",
+    "noAlphaNotice": "This format has no transparency: the result will be saved as PNG or exported.",
+    "pasteUnavailable": "Paste is not available yet."
   }
 }

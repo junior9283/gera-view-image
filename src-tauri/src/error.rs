@@ -18,6 +18,9 @@ pub enum AppError {
     /// HEIC (HEVC) sem a libde265 instalada; a interface explica como instalar.
     #[error("{0}")]
     HeicDecoderMissing(String),
+    /// A ação precisa de uma seleção não vazia; a interface traduz pelo código.
+    #[error("empty selection")]
+    EmptySelection,
 }
 
 impl AppError {
@@ -31,6 +34,7 @@ impl AppError {
             AppError::Permission(_) => "permission",
             AppError::ChangedOnDisk(_) => "changed_on_disk",
             AppError::HeicDecoderMissing(_) => "heic_decoder_missing",
+            AppError::EmptySelection => "empty_selection",
         }
     }
 

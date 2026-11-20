@@ -1,5 +1,5 @@
 //! Operações não destrutivas: cada `Op` gera uma imagem nova a partir da anterior.
-use crate::doc::model::{ColorAdjust, Mask, Op, Rect, ResizeFilter};
+use crate::doc::model::{ColorAdjust, CropSpec, Mask, Op, Rect, ResizeFilter};
 use ::image::{RgbaImage, imageops};
 use rayon::prelude::*;
 
@@ -14,10 +14,7 @@ pub fn apply(img: &RgbaImage, op: &Op) -> RgbaImage {
         },
         Op::FlipH => imageops::flip_horizontal(img),
         Op::FlipV => imageops::flip_vertical(img),
-        Op::Crop(r) => {
-            let r = clamp_rect(*r, img.width(), img.height());
-            imageops::crop_imm(img, r.x, r.y, r.w, r.h).to_image()
-        }
+        Op::Crop(c) => crop(img, c),
         Op::Resize { w, h, filter, .. } => resize(img, *w, *h, *filter),
         Op::Adjust(adj) => adjust(img, adj),
         Op::Erase(mask) => masked(img, mask, |p, cov| {
@@ -34,6 +31,22 @@ pub fn apply(img: &RgbaImage, op: &Op) -> RgbaImage {
     }
 }
 
+/// Recorte; com máscara, o que está fora dela fica com alfa 0 (RGB preservado).
+fn crop(img: &RgbaImage, c: &CropSpec) -> RgbaImage {
+    let (w, h) = img.dimensions();
+    let r = clamp_rect(c.rect, w, h);
+    let mut out = imageops::crop_imm(img, r.x, r.y, r.w, r.h).to_image();
+    if let Some(mask) = &c.mask {
+        let cov = mask_coverage(mask, w, h);
+        for (x, y, px) in out.enumerate_pixels_mut() {
+            if !cov[((r.y + y) * w + r.x + x) as usize] {
+                px.0[3] = 0;
+            }
+        }
+    }
+    out
+}
+
 /// Ponto de extensão da Tarefa 9 (`color::adjust`). Até lá, não altera a imagem.
 fn adjust(img: &RgbaImage, _adj: &ColorAdjust) -> RgbaImage {
     // TODO(Tarefa 9): substituir por `crate::image::color::adjust(img, adj)`.
@@ -44,8 +57,8 @@ fn adjust(img: &RgbaImage, _adj: &ColorAdjust) -> RgbaImage {
 pub fn output_size((w, h): (u32, u32), op: &Op) -> (u32, u32) {
     match op {
         Op::Rotate { quarter_turns } if quarter_turns.rem_euclid(2) == 1 => (h, w),
-        Op::Crop(r) => {
-            let r = clamp_rect(*r, w, h);
+        Op::Crop(c) => {
+            let r = clamp_rect(c.rect, w, h);
             (r.w, r.h)
         }
         Op::Resize { w, h, .. } => (*w, *h),
@@ -56,7 +69,7 @@ pub fn output_size((w, h): (u32, u32), op: &Op) -> (u32, u32) {
 /// Explica por que a operação não pode ser aplicada numa imagem `w`x`h`, se for o caso.
 pub fn validate((w, h): (u32, u32), op: &Op) -> Result<(), String> {
     match op {
-        Op::Crop(r) if r.x >= w || r.y >= h || r.w == 0 || r.h == 0 => {
+        Op::Crop(CropSpec { rect: r, .. }) if r.x >= w || r.y >= h || r.w == 0 || r.h == 0 => {
             Err("recorte fora da imagem".into())
         }
         Op::Resize { w, h, .. } if *w == 0 || *h == 0 => Err("tamanho zero".into()),
