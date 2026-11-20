@@ -73,7 +73,8 @@
       "changed_on_disk": "O arquivo foi alterado por outro programa.",
       "heic_decoder_missing": "Para abrir HEIC, instale a biblioteca libde265.",
       "generic": "Erro desconhecido ao abrir o arquivo."
-    }
+    },
+    "generic": "Não foi possível concluir a ação"
   },
   "viewer": {
     "label": "Visualização da imagem",
@@ -188,5 +189,123 @@
     "keywordsHint": "As alterações são gravadas no arquivo ao salvar.",
     "noKeywords": "Nenhuma palavra-chave.",
     "noAnnotations": "Nenhuma anotação."
+  },
+  "menu": {
+    "bar": "Menu principal",
+    "file": {
+      "title": "Arquivo",
+      "newFromClipboard": "Novo da Área de Transferência",
+      "open": "Abrir…",
+      "openRecent": "Abrir Recentes",
+      "close": "Fechar",
+      "save": "Salvar",
+      "duplicate": "Duplicar",
+      "rename": "Renomear…",
+      "moveTo": "Mover Para…",
+      "revert": "Reverter Para",
+      "revertLastSaved": "Última Versão Salva",
+      "revertOriginal": "Original",
+      "export": "Exportar…",
+      "exportSelected": "Exportar Selecionadas…",
+      "capture": "Capturar Tela",
+      "captureSelection": "Da Seleção…",
+      "captureWindow": "Da Janela…",
+      "captureScreen": "Da Tela Inteira",
+      "print": "Imprimir…",
+      "openWith": "Abrir com…"
+    },
+    "edit": {
+      "title": "Editar",
+      "undo": "Desfazer",
+      "redo": "Refazer",
+      "cut": "Recortar",
+      "copy": "Copiar",
+      "paste": "Colar",
+      "delete": "Apagar",
+      "selectAll": "Selecionar Tudo",
+      "deselect": "Desmarcar Tudo",
+      "invertSelection": "Inverter Seleção",
+      "preferences": "Preferências…"
+    },
+    "view": {
+      "title": "Visualizar",
+      "hideSidebar": "Ocultar Barra Lateral",
+      "thumbnails": "Miniaturas",
+      "contactSheet": "Folha de Contatos",
+      "actualSize": "Tamanho Real",
+      "fit": "Ajustar à Janela",
+      "zoomIn": "Ampliar",
+      "zoomOut": "Reduzir",
+      "zoomToSelection": "Ampliar Seleção",
+      "markupBar": "Mostrar Barra de Marcação",
+      "slideshow": "Apresentação",
+      "fullscreen": "Tela Cheia"
+    },
+    "go": {
+      "title": "Ir",
+      "prev": "Anterior",
+      "next": "Próximo",
+      "first": "Primeiro",
+      "last": "Último"
+    },
+    "tools": {
+      "title": "Ferramentas",
+      "rotateLeft": "Girar à Esquerda",
+      "rotateRight": "Girar à Direita",
+      "flipH": "Espelhar Horizontalmente",
+      "flipV": "Espelhar Verticalmente",
+      "crop": "Recortar",
+      "adjustColor": "Ajustar Cor…",
+      "resize": "Ajustar Tamanho…",
+      "instantAlpha": "Alfa Instantâneo",
+      "inspector": "Mostrar Inspetor",
+      "annotate": "Anotar",
+      "annotateKinds": {
+        "rect": "Retângulo",
+        "oval": "Oval",
+        "line": "Linha",
+        "arrow": "Seta",
+        "text": "Texto",
+        "bubble": "Balão de Fala",
+        "star": "Estrela",
+        "polygon": "Polígono",
+        "loupe": "Lupa",
+        "highlight": "Realce",
+        "signature": "Assinatura"
+      }
+    },
+    "window": {
+      "title": "Janela",
+      "minimize": "Minimizar",
+      "maximize": "Maximizar"
+    },
+    "help": {
+      "title": "Ajuda",
+      "shortcuts": "Atalhos de Teclado",
+      "checkUpdates": "Verificar Atualizações…",
+      "about": "Sobre o Gera View Image"
+    }
+  },
+  "toolbar": {
+    "label": "Barra de ferramentas",
+    "sidebar": "Mostrar ou ocultar a barra lateral",
+    "zoomOut": "Reduzir",
+    "zoomIn": "Ampliar",
+    "share": "Compartilhar",
+    "markup": "Mostrar barra de marcação",
+    "rotate": "Girar à esquerda (com Alt: à direita)",
+    "inspector": "Mostrar inspetor"
+  },
+  "shortcuts": {
+    "title": "Atalhos de Teclado",
+    "close": "Fechar",
+    "command": "Comando",
+    "keys": "Atalho"
+  },
+  "toast": {
+    "close": "Fechar aviso"
+  },
+  "dialog": {
+    "images": "Imagens"
   }
 }

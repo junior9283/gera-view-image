@@ -113,6 +113,28 @@ describe("SelectionLayer", () => {
     expect(invoke).toHaveBeenCalledWith("apply_op", { id: 1, op: { type: "makeTransparent", data: bitmap } });
   });
 
+  it("Alfa Instantâneo pendente consome Delete e Esc antes do keymap global (sem Op em dobro)", async () => {
+    useSelection.setState({ selectionTool: "instantAlpha" });
+    invoke.mockImplementation(async (cmd: string) => (cmd === "instant_alpha" ? bitmap : { id: 1, rev: 1 }));
+    // Registrado antes da camada, como o useShortcuts do App: só age se ninguém consumiu a tecla.
+    const global = vi.fn((e: KeyboardEvent) => e.defaultPrevented);
+    window.addEventListener("keydown", global);
+    render(<SelectionLayer {...props} />);
+    const pend = async () => {
+      fireEvent.pointerDown(layer(), { clientX: 30, clientY: 30, button: 0, pointerId: 1 });
+      await act(async () => {});
+      fireEvent.pointerUp(layer(), { clientX: 30, clientY: 30, pointerId: 1 });
+      await act(async () => {});
+    };
+    await pend();
+    fireEvent.keyDown(window, { key: "Delete" });
+    await act(async () => {});
+    await pend();
+    fireEvent.keyDown(window, { key: "Escape" });
+    window.removeEventListener("keydown", global);
+    expect(global.mock.results.map((r) => r.value)).toEqual([true, true]);
+  });
+
   describe("formigas marchando", () => {
     const setHidden = (hidden: boolean) => Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
     const ctx = () => ({
