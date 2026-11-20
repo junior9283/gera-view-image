@@ -1,0 +1,84 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const disk = new Map<string, unknown>();
+let failLoad = false;
+vi.mock("@tauri-apps/plugin-store", () => ({
+  load: vi.fn(async () => {
+    if (failLoad) throw new Error("sem store");
+    return {
+      get: async (k: string) => disk.get(k),
+      set: async (k: string, v: unknown) => void disk.set(k, v),
+      save: async () => {},
+    };
+  }),
+}));
+
+import { DEFAULT_PREFS, addRecent, getPrefs, loadPrefs, resetPrefsForTests, setPrefs } from "./prefs";
+
+beforeEach(() => {
+  disk.clear();
+  failLoad = false;
+  localStorage.clear();
+  resetPrefsForTests();
+});
+
+describe("prefs", () => {
+  it("carrega padrões quando arquivo ausente", async () => {
+    expect(await loadPrefs()).toEqual(DEFAULT_PREFS);
+    expect(getPrefs()).toEqual(DEFAULT_PREFS);
+  });
+
+  it("carrega padrões quando o store falha", async () => {
+    failLoad = true;
+    expect(await loadPrefs()).toEqual(DEFAULT_PREFS);
+  });
+
+  it("ignora chave inválida mantendo padrão e chaves desconhecidas", async () => {
+    disk.set("background", "roxo");
+    disk.set("slideshowSeconds", "abc");
+    disk.set("language", "en");
+    disk.set("chaveNova", 42);
+    const p = await loadPrefs();
+    expect(p.background).toBe(DEFAULT_PREFS.background);
+    expect(p.slideshowSeconds).toBe(DEFAULT_PREFS.slideshowSeconds);
+    expect(p.language).toBe("en");
+    expect(p).not.toHaveProperty("chaveNova");
+  });
+
+  it("recent sem duplicatas e máx 20", async () => {
+    await loadPrefs();
+    for (let i = 0; i < 25; i++) addRecent(`/img/${i}.png`);
+    addRecent("/img/10.png");
+    const r = getPrefs().recent;
+    expect(r).toHaveLength(20);
+    expect(new Set(r).size).toBe(20);
+    expect(r[0]).toBe("/img/10.png");
+  });
+
+  it("persiste alterações no store", async () => {
+    await loadPrefs();
+    setPrefs({ browseFolder: false });
+    await vi.waitFor(() => expect(disk.get("browseFolder")).toBe(false));
+  });
+
+  it("migra valores do localStorage uma vez e os remove", async () => {
+    localStorage.setItem("update.auto", "false");
+    localStorage.setItem("update.lastCheck", "2026-01-01T00:00:00.000Z");
+    localStorage.setItem("update.skipped", "0.3.0");
+    localStorage.setItem("gvi.nativeDecorations", "1");
+    const p = await loadPrefs();
+    expect(p.autoUpdate).toBe(false);
+    expect(p.lastUpdateCheck).toBe("2026-01-01T00:00:00.000Z");
+    expect(p.skippedVersion).toBe("0.3.0");
+    expect(p.nativeDecorations).toBe(true);
+    expect(disk.get("skippedVersion")).toBe("0.3.0");
+    expect(localStorage.getItem("update.skipped")).toBeNull();
+    expect(localStorage.getItem("gvi.nativeDecorations")).toBeNull();
+  });
+
+  it("o store tem precedência sobre o localStorage", async () => {
+    disk.set("skippedVersion", "0.4.0");
+    localStorage.setItem("update.skipped", "0.3.0");
+    expect((await loadPrefs()).skippedVersion).toBe("0.4.0");
+  });
+});

@@ -42,7 +42,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => win }));
 
 const { TitleBar, WindowFrame } = await import("./TitleBar");
-const { resetNativeDecorations } = await import("./nativeDecorations");
+const { getPrefs, resetPrefsForTests, setPrefs } = await import("../store/prefs");
 
 const buttons = (side: "left" | "right") =>
   Array.from(document.querySelectorAll(`[data-side="${side}"] [data-button]`)).map((b) =>
@@ -51,7 +51,7 @@ const buttons = (side: "left" | "right") =>
 
 beforeEach(() => {
   localStorage.clear();
-  resetNativeDecorations();
+  resetPrefsForTests();
   compositing = true;
   current = base;
   maximized = false;
@@ -138,7 +138,7 @@ describe("fallback para a decoração nativa", () => {
     await waitFor(() => expect(win.setDecorations).toHaveBeenCalledWith(true));
     await waitFor(() => expect(document.querySelector("[data-button]")).toBeNull());
     expect(document.querySelector(".resize-edge")).toBeNull();
-    expect(localStorage.getItem("gvi.nativeDecorations")).toBe("1");
+    expect(getPrefs().nativeDecorations).toBe(true);
   });
 
   it("sem composição (transparência indisponível) cai na decoração nativa na inicialização", async () => {
@@ -149,8 +149,7 @@ describe("fallback para a decoração nativa", () => {
   });
 
   it("decisão guardada vale na próxima abertura", async () => {
-    localStorage.setItem("gvi.nativeDecorations", "1");
-    resetNativeDecorations();
+    setPrefs({ nativeDecorations: true });
     render(createElement(TitleBar, { title: "x" }));
     await waitFor(() => expect(win.setDecorations).toHaveBeenCalledWith(true));
     expect(document.querySelector("[data-button]")).toBeNull();

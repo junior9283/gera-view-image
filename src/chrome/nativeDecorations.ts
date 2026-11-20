@@ -1,47 +1,16 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { setPrefs, usePrefs } from "../store/prefs";
 
-/** Provisório: a Task 12 migra a decisão para as prefs (`prefs.nativeDecorations`). */
-const KEY = "gvi.nativeDecorations";
-
-function readStored(): boolean {
-  try {
-    return localStorage.getItem(KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-let native = readStored();
-const listeners = new Set<() => void>();
-
-/** Fallback automático (spec §13.3): decoração nativa, guardada para as próximas aberturas. */
+/** Fallback automático (spec §13.3): decoração nativa, guardada nas prefs para as próximas aberturas. */
 export function enableNativeDecorations(): void {
-  if (native) return;
-  native = true;
-  try {
-    localStorage.setItem(KEY, "1");
-  } catch {
-    /* sem armazenamento: vale só nesta sessão */
-  }
-  listeners.forEach((l) => l());
+  setPrefs({ nativeDecorations: true });
 }
 
-/** Só para testes: relê o armazenamento. */
-export function resetNativeDecorations(): void {
-  native = readStored();
-  listeners.forEach((l) => l());
-}
-
-const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => listeners.delete(l);
-};
-
-/** `override` é o ajuste manual (prop); o fallback automático também liga o modo nativo. */
+/** `override` é o ajuste manual (prop); `prefs.nativeDecorations` também liga o modo nativo. */
 export function useNativeDecorations(override = false): boolean {
-  return useSyncExternalStore(subscribe, () => native) || override;
+  return usePrefs().nativeDecorations || override;
 }
 
 /** Na inicialização: sem compositor/visual RGBA a janela transparente não funciona. */
@@ -53,9 +22,11 @@ export function useCompositingProbe(): void {
   }, []);
 }
 
-/** Liga `setDecorations(true)` sempre que o modo nativo estiver ativo. */
+/** Aplica `setDecorations` ao ligar o modo nativo e o desfaz (`false`) quando a preferência é desligada. */
 export function useApplyNativeDecorations(active: boolean): void {
+  const wasActive = useRef(false);
   useEffect(() => {
-    if (active) getCurrentWindow().setDecorations(true).catch(() => {});
+    if (active || wasActive.current) getCurrentWindow().setDecorations(active).catch(() => {});
+    wasActive.current = active;
   }, [active]);
 }
