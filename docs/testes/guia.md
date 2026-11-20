@@ -22,6 +22,7 @@ Contorno aplicado por padrão: `WEBKIT_DISABLE_DMABUF_RENDERER=1` (desligar com 
 - App inteiro (`GVI_TIMING=1 gera-view-image foto.jpg`, 3 execuções): argv aberto em 166-268 ms; 1º `render_view` (prévia) servido em **283-404 ms**; buffer em resolução cheia (evento `doc-updated`) em 405-531 ms. Antes (Tarefa 0): 1170 ms.
 - O que domina agora é a subida do WebView (o decode roda em paralelo desde o `main`).
 - **Leitura honesta:** 2 das 3 execuções deram 404 ms, ou seja, a meta de < 400 ms foi atingida só no limite e não com folga. O núcleo (prévia + 1º render em ~200 ms) não é mais o gargalo; o resto é a subida do GTK/WebKit até o JS chamar `startup_documents`. Ganhar mais exige mexer na subida do WebView (pintar a prévia antes do React, por exemplo), não no decode.
+- Nova medição (rodada de correção 1, libheif embutida, `cargo build --release --features tauri/custom-protocol`, 3 execuções): argv aberto em 194-200 ms; 1º `render_view` em **343-355 ms**; resolução cheia em 474-494 ms. Dentro da meta, mas com menos de 60 ms de folga. Sem `custom-protocol`, o binário tenta carregar o devUrl e nunca chega ao `render_view`.
 
 ## Armadilhas
 - `cargo fmt` e `cargo clippy --all-targets` sem avisos são esperados no Rust.
