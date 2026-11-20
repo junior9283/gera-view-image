@@ -140,7 +140,12 @@ pub fn exif_tiff_gps() -> Vec<u8> {
     t.extend_from_slice(&8u32.to_le_bytes());
     t.extend_from_slice(&3u16.to_le_bytes());
     t.extend(entry(0x010F, 2, make.len() as u32, off_make.to_le_bytes()));
-    t.extend(entry(0x0110, 2, model.len() as u32, off_model.to_le_bytes()));
+    t.extend(entry(
+        0x0110,
+        2,
+        model.len() as u32,
+        off_model.to_le_bytes(),
+    ));
     t.extend(entry(0x8825, 4, 1, off_gps.to_le_bytes()));
     t.extend_from_slice(&0u32.to_le_bytes());
     assert_eq!(t.len() as u32, off_make);

@@ -24,7 +24,7 @@ use std::{
     borrow::Cow,
     fs,
     io::{Cursor, Write},
-    os::unix::fs::PermissionsExt,
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::Path,
     sync::atomic::{AtomicU32, Ordering},
 };
@@ -669,16 +669,19 @@ pub fn write_atomic(
     ));
     let mode = fs::metadata(path).ok().map(|m| m.permissions().mode());
     let result = (|| {
+        // Regravando: o temporário nasce 0o600 (nunca mais aberto que o original) e recebe o
+        // modo do original pelo handle. Arquivo novo: modo padrão (0o666 menos a umask).
         let mut f = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
+            .mode(if mode.is_some() { 0o600 } else { 0o666 })
             .open(&tmp)?;
         write(&mut f)?;
         f.flush()?;
-        f.sync_all()?;
         if let Some(mode) = mode {
-            fs::set_permissions(&tmp, fs::Permissions::from_mode(mode))?;
+            f.set_permissions(fs::Permissions::from_mode(mode))?;
         }
+        f.sync_all()?;
         fs::rename(&tmp, path)?;
         Ok(())
     })();

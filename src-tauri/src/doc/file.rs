@@ -72,28 +72,38 @@ fn move_file(from: &Path, to: &Path) -> AppResult<()> {
     match std::fs::hard_link(from, to) {
         Ok(()) => {}
         Err(e) if e.kind() == ErrorKind::AlreadyExists => return Err(exists_error(to)),
-        Err(_) => {
-            let mut dest = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(to)
-                .map_err(|e| match e.kind() {
-                    ErrorKind::AlreadyExists => exists_error(to),
-                    _ => e.into(),
-                })?;
-            let copied = std::fs::File::open(from)
-                .and_then(|mut src| std::io::copy(&mut src, &mut dest))
-                .and_then(|_| dest.sync_all())
-                .and_then(|_| std::fs::set_permissions(to, std::fs::metadata(from)?.permissions()));
-            if let Err(e) = copied {
-                let _ = std::fs::remove_file(to);
-                return Err(e.into());
-            }
-        }
+        Err(_) => copy_no_replace(from, to)?,
     }
     std::fs::remove_file(from).inspect_err(|_| {
         let _ = std::fs::remove_file(to);
     })?;
+    Ok(())
+}
+
+/// Copia `from` para `to` sem substituir (`create_new`). O destino nasce com 0o600 e recebe o
+/// modo da origem pelo próprio handle: nunca fica mais aberto que a origem, nem por um instante,
+/// e um arquivo trocado no caminho durante a cópia não é afetado.
+pub fn copy_no_replace(from: &Path, to: &Path) -> AppResult<()> {
+    use std::{io::ErrorKind, os::unix::fs::OpenOptionsExt};
+    let mut src = std::fs::File::open(from)?;
+    let perms = src.metadata()?.permissions();
+    let mut dest = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(to)
+        .map_err(|e| match e.kind() {
+            ErrorKind::AlreadyExists => exists_error(to),
+            _ => e.into(),
+        })?;
+    let copied = std::io::copy(&mut src, &mut dest)
+        .and_then(|_| dest.set_permissions(perms))
+        .and_then(|_| dest.sync_all());
+    if let Err(e) = copied {
+        drop(dest);
+        let _ = std::fs::remove_file(to);
+        return Err(e.into());
+    }
     Ok(())
 }
 

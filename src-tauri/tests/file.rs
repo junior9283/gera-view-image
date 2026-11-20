@@ -4,7 +4,7 @@ mod make_fixtures;
 
 use gera_view_image_lib::{
     doc::{
-        file::{RevertTarget, SaveOutcome},
+        file::{RevertTarget, SaveOutcome, copy_no_replace},
         model::{DocId, Op, ResizeFilter, SourceFormat},
         store::DocStore,
     },
@@ -480,4 +480,39 @@ fn dpi_do_documento_segue_o_redimensionar() {
         .unwrap();
     let dpi = decode(&dest).unwrap().dpi.unwrap();
     assert!((dpi.0 - 300.0).abs() < 1.0, "{dpi:?}");
+}
+
+#[test]
+fn copia_entre_discos_nao_abre_permissoes() {
+    let dir = tmp("copia-perm");
+    let from = dir.join("privado.png");
+    fs::write(&from, b"segredo").unwrap();
+    fs::set_permissions(&from, fs::Permissions::from_mode(0o600)).unwrap();
+    let to = dir.join("cópia.png");
+    copy_no_replace(&from, &to).unwrap();
+    assert_eq!(
+        fs::metadata(&to).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(fs::read(&to).unwrap(), b"segredo");
+    // Não substitui um destino existente.
+    let err = copy_no_replace(&from, &to).unwrap_err();
+    assert_eq!(err.code(), "io");
+}
+
+#[test]
+fn salvar_arquivo_privado_continua_privado() {
+    let path = copia("privado", "alpha.png");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    let store = DocStore::new();
+    let id = abre(&store, &path);
+    store.apply_op(id, Op::FlipH).unwrap();
+    assert!(matches!(
+        store.save(id, None).unwrap(),
+        SaveOutcome::Saved(_)
+    ));
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
 }
