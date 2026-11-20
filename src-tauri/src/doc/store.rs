@@ -651,8 +651,8 @@ impl DocStore {
             let r = Rect {
                 x: s(region.x),
                 y: s(region.y),
-                w: s(region.w).max(1),
-                h: s(region.h).max(1),
+                w: s(region.w),
+                h: s(region.h),
             };
             ops::clamp_rect(r, px.width(), px.height())
         };
@@ -684,4 +684,32 @@ impl DocStore {
 
 fn not_found(id: DocId) -> AppError {
     AppError::NotFound(format!("documento {} não está aberto", id.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::image::Rgba;
+
+    /// Região de 1 px lógico durante a prévia (escala 1/4): o lado escalado arredonda
+    /// para 0 e o `clamp_rect` o leva a 1; nos cantos, o recorte fica dentro da prévia.
+    #[test]
+    fn regiao_minima_na_previa_vira_um_pixel() {
+        let store = DocStore::new();
+        let id = store.next_id();
+        let preview = RgbaImage::from_fn(100, 75, |x, y| Rgba([x as u8, y as u8, 7, 255]));
+        let decoded = Decoded::single(preview, SourceFormat::Jpeg);
+        store
+            .lock()
+            .insert(id, Document::new(id, "/tmp/previa.jpg", decoded, (400, 300), true));
+        let px = |x, y| {
+            let r = Rect { x, y, w: 1, h: 1 };
+            let buf = store.render_view(id, 0, 64, 64, Some(r)).unwrap();
+            assert_eq!(thumb::view_buffer_size(&buf), Some((1, 1)), "{r:?}");
+            [buf[8], buf[9], buf[10], buf[11]]
+        };
+        assert_eq!(px(0, 0), [0, 0, 7, 255]);
+        assert_eq!(px(399, 299), [99, 74, 7, 255]);
+        assert_eq!(px(42, 21), [11, 5, 7, 255]);
+    }
 }
