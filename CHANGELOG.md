@@ -6,11 +6,27 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 ## [Não lançado]
 
 ### Adicionado
+- Núcleo de imagem em Rust: abre JPEG, PNG, GIF animado, BMP, TIFF com várias páginas, WebP, HEIC/HEIF, AVIF, ICO, SVG, PSD (achatado), TGA e RAW (DNG, CR2/CR3, NEF, ARW, ORF, RW2, pela prévia embutida). Imagens enormes abrem por uma prévia reduzida, respeitam a orientação EXIF e ficam sob orçamento de memória; arquivo corrompido mostra erro só nele.
+- Visualizador: barra lateral com miniaturas, folha de contatos e reordenação por arraste; navegação pela pasta; Tamanho Real, Ajustar à Janela, zoom com roda e pinça, pan, Tela Cheia e Apresentação; fundo configurável com xadrez para transparência.
+- Barra de título que segue o tema e o layout de botões do sistema (KDE, GNOME, elementary), barra de menus completa (Alt/F10), barra de ferramentas e atalhos do Pré-Visualização com Ctrl.
+- Seleção retangular, elíptica, laço, laço inteligente e Alfa Instantâneo; copiar, recortar, apagar, inverter e recortar a imagem pela seleção.
+- Girar, espelhar, Ajustar Cor (histograma, níveis, ajuste automático, exposição, contraste, realces, sombras, saturação, temperatura, matiz, sépia e nitidez) e Ajustar Tamanho (unidades, ppp, proporção, reamostragem, presets).
+- Marcação: esboço com reconhecimento de forma, desenho livre, linha, seta, retângulo (também arredondado), oval, balão, estrela, polígono, lupa, realce, texto com estilo e assinaturas (desenhadas ou importadas), editáveis até salvar.
+- Inspetor: geral, EXIF, IPTC, GPS com link para o mapa, palavras-chave editáveis e lista de anotações.
 - Menu Arquivo: Salvar (gravação atômica, preserva EXIF/IPTC/ICC e zera a orientação após girar), Exportar e Exportar Selecionadas (JPEG, PNG, TIFF, WebP, AVIF, OpenEXR, BMP, com tamanho estimado), Duplicar, Renomear, Mover Para, Mostrar na Pasta, Abrir com, Reverter (Última Versão Salva / Original), Abrir Recentes, Imprimir, Capturar Tela e Novo da Área de Transferência.
 - Pergunta antes de fechar imagens com alterações e aviso quando o arquivo muda ou é apagado fora do app.
+- Preferências (fundo, abertura, navegação na pasta, atualização automática, decoração nativa, idioma), janela Sobre e interface em pt-BR e inglês.
+- README com prints, E2E (WebdriverIO + tauri-driver sob Xvfb) no CI e prints gerados por `scripts/screenshots.mjs` com imagens sintéticas.
 
-### Limitações conhecidas
-- HEIC e JPEG 2000 ainda não podem ser gravados: o codificador HEVC (x265) não pode ir no binário e não há crate JPEG 2000 sem a libopenjp2. HEIC é aberto normalmente; Salvar leva a Exportar.
+### Limitações conhecidas (o que falta para a 1.0)
+- HEIC e JPEG 2000 ainda não podem ser gravados: o codificador HEVC (x265) não pode ir no binário e não há crate JPEG 2000 sem a libopenjp2. HEIC é aberto normalmente (precisa da `libde265`, no Fedora pelo RPM Fusion); Salvar leva a Exportar.
+- Arrastar uma miniatura para fora da janela (para outro app) ainda não existe; a barra lateral só reordena.
+- GIF animado toca com 100 ms fixos por quadro (a duração de cada quadro do arquivo é ignorada).
+- Salvar em TIFF, BMP e AVIF não leva todos os metadados (EXIF/IPTC/ICC conforme o formato); imagens de 16 bits são salvas em 8 bits; JPEG CMYK é regravado em RGB.
+- Imprimir e Duplicar com anotações não salvas achatam as anotações no documento aberto.
+- Tamanho Real usa 1 pixel da imagem por pixel CSS (sem compensar a escala da tela).
+- Atalhos de letra não funcionam em layouts de teclado não latinos (ex.: cirílico).
+- Foco do teclado não fica preso dentro de alguns diálogos (acessibilidade).
 
 ## [0.1.2] - 2026-11-20
 
