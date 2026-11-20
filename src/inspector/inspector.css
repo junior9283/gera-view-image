@@ -1,0 +1,113 @@
+.inspector {
+  position: fixed;
+  top: 56px;
+  right: 16px;
+  width: 300px;
+  max-height: calc(100vh - 88px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: rgb(43 43 43 / 0.96);
+  color: #eee;
+  font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+  z-index: 900;
+}
+.inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+.inspector-close,
+.inspector-chips button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.inspector-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 0 8px;
+}
+.inspector-tabs button {
+  border: 0;
+  border-radius: 6px;
+  padding: 3px 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.inspector-tabs button[aria-selected="true"] {
+  background: rgb(255 255 255 / 0.16);
+}
+.inspector-body {
+  overflow: auto;
+  padding: 8px 12px 12px;
+}
+.inspector-fields {
+  margin: 0;
+}
+.inspector-fields div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+.inspector-fields dt {
+  color: #aaa;
+  flex: none;
+}
+.inspector-fields dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.inspector-empty,
+.inspector-hint {
+  color: #aaa;
+  margin: 4px 0;
+}
+.inspector-action {
+  margin-top: 8px;
+}
+.inspector-chips,
+.inspector-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.inspector-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.inspector-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 8px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.14);
+}
+.inspector-add {
+  display: flex;
+  gap: 6px;
+}
+.inspector-add input {
+  flex: 1;
+  min-width: 0;
+}
+.inspector-list button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 4px 0;
+  cursor: pointer;
+}

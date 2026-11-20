@@ -53,5 +53,46 @@
     "repository": "Repositório no GitHub",
     "logoAlt": "Logo do Gera View Image",
     "close": "Fechar"
+  },
+  "inspector": {
+    "title": "Informações",
+    "close": "Fechar",
+    "loading": "Carregando…",
+    "error": "Não foi possível ler as informações.",
+    "tab": {
+      "general": "Geral",
+      "exif": "EXIF",
+      "iptc": "IPTC",
+      "gps": "GPS",
+      "keywords": "Palavras-chave",
+      "annotations": "Anotações"
+    },
+    "general": {
+      "dimensions": "Dimensões",
+      "dpi": "Resolução",
+      "colorModel": "Modelo de cor",
+      "profile": "Perfil de cor",
+      "depth": "Profundidade",
+      "depthBits": "{{bits}} bits por canal",
+      "alpha": "Canal alfa",
+      "yes": "Sim",
+      "no": "Não",
+      "size": "Tamanho do arquivo",
+      "created": "Criado em",
+      "modified": "Modificado em",
+      "none": "Nenhum"
+    },
+    "empty": "Nenhum dado.",
+    "noGps": "Sem dados de localização.",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "altitude": "Altitude",
+    "openMap": "Abrir no mapa",
+    "newKeyword": "Nova palavra-chave",
+    "addKeyword": "Adicionar",
+    "removeKeyword": "Remover {{word}}",
+    "keywordsHint": "As alterações são gravadas no arquivo ao salvar.",
+    "noKeywords": "Nenhuma palavra-chave.",
+    "noAnnotations": "Nenhuma anotação."
   }
 }

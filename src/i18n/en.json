@@ -53,5 +53,46 @@
     "repository": "GitHub repository",
     "logoAlt": "Gera View Image logo",
     "close": "Close"
+  },
+  "inspector": {
+    "title": "Info",
+    "close": "Close",
+    "loading": "Loading…",
+    "error": "Could not read the information.",
+    "tab": {
+      "general": "General",
+      "exif": "EXIF",
+      "iptc": "IPTC",
+      "gps": "GPS",
+      "keywords": "Keywords",
+      "annotations": "Annotations"
+    },
+    "general": {
+      "dimensions": "Dimensions",
+      "dpi": "Resolution",
+      "colorModel": "Color model",
+      "profile": "Color profile",
+      "depth": "Depth",
+      "depthBits": "{{bits}} bits per channel",
+      "alpha": "Alpha channel",
+      "yes": "Yes",
+      "no": "No",
+      "size": "File size",
+      "created": "Created",
+      "modified": "Modified",
+      "none": "None"
+    },
+    "empty": "No data.",
+    "noGps": "No location data.",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "altitude": "Altitude",
+    "openMap": "Open in Maps",
+    "newKeyword": "New keyword",
+    "addKeyword": "Add",
+    "removeKeyword": "Remove {{word}}",
+    "keywordsHint": "Changes are written to the file when you save.",
+    "noKeywords": "No keywords.",
+    "noAnnotations": "No annotations."
   }
 }

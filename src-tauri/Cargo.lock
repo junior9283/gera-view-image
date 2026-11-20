@@ -1725,12 +1725,15 @@ name = "gera-view-image"
 version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
+ "cc",
  "fast_image_resize",
  "gtk",
  "image",
  "imagesize",
  "jpeg-decoder",
+ "kamadak-exif",
  "libheif-rs",
+ "libheif-sys",
  "notify",
  "psd",
  "rawler",
@@ -2874,6 +2877,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kamadak-exif"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8772c92c0f41c4a672cbdee6728253e5ae8fcc1c5eb5c6c676579565684bbf68"
+dependencies = [
+ "mutate_once",
+]
+
+[[package]]
 name = "keyboard-types"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3252,6 +3264,12 @@ dependencies = [
  "syn 2.0.119",
  "target-features",
 ]
+
+[[package]]
+name = "mutate_once"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13d2233c9842d08cfe13f9eac96e207ca6a2ea10b80259ebe8ad0268be27d2af"
 
 [[package]]
 name = "ndk"

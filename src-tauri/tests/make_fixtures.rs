@@ -82,6 +82,129 @@ pub fn jpeg_with_orientation(img: &RgbImage, orientation: u16) -> Vec<u8> {
     out
 }
 
+/// Constrói um bloco TIFF (little-endian) com Make/Model e GPS conhecidos.
+/// Lat 48°51'30" N, Lon 122°25'10" W, altitude 15,5 m acima do nível do mar.
+pub fn exif_tiff_gps() -> Vec<u8> {
+    fn entry(tag: u16, ty: u16, count: u32, val: [u8; 4]) -> Vec<u8> {
+        let mut e = tag.to_le_bytes().to_vec();
+        e.extend_from_slice(&ty.to_le_bytes());
+        e.extend_from_slice(&count.to_le_bytes());
+        e.extend_from_slice(&val);
+        e
+    }
+    fn rationals(v: &[(u32, u32)]) -> Vec<u8> {
+        v.iter()
+            .flat_map(|(n, d)| [n.to_le_bytes(), d.to_le_bytes()].concat())
+            .collect()
+    }
+    let make = b"Gera\0";
+    let model = b"TestCam\0";
+    // Layout: cabeçalho (8) + IFD0 (2 + 3*12 + 4 = 42) + dados + IFD GPS.
+    let off_make = 50u32;
+    let off_model = off_make + make.len() as u32;
+    let off_gps = (off_model + model.len() as u32).next_multiple_of(2);
+    let gps_len = 2 + 6 * 12 + 4;
+    let off_lat = off_gps + gps_len;
+    let off_lon = off_lat + 24;
+    let off_alt = off_lon + 24;
+
+    let mut t = b"II*\0".to_vec();
+    t.extend_from_slice(&8u32.to_le_bytes());
+    t.extend_from_slice(&3u16.to_le_bytes());
+    t.extend(entry(0x010F, 2, make.len() as u32, off_make.to_le_bytes()));
+    t.extend(entry(0x0110, 2, model.len() as u32, off_model.to_le_bytes()));
+    t.extend(entry(0x8825, 4, 1, off_gps.to_le_bytes()));
+    t.extend_from_slice(&0u32.to_le_bytes());
+    assert_eq!(t.len() as u32, off_make);
+    t.extend_from_slice(make);
+    t.extend_from_slice(model);
+    while (t.len() as u32) < off_gps {
+        t.push(0);
+    }
+    t.extend_from_slice(&6u16.to_le_bytes());
+    t.extend(entry(1, 2, 2, [b'N', 0, 0, 0]));
+    t.extend(entry(2, 5, 3, off_lat.to_le_bytes()));
+    t.extend(entry(3, 2, 2, [b'W', 0, 0, 0]));
+    t.extend(entry(4, 5, 3, off_lon.to_le_bytes()));
+    t.extend(entry(5, 1, 1, [0, 0, 0, 0]));
+    t.extend(entry(6, 5, 1, off_alt.to_le_bytes()));
+    t.extend_from_slice(&0u32.to_le_bytes());
+    t.extend(rationals(&[(48, 1), (51, 1), (30, 1)]));
+    t.extend(rationals(&[(122, 1), (25, 1), (10, 1)]));
+    t.extend(rationals(&[(155, 10)]));
+    t
+}
+
+fn jpeg_with_segment(img: &RgbImage, marker: u8, payload: &[u8]) -> Vec<u8> {
+    let jpg = jpeg_bytes(img, 90);
+    let mut out = jpg[..2].to_vec();
+    out.extend_from_slice(&[0xFF, marker]);
+    out.extend_from_slice(&((payload.len() + 2) as u16).to_be_bytes());
+    out.extend_from_slice(payload);
+    out.extend_from_slice(&jpg[2..]);
+    out
+}
+
+/// JPEG com Make/Model/GPS conhecidos (ver `exif_tiff_gps`).
+pub fn jpeg_with_gps() -> Vec<u8> {
+    let payload = [b"Exif\0\0".as_slice(), &exif_tiff_gps()].concat();
+    jpeg_with_segment(&gradient(32, 24), 0xE1, &payload)
+}
+
+/// Perfil ICC mínimo (v2) cuja tag `desc` é `name`.
+pub fn icc_profile_named(name: &str) -> Vec<u8> {
+    let mut desc = b"desc\0\0\0\0".to_vec();
+    desc.extend_from_slice(&(name.len() as u32 + 1).to_be_bytes());
+    desc.extend_from_slice(name.as_bytes());
+    desc.push(0);
+    let tag_off = 128u32 + 4 + 12;
+    let total = tag_off + desc.len() as u32;
+    let mut p = vec![0u8; 128];
+    p[0..4].copy_from_slice(&total.to_be_bytes());
+    p[8] = 2; // versão 2
+    p[12..16].copy_from_slice(b"mntr");
+    p[16..20].copy_from_slice(b"RGB ");
+    p[20..24].copy_from_slice(b"XYZ ");
+    p[36..40].copy_from_slice(b"acsp");
+    p.extend_from_slice(&1u32.to_be_bytes());
+    p.extend_from_slice(b"desc");
+    p.extend_from_slice(&tag_off.to_be_bytes());
+    p.extend_from_slice(&(desc.len() as u32).to_be_bytes());
+    p.extend_from_slice(&desc);
+    p
+}
+
+/// JPEG com o perfil sRGB embutido (APP2 `ICC_PROFILE`).
+pub fn jpeg_with_srgb() -> Vec<u8> {
+    let mut payload = b"ICC_PROFILE\0\x01\x01".to_vec();
+    payload.extend(icc_profile_named("sRGB IEC61966-2.1"));
+    jpeg_with_segment(&gradient(32, 24), 0xE2, &payload)
+}
+
+/// JPEG com IPTC (APP13): título, copyright e duas palavras-chave.
+pub fn jpeg_with_iptc() -> Vec<u8> {
+    fn ds(rec: u8, num: u8, v: &str) -> Vec<u8> {
+        let mut d = vec![0x1C, rec, num];
+        d.extend_from_slice(&(v.len() as u16).to_be_bytes());
+        d.extend_from_slice(v.as_bytes());
+        d
+    }
+    let mut iptc = ds(2, 5, "Praia");
+    iptc.extend(ds(2, 116, "Gera"));
+    iptc.extend(ds(2, 25, "mar"));
+    iptc.extend(ds(2, 25, "sol"));
+    let mut p = b"Photoshop 3.0\0".to_vec();
+    p.extend_from_slice(b"8BIM");
+    p.extend_from_slice(&0x0404u16.to_be_bytes());
+    p.extend_from_slice(&[0, 0]); // nome pascal vazio, preenchido para par
+    p.extend_from_slice(&(iptc.len() as u32).to_be_bytes());
+    p.extend_from_slice(&iptc);
+    if iptc.len() % 2 == 1 {
+        p.push(0);
+    }
+    jpeg_with_segment(&gradient(32, 24), 0xED, &p)
+}
+
 fn save_png(img: &RgbaImage, path: &Path) {
     img.save_with_format(path, image::ImageFormat::Png).unwrap();
 }
@@ -102,6 +225,9 @@ fn generate(dir: &Path) {
     if !p("alpha.png").exists() {
         save_png(&gradient_rgba(30, 30), &p("alpha.png"));
     }
+    write_if_missing(&p("meta_gps.jpg"), jpeg_with_gps);
+    write_if_missing(&p("meta_srgb.jpg"), jpeg_with_srgb);
+    write_if_missing(&p("meta_iptc.jpg"), jpeg_with_iptc);
     write_if_missing(&p("anim.gif"), gif_3_frames);
     write_if_missing(&p("multi.tiff"), tiff_2_pages);
     write_if_missing(&p("img.webp"), || {

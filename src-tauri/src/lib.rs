@@ -42,6 +42,7 @@ pub fn run() {
             commands::edit::apply_op,
             commands::edit::undo,
             commands::edit::redo,
+            commands::meta::metadata,
             commands::theme::window_theme,
             commands::theme::compositing_available
         ])

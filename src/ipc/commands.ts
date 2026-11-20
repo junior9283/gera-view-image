@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DocId, DocInfo, Op, Rect, ViewBuffer } from "./types";
+import type { DocId, DocInfo, Metadata, Op, Rect, ViewBuffer } from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -38,3 +38,5 @@ export const applyOp = (id: DocId, op: Op) => invoke<DocInfo>("apply_op", { id, 
 export const undo = (id: DocId) => invoke<DocInfo>("undo", { id });
 
 export const redo = (id: DocId) => invoke<DocInfo>("redo", { id });
+
+export const metadata = (id: DocId) => invoke<Metadata>("metadata", { id });
