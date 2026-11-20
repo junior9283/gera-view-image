@@ -52,15 +52,19 @@ GVI_DE265_FUNCS(GVI_FWD)
 int gvi_de265_load(const char* soname) {
   void* h = dlopen(soname, RTLD_NOW | RTLD_LOCAL);
   if (!h) return 0;
+  bool ok = true;
 #define GVI_LOAD(ret, name, params, args)                          \
   p_##name = reinterpret_cast<decltype(p_##name)>(dlsym(h, #name)); \
-  if (!p_##name) {                                                 \
-    dlclose(h);                                                    \
-    return 0;                                                      \
-  }
+  ok = ok && p_##name;
   GVI_DE265_FUNCS(GVI_LOAD)
 #undef GVI_LOAD
-  return 1;
+  if (ok) return 1;
+  // Lib incompleta: nenhum ponteiro pode sobrar apontando para a lib descarregada.
+#define GVI_RESET(ret, name, params, args) p_##name = nullptr;
+  GVI_DE265_FUNCS(GVI_RESET)
+#undef GVI_RESET
+  dlclose(h);
+  return 0;
 }
 
 const heif_decoder_plugin* gvi_de265_plugin(void) { return get_decoder_plugin_libde265(); }

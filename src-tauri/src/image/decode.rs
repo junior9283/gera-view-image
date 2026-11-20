@@ -81,14 +81,17 @@ fn check_budget(w: u32, h: u32, already: usize) -> AppResult<usize> {
 /// Memória que decodificar `bytes` deve ocupar, lida só do cabeçalho (RGBA8 = 4 bytes/pixel).
 /// RAW: o IFD0 costuma ser a miniatura, então usa o maior IFD/SubIFD (o sensor) x 12
 /// (dados do sensor + revelação + RGBA), ou 8x o arquivo, o que for maior.
+/// Limitada a `MAX_DECODE_BYTES`: acima disso a decodificação falha antes de alocar.
 pub fn estimate_bytes(path: &Path, bytes: &[u8]) -> usize {
     let by_file = bytes.len().saturating_mul(8);
-    if detect_format(path, bytes) == Some(SourceFormat::Raw) {
-        return raw_sensor_pixels(bytes).map_or(by_file, |px| px.saturating_mul(12).max(by_file));
-    }
-    imagesize::blob_size(bytes)
-        .map(|s| s.width.saturating_mul(s.height).saturating_mul(4))
-        .unwrap_or(by_file)
+    let est = if detect_format(path, bytes) == Some(SourceFormat::Raw) {
+        raw_sensor_pixels(bytes).map_or(by_file, |px| px.saturating_mul(12).max(by_file))
+    } else {
+        imagesize::blob_size(bytes)
+            .map(|s| s.width.saturating_mul(s.height).saturating_mul(4))
+            .unwrap_or(by_file)
+    };
+    est.min(MAX_DECODE_BYTES)
 }
 
 /// Maior largura x altura entre os IFDs de um RAW baseado em TIFF (DNG, NEF, ARW, CR2...),
@@ -851,6 +854,28 @@ mod tests {
         }
         let r = decode_tiff(&b);
         assert!(matches!(r, Err(AppError::Unsupported(_))), "{:?}", r.err());
+    }
+
+    #[test]
+    fn estimativa_de_raw_forjado_fica_no_teto() {
+        // TIFF/DNG com ImageWidth = ImageLength = u32::MAX: sensor x 12 satura em usize::MAX.
+        let mut b = b"II*\0\x08\0\0\0".to_vec();
+        b.extend_from_slice(&2u16.to_le_bytes());
+        for tag in [256u16, 257] {
+            b.extend_from_slice(&tag.to_le_bytes());
+            b.extend_from_slice(&4u16.to_le_bytes()); // LONG
+            b.extend_from_slice(&1u32.to_le_bytes());
+            b.extend_from_slice(&u32::MAX.to_le_bytes());
+        }
+        b.extend_from_slice(&0u32.to_le_bytes());
+        assert_eq!(
+            detect_format(Path::new("forjado.dng"), &b),
+            Some(SourceFormat::Raw)
+        );
+        assert_eq!(
+            estimate_bytes(Path::new("forjado.dng"), &b),
+            MAX_DECODE_BYTES
+        );
     }
 
     #[test]

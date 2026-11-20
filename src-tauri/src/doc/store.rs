@@ -58,10 +58,10 @@ impl DecodeBudget {
         let mut used = self
             .freed
             .wait_while(self.used.lock().unwrap_or_else(|e| e.into_inner()), |u| {
-                *u > 0 && *u + bytes > self.limit
+                *u > 0 && u.saturating_add(bytes) > self.limit
             })
             .unwrap_or_else(|e| e.into_inner());
-        *used += bytes;
+        *used = used.saturating_add(bytes);
         self.peak.fetch_max(*used, Ordering::Relaxed);
         Reservation(self, bytes)
     }
@@ -69,7 +69,9 @@ impl DecodeBudget {
 
 impl Drop for Reservation<'_> {
     fn drop(&mut self) {
-        *self.0.used.lock().unwrap_or_else(|e| e.into_inner()) -= self.1;
+        let mut used = self.0.used.lock().unwrap_or_else(|e| e.into_inner());
+        *used = used.saturating_sub(self.1);
+        drop(used);
         self.0.freed.notify_all();
     }
 }

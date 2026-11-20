@@ -14,8 +14,10 @@ unsafe extern "C" {
 static SONAME: Mutex<&'static CStr> = Mutex::new(c"libde265.so.0");
 static AVAILABLE: OnceLock<bool> = OnceLock::new();
 
-/// Troca a biblioteca procurada (testes do caso "libde265 ausente").
-/// Só vale se chamada antes da primeira abertura de HEIC no processo.
+/// SÓ PARA TESTES (caso "libde265 ausente"): troca a biblioteca procurada.
+/// Só vale se chamada antes da primeira abertura de HEIC no processo. Fica pública
+/// (oculta da doc) porque os testes de integração não enxergam `cfg(test)` da lib.
+#[doc(hidden)]
 pub fn set_libde265_soname(soname: &'static CStr) {
     *SONAME.lock().unwrap_or_else(|e| e.into_inner()) = soname;
 }
