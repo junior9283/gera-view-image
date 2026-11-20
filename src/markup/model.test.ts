@@ -28,6 +28,11 @@ describe("modelo de anotações", () => {
     expect(items[1].geom).toMatchObject({ x: 100, y: 100 }); // imutável
   });
 
+  it("deslocamento zero devolve o mesmo array (clicar para selecionar não vira passo)", () => {
+    const items = [rect("a")];
+    expect(moveItems(items, ["a"], 0, 0)).toBe(items);
+  });
+
   it("move linha, mão livre, lupa e a cauda do balão", () => {
     const items: Annotation[] = [
       { id: "l", kind: "arrow", geom: { x1: 0, y1: 0, x2: 10, y2: 10 }, style: DEFAULT_STYLE },

@@ -157,8 +157,9 @@ const mapSome = (items: Annotation[], ids: readonly string[], f: (a: Annotation)
   return items.map((a) => (set.has(a.id) ? f(a) : a));
 };
 
+/** Sem deslocamento devolve `items` (o commit vê "sem mudança" e não cria passo). */
 export const moveItems = (items: Annotation[], ids: readonly string[], dx: number, dy: number) =>
-  mapSome(items, ids, (a) => translate(a, dx, dy));
+  dx || dy ? mapSome(items, ids, (a) => translate(a, dx, dy)) : items;
 
 export function mergeStyle(s: Style, patch: StylePatch): Style {
   const { font, ...rest } = patch;
