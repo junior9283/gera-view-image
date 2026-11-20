@@ -162,6 +162,19 @@ describe("flattenAnnotations", () => {
     expect(getItems(1).map((a) => a.id)).toEqual(["a"]);
   });
 
+  it("a lupa carrega a fonte na mesma escala do canvas de achatamento (não a imagem inteira)", async () => {
+    // 20000×10000 = 200 MP → o achatamento sai em √(64/200) da resolução.
+    useDocs.getState().update(info({ rev: 50, width: 20000, height: 10000 }));
+    ipc.renderView.mockResolvedValue({ width: 2, height: 1, data: new Uint8ClampedArray(8) });
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => null) as never;
+    addAnnotation(1, { id: "z", kind: "loupe", geom: { cx: 50, cy: 50, r: 20, zoom: 2 }, style: DEFAULT_STYLE });
+    await flattenAnnotations(1);
+    const [, , maxW, maxH] = ipc.renderView.mock.calls[0];
+    const k = Math.sqrt(64e6 / 200e6);
+    expect(maxW).toBe(Math.round(20000 * k));
+    expect(maxH).toBe(Math.round(10000 * k));
+  });
+
   it("sem anotações não faz nada", async () => {
     expect(await flattenAnnotations(1)).toBe(false);
     expect(ipc.applyOp).not.toHaveBeenCalled();

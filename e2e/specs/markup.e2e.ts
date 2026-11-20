@@ -3,10 +3,12 @@ import { Key } from "webdriverio";
 
 // Marcação: seta, texto e lupa; desfazer/refazer; achatar (Op::Composite) e conferir o pixel.
 // O "exportar PNG" confere o resultado achatado pelo render_view: o comando de exportar é da Task 11.
+// Requer o build com VITE_E2E=1 (gancho window.__gviMarkup; ver docs/testes/guia.md).
 
 interface Hook {
   activeId(): number | null;
   count(): number;
+  texts(): string[];
   flatten(): Promise<boolean>;
 }
 declare global {
@@ -64,8 +66,14 @@ describe("marcação", () => {
     const editor = await $(".markup-text-editor");
     await editor.waitForExist({ timeout: 3000 });
     await browser.keys("Oi");
-    await $('[data-testid="markup-select"]').click(); // sai do texto e confirma
-    await browser.waitUntil(async () => (await count()) === 2, { timeout: 3000 });
+    // Sair do campo confirma o texto (o texto novo só entra no histórico aqui).
+    await browser.execute(() => (document.activeElement as HTMLElement | null)?.blur());
+    await editor.waitForExist({ reverse: true, timeout: 3000 });
+    await browser.waitUntil(async () => (await browser.execute(() => window.__gviMarkup.texts())).includes("Oi"), {
+      timeout: 3000,
+      timeoutMsg: "o texto Oi não foi confirmado",
+    });
+    expect(await count()).toBe(2);
 
     await pickShape("loupe");
     await drag([200, 80], [200, 80]);

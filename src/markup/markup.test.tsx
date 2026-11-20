@@ -19,6 +19,7 @@ import { DEFAULT_STYLE, type Annotation } from "./model";
 import { getItems, resetMarkupForTests, useMarkup } from "./store";
 import { addAnnotation } from "./actions";
 import { resetHistoryForTests } from "./history";
+import { useSelection } from "../store/selection";
 
 const info: DocInfo = {
   id: 7, path: "/a.png", name: "a.png", format: "png", width: 400, height: 300, frames: 1,
@@ -36,6 +37,7 @@ beforeEach(() => {
   useDocs.getState().add([info]);
   resetMarkupForTests();
   resetHistoryForTests();
+  useSelection.setState({ selection: null, selectionTool: null });
 });
 afterEach(cleanup);
 
@@ -67,6 +69,46 @@ describe("barra de Marcação", () => {
     fireEvent.click(screen.getByRole("button", { name: "Formas" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Seta" }));
     expect(useMarkup.getState().tool).toBe("arrow");
+  });
+});
+
+describe("convivência com a Seleção (Task 7) e o pan (Task 6)", () => {
+  it("Seleção ▸ Retangular delega à camada de seleção: a marcação larga o ponteiro", () => {
+    render(
+      <>
+        <Slot name="below-toolbar" props={{}} />
+        <Slot name="viewport-overlay" props={overlay} />
+      </>,
+    );
+    toggle();
+    const layer = screen.getByTestId("markup-layer");
+    expect(layer.style.pointerEvents).toBe("auto");
+    fireEvent.click(screen.getByRole("button", { name: "Seleção" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Seleção retangular" }));
+    expect(useSelection.getState().selectionTool).toBe("rect");
+    expect(layer.style.pointerEvents).toBe("none");
+  });
+
+  it("escolher uma ferramenta de marcação desliga a ferramenta de seleção", () => {
+    render(<Slot name="viewport-overlay" props={overlay} />);
+    toggle();
+    act(() => useSelection.getState().setSelectionTool("lasso"));
+    expect(screen.getByTestId("markup-layer").style.pointerEvents).toBe("none");
+    act(() => useMarkup.getState().setTool("arrow"));
+    expect(useSelection.getState().selectionTool).toBeNull();
+    expect(screen.getByTestId("markup-layer").style.pointerEvents).toBe("auto");
+  });
+
+  it("com o ponteiro de anotações, arrastar na área vazia continua sendo o pan", () => {
+    const pan = vi.fn();
+    render(
+      <div ref={(el) => el?.addEventListener("pointerdown", pan)}>
+        <Slot name="viewport-overlay" props={overlay} />
+      </div>,
+    );
+    toggle();
+    fireEvent.pointerDown(screen.getByTestId("markup-layer"), { button: 0, clientX: 300, clientY: 200, pointerId: 1 });
+    expect(pan).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -132,6 +174,30 @@ describe("camada de anotações", () => {
     window.removeEventListener("keydown", outro);
     expect(getItems(7)).toHaveLength(0);
     expect(outro).not.toHaveBeenCalled(); // o Apagar da seleção (Task 6) não roda junto
+  });
+});
+
+describe("edição de texto", () => {
+  it("sair sem mudar o texto não cria passo de desfazer", () => {
+    render(<Slot name="viewport-overlay" props={overlay} />);
+    toggle();
+    act(() => addAnnotation(7, { id: "t", kind: "text", geom: { x: 0, y: 0, w: 10, h: 10, text: "Olá" }, style: DEFAULT_STYLE }));
+    const before = getItems(7);
+    act(() => useMarkup.getState().setEditing("t"));
+    fireEvent.blur(screen.getByRole("textbox"));
+    expect(useMarkup.getState().editing).toBeNull();
+    expect(getItems(7)).toBe(before);
+  });
+
+  it("mudar o texto cria um passo com o texto novo", () => {
+    render(<Slot name="viewport-overlay" props={overlay} />);
+    toggle();
+    act(() => addAnnotation(7, { id: "t", kind: "text", geom: { x: 0, y: 0, w: 10, h: 10, text: "Olá" }, style: DEFAULT_STYLE }));
+    act(() => useMarkup.getState().setEditing("t"));
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "Oi" } });
+    fireEvent.blur(box);
+    expect(getItems(7)[0].geom).toMatchObject({ text: "Oi" });
   });
 });
 

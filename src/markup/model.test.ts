@@ -88,6 +88,12 @@ describe("modelo de anotações", () => {
     expect(deserialize("lixo")).toEqual({ items: [] });
   });
 
+  it("assinatura/imagem só com src PNG em data URL", () => {
+    const sig = (src: string) => ({ id: src, kind: "signature", geom: { x: 0, y: 0, w: 1, h: 1, src }, style: DEFAULT_STYLE });
+    const json = JSON.stringify({ items: [sig("data:image/png;base64,AAAA"), sig("https://exemplo.com/x.png"), sig("data:image/svg+xml;base64,PHN2Zz4="), sig("file:///etc/passwd")] });
+    expect(deserialize(json).items.map((a) => a.id)).toEqual(["data:image/png;base64,AAAA"]);
+  });
+
   it("hitTest acha a de cima e respeita a tolerância da linha", () => {
     const items: Annotation[] = [
       rect("baixo", 0, 0),
@@ -130,6 +136,15 @@ describe("modelo de anotações", () => {
       const [r, l] = transformForOp([box, z], { type: "resize", data: { w: 200, h: 100, filter: "lanczos3", dpi: null } }, 100, 50)!;
       expect(r.geom).toEqual({ x: 20, y: 40, w: 80, h: 20 });
       expect(l.geom).toEqual({ cx: 100, cy: 50, r: 20, zoom: 2 });
+    });
+
+    it("redimensionar escala também a espessura e o tamanho da fonte", () => {
+      const styled: Annotation = { ...text, style: { ...DEFAULT_STYLE, width: 6, font: { family: "Inter", size: 20, color: "#000", bold: false, italic: false, underline: false, align: "left" } } };
+      const [a, t] = transformForOp([{ ...arrow, style: { ...DEFAULT_STYLE, width: 6 } }, styled], { type: "resize", data: { w: 50, h: 25, filter: "lanczos3", dpi: null } }, 100, 50)!;
+      expect(a.style.width).toBe(3);
+      expect(t.style.width).toBe(3);
+      expect(t.style.font?.size).toBe(10);
+      expect(t.geom).toMatchObject({ w: 20, h: 5 });
     });
 
     it("Op sem geometria não mexe", () => {

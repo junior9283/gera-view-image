@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useDocs, resetDocsForTests } from "../store/docs";
 import type { DocInfo } from "../ipc/types";
-import { markupCommands } from "./commands";
+import { isEnabled, resetCommandsForTests, runCommand } from "../shortcuts/commands";
+import { markupCommands, registerMarkupCommands } from "./commands";
 import { resetMarkupForTests, useMarkup } from "./store";
 
 const info: DocInfo = {
@@ -46,5 +47,17 @@ describe("comandos de menu da Marcação", () => {
     expect(useMarkup.getState().menu).toBe("signature");
     c["view.markupBar"].run();
     expect(useMarkup.getState().visible).toBe(false);
+  });
+
+  it("registra no registro de comandos da Task 6: Anotar ▸ fica habilitado com documento", () => {
+    resetCommandsForTests();
+    const off = registerMarkupCommands();
+    expect(isEnabled("tools.annotate.arrow")).toBe(false);
+    useDocs.getState().add([info]);
+    for (const c of markupCommands()) expect(isEnabled(c.id)).toBe(true);
+    expect(runCommand("tools.annotate.arrow")).toBe(true);
+    expect(useMarkup.getState()).toMatchObject({ visible: true, tool: "arrow" });
+    off();
+    expect(isEnabled("tools.annotate.arrow")).toBe(false);
   });
 });

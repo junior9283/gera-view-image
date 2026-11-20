@@ -1,12 +1,13 @@
 import { create } from "zustand";
 import type { DocId } from "../ipc/types";
+import { useSelection } from "../store/selection";
 import { DEFAULT_FONT, DEFAULT_STYLE, mergeStyle, type Annotation, type Style, type StylePatch } from "./model";
 
 /** Ferramentas da barra de Marcação. As formas criam a anotação do mesmo tipo. */
 export type ShapeTool =
   | "line" | "arrow" | "rect" | "roundRect" | "oval" | "bubble" | "star" | "polygon" | "loupe" | "highlight" | "highlightOval";
 export type Tool = "select" | "sketch" | "draw" | "text" | ShapeTool;
-export type BarMenu = "shapes" | "signature" | "lineStyle" | "stroke" | "fill" | "textStyle";
+export type BarMenu = "select" | "shapes" | "signature" | "lineStyle" | "stroke" | "fill" | "textStyle";
 
 const EMPTY: Annotation[] = [];
 
@@ -50,7 +51,11 @@ export const useMarkup = create<MarkupState>((set) => ({
   ...INITIAL,
   setVisible: (visible) => set(visible ? { visible } : { visible, editing: null, menu: null }),
   toggle: () => set((s) => (s.visible ? { visible: false, editing: null, menu: null } : { visible: true })),
-  setTool: (tool) => set({ tool }),
+  setTool: (tool) => {
+    // Uma ferramenta de marcação tira o ponteiro da camada de seleção (Task 7).
+    useSelection.getState().setSelectionTool(null);
+    set({ tool });
+  },
   setStyle: (patch) => set((s) => ({ style: mergeStyle(s.style, patch) })),
   setItems: (id, items) =>
     set((s) => {
@@ -77,8 +82,6 @@ export const useItems = (id: DocId | null) => useMarkup((s) => (id === null ? EM
 
 /** Mostra/oculta a barra de Marcação (a Toolbar e o Ctrl+Shift+M disparam `gvi:toggle-markup`). */
 export const toggleMarkupBar = () => useMarkup.getState().toggle();
-
-export const TOGGLE_MARKUP_EVENT = "gvi:toggle-markup";
 
 /** Só para testes. */
 export function resetMarkupForTests(): void {

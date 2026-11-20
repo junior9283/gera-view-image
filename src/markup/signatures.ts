@@ -1,12 +1,11 @@
 // Assinaturas salvas (plugin-store, `signatures.json`) e sua criação: desenho suavizado
-// (Catmull-Rom) ou importação de uma imagem aberta, sem o fundo claro (Alfa Instantâneo).
+// (Catmull-Rom) ou importação de um arquivo de imagem, sem o fundo claro (Alfa Instantâneo).
 import { useSyncExternalStore } from "react";
 import type { Store } from "@tauri-apps/plugin-store";
 import * as ipc from "../ipc/commands";
-import type { DocId } from "../ipc/types";
+import type { DocInfo } from "../ipc/types";
 import { rasterize } from "../select/lasso";
-import { useDocs } from "../store/docs";
-import { newId, type Box, type Point } from "./model";
+import { PNG_DATA_URL, newId, type Box, type Point } from "./model";
 
 export interface Signature {
   id: string;
@@ -24,7 +23,7 @@ const MAX_SIDE = 800;
 /** Acima disto a imagem é grande demais para importar como assinatura. */
 const MAX_IMPORT_PIXELS = 40e6;
 
-export const signatureSrc = (s: Signature) => `data:image/png;base64,${s.png}`;
+export const signatureSrc = (s: Signature) => PNG_DATA_URL + s.png;
 
 let list: Signature[] = [];
 let store: Store | null = null;
@@ -32,8 +31,17 @@ let loading: Promise<Signature[]> | null = null;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
-const valid = (v: unknown): v is Signature =>
-  !!v && typeof v === "object" && typeof (v as Signature).id === "string" && typeof (v as Signature).png === "string";
+/** Teto de cada assinatura guardada (base64, ~3 MB de PNG): o arquivo do store pode ter sido editado. */
+export const MAX_SIGNATURE_CHARS = 4 * 1024 * 1024;
+const BASE64 = /^[A-Za-z0-9+/]+=*$/;
+
+const valid = (v: unknown): v is Signature => {
+  const s = v as Signature;
+  return (
+    !!v && typeof v === "object" && typeof s.id === "string" && typeof s.png === "string" &&
+    s.png.length <= MAX_SIGNATURE_CHARS && BASE64.test(s.png)
+  );
+};
 
 export function loadSignatures(): Promise<Signature[]> {
   return (loading ??= (async () => {
@@ -167,25 +175,43 @@ export function alphaBounds(d: Uint8ClampedArray, w: number, h: number): Box | n
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
+/** Lado (px) da prévia usada só para achar os cantos claros. */
+const CORNER_PREVIEW = 64;
+
 /**
- * Cria uma assinatura a partir de um documento aberto: o Alfa Instantâneo (tolerância 0.15),
- * semeado nos cantos claros, tira o fundo; o resultado é recortado na tinta.
+ * Cria uma assinatura a partir de um arquivo de imagem: abre como documento temporário no
+ * núcleo (o Alfa Instantâneo trabalha sobre um documento), tira o fundo claro com
+ * tolerância 0.15 a partir dos cantos claros, recorta na tinta e fecha o documento.
  */
-export async function importSignature(id: DocId): Promise<Signature | null> {
-  const doc = useDocs.getState().docs.find((d) => d.id === id);
-  if (!doc || doc.error || doc.width * doc.height > MAX_IMPORT_PIXELS) return null;
-  const { width: w, height: h } = doc;
+export async function importSignatureFile(path: string): Promise<Signature | null> {
+  const [doc] = await ipc.openDocuments([path]);
+  if (!doc) return null;
+  try {
+    return await importFromDoc(doc);
+  } finally {
+    await ipc.closeDocument(doc.id).catch(() => {});
+  }
+}
+
+async function importFromDoc(doc: DocInfo): Promise<Signature | null> {
+  const { id, width: w, height: h } = doc;
+  if (doc.error || !w || !h || w * h > MAX_IMPORT_PIXELS) return null;
+  // Cantos pela prévia; as máscaras vêm antes dos pixels cheios porque o instant_alpha
+  // espera a decodificação completa (JPEG grande abre com prévia).
+  const small = await ipc.renderView(id, 0, Math.min(w, CORNER_PREVIEW), Math.min(h, CORNER_PREVIEW));
+  const seeds = lightCorners(small.data, small.width, small.height).map(([x, y]) => [x ? w - 1 : 0, y ? h - 1 : 0]);
+  const masks = await Promise.all(seeds.map(([x, y]) => ipc.instantAlpha(id, x, y, IMPORT_TOLERANCE)));
   const view = await ipc.renderView(id, 0, w, h);
   if (view.width !== w || view.height !== h) return null;
   const data = new Uint8ClampedArray(view.data);
-  const masks = await Promise.all(lightCorners(data, w, h).map(([x, y]) => ipc.instantAlpha(id, x, y, IMPORT_TOLERANCE)));
   for (const m of masks) clearMask(data, rasterize(m, w, h));
   const b = alphaBounds(data, w, h);
-  if (!b) return null;
   const full = document.createElement("canvas");
+  const ctx = full.getContext("2d");
+  if (!b || !ctx) return null;
   full.width = w;
   full.height = h;
-  full.getContext("2d")?.putImageData(new ImageData(data, w, h), 0, 0);
+  ctx.putImageData(new ImageData(data, w, h), 0, 0);
   const k = Math.min(1, MAX_SIDE / Math.max(b.w, b.h));
   const out = document.createElement("canvas");
   out.width = Math.max(1, Math.round(b.w * k));

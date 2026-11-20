@@ -1,34 +1,39 @@
-// Comandos de menu da Marcação (Ferramentas › Anotar ▸ e Visualizar › Barra de Marcação).
-// A Task 6 liga cada um ao `registerCommand` dela.
+// Comandos de menu da Marcação (Ferramentas › Anotar ▸ e Visualizar › Barra de Marcação),
+// ligados ao registro da Task 6 por `registerMarkupCommands` (chamado no `register.ts`).
+import { ANNOTATE_KINDS, registerCommand, type AnnotateKind, type CommandId } from "../shortcuts/commands";
 import { useDocs } from "../store/docs";
-import { toggleMarkupBar, useMarkup, type Tool } from "./store";
+import { toggleMarkupBar, useMarkup } from "./store";
 
 export interface MarkupCommand {
-  id: string;
+  id: CommandId;
   run: () => void;
   enabled: () => boolean;
 }
-
-const ANNOTATE = ["rect", "oval", "line", "arrow", "text", "bubble", "star", "polygon", "loupe", "highlight", "signature"] as const;
 
 const hasDoc = () => {
   const { docs, activeId } = useDocs.getState();
   return docs.some((d) => d.id === activeId && !d.error);
 };
 
-function annotate(kind: (typeof ANNOTATE)[number]) {
+function annotate(kind: AnnotateKind) {
   const st = useMarkup.getState();
   st.setVisible(true);
   if (kind === "signature") st.setMenu("signature");
   else {
-    st.setTool(kind as Tool);
+    st.setTool(kind);
     st.setMenu(null);
   }
 }
 
 export function markupCommands(): MarkupCommand[] {
   return [
-    ...ANNOTATE.map((kind) => ({ id: `tools.annotate.${kind}`, run: () => annotate(kind), enabled: hasDoc })),
+    ...ANNOTATE_KINDS.map((kind) => ({ id: `tools.annotate.${kind}` as const, run: () => annotate(kind), enabled: hasDoc })),
     { id: "view.markupBar", run: toggleMarkupBar, enabled: () => true },
   ];
+}
+
+/** Registra os comandos; devolve a função que remove todos. */
+export function registerMarkupCommands(): () => void {
+  const offs = markupCommands().map((c) => registerCommand(c.id, c.run, c.enabled));
+  return () => offs.forEach((off) => off());
 }

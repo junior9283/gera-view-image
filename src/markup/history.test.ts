@@ -108,6 +108,18 @@ describe("desfazer unificado", () => {
     expect(getItems(1)[0].geom).toEqual({ x: 50, y: 10, w: 20, h: 20 });
   });
 
+  it("avisa os inscritos quando canUndo/canRedo podem mudar (menus reativos)", async () => {
+    const cb = vi.fn();
+    const off = globalHistory.subscribeHistory(cb);
+    addAnnotation(1, rect("a"));
+    expect(cb).toHaveBeenCalledTimes(1);
+    await globalHistory.undo(1);
+    expect(cb).toHaveBeenCalledTimes(2);
+    off();
+    await globalHistory.redo(1);
+    expect(cb).toHaveBeenCalledTimes(2);
+  });
+
   it("ação nova limpa o refazer", async () => {
     addAnnotation(1, rect("a"));
     await globalHistory.undo(1);

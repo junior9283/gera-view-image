@@ -366,12 +366,15 @@ export function renderSelection(ctx: Ctx, items: readonly Annotation[], selected
 /** Acima disto (pixels) o achatamento sai em resolução menor e o Rust amplia ao compor. */
 const MAX_FLAT_PIXELS = 64e6;
 
+/** Escala do canvas de achatamento (1 até 64 MP). */
+export const flattenScale = (w: number, h: number) => Math.min(1, Math.sqrt(MAX_FLAT_PIXELS / (w * h)));
+
 /**
  * Achata as anotações num PNG transparente do tamanho da imagem (canvas offscreen),
  * pronto para `Op::Composite`.
  */
 export async function flattenToPng(items: readonly Annotation[], w: number, h: number, source: Source | null): Promise<Uint8Array> {
-  const k = Math.min(1, Math.sqrt(MAX_FLAT_PIXELS / (w * h)));
+  const k = flattenScale(w, h);
   const [cw, ch] = [Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))];
   await preloadImages(items);
   const canvas: OffscreenCanvas | HTMLCanvasElement =

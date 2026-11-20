@@ -268,12 +268,19 @@
       "clear": "Limpar",
       "save": "Salvar",
       "drawHint": "Assine aqui com o mouse ou o touchpad",
-      "importHint": "Escolha uma imagem aberta com a assinatura sobre fundo claro.",
-      "importFrom": "Imagem",
-      "importButton": "Importar",
+      "importHint": "Escolha uma imagem com a assinatura sobre fundo claro; o fundo é removido.",
+      "importButton": "Escolher Imagem…",
       "importFailed": "Não foi possível importar a assinatura.",
       "limit": "Até {{n}} assinaturas; a mais antiga sai.",
       "pad": "Área de desenho da assinatura"
+    },
+    "selectTool": {
+      "pointer": "Selecionar anotações",
+      "rect": "Seleção retangular",
+      "ellipse": "Seleção elíptica",
+      "lasso": "Laço",
+      "smartLasso": "Laço inteligente",
+      "instantAlpha": "Alfa Instantâneo"
     }
   },
   "menu": {

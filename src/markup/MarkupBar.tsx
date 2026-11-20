@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cropToSelection } from "../select/actions";
+import type { SelectionTool } from "../select/tools";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
@@ -10,6 +11,7 @@ import type { ArrowEnd, Dash, StylePatch } from "./model";
 import { SignaturePanel } from "./SignaturePanel";
 import { useMarkup, type BarMenu, type ShapeTool, type Tool } from "./store";
 
+const SELECTION_TOOLS: SelectionTool[] = ["rect", "ellipse", "lasso", "smartLasso", "instantAlpha"];
 const SHAPES: ShapeTool[] = ["line", "arrow", "rect", "roundRect", "oval", "bubble", "star", "polygon", "loupe", "highlight", "highlightOval"];
 const WIDTHS = [1, 2, 3, 5, 8, 12];
 const DASHES: Dash[] = ["solid", "dashed", "dotted"];
@@ -84,6 +86,7 @@ export function MarkupBar() {
   const menu = useMarkup((s) => s.menu);
   const hasDoc = useDocs((s) => s.docs.some((d) => d.id === s.activeId && !d.error));
   const canCrop = useSelection((s) => s.selection !== null);
+  const selTool = useSelection((s) => s.selectionTool);
   const bar = useRef<HTMLDivElement>(null);
 
   const st = useMarkup.getState;
@@ -92,6 +95,11 @@ export function MarkupBar() {
     st().setMenu(null);
   };
   const toggleMenu = (m: BarMenu) => st().setMenu(menu === m ? null : m);
+  /** Ferramenta de seleção da imagem (Task 7): a camada de marcação larga o ponteiro. */
+  const pickSelection = (s: SelectionTool) => {
+    setTool("select");
+    useSelection.getState().setSelectionTool(s);
+  };
 
   // Fecha o menu ao clicar fora da barra.
   useEffect(() => {
@@ -109,7 +117,21 @@ export function MarkupBar() {
 
   return (
     <div ref={bar} role="toolbar" aria-label={t("markup.bar")} className="markup-bar" data-testid="markup-bar">
-      <BarButton id="select" label={t("markup.tool.select")} pressed={tool === "select"} onClick={() => setTool("select")}>{ICONS.select}</BarButton>
+      <div className="markup-group">
+        <BarButton id="select" label={t("markup.tool.select")} pressed={tool === "select"} onClick={() => toggleMenu("select")}>{ICONS.select}</BarButton>
+        {menu === "select" && (
+          <div role="menu" className="markup-menu">
+            <button type="button" role="menuitem" data-testid="markup-select-pointer" className={tool === "select" && !selTool ? "active" : undefined} onClick={() => setTool("select")}>
+              {t("markup.selectTool.pointer")}
+            </button>
+            {SELECTION_TOOLS.map((s) => (
+              <button key={s} type="button" role="menuitem" data-testid={`markup-select-${s}`} className={selTool === s ? "active" : undefined} disabled={!hasDoc} onClick={() => pickSelection(s)}>
+                {t(`markup.selectTool.${s}`)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <BarButton id="sketch" label={t("markup.tool.sketch")} pressed={tool === "sketch"} onClick={() => setTool("sketch")}>{ICONS.sketch}</BarButton>
       <BarButton id="draw" label={t("markup.tool.draw")} pressed={tool === "draw"} onClick={() => setTool("draw")}>{ICONS.draw}</BarButton>
       <div className="markup-group">

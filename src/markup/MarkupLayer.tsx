@@ -4,6 +4,7 @@ import type { DocInfo } from "../ipc/types";
 import type { OverlayProps } from "../lib/slots";
 import { toImage } from "../select/tools";
 import { useDocs } from "../store/docs";
+import { useSelection } from "../store/selection";
 import { dpr } from "../viewer/paint";
 import { addAnnotation, commit, deleteSelected } from "./actions";
 import { loadSource } from "./flatten";
@@ -53,7 +54,8 @@ function useMarkupKeys() {
     const onKey = (e: KeyboardEvent) => {
       const st = useMarkup.getState();
       const id = useDocs.getState().activeId;
-      if (!st.visible || id === null || st.editing || isEditable(e.target)) return;
+      const selecting = useSelection.getState().selectionTool !== null; // Delete/Esc são da seleção
+      if (!st.visible || id === null || st.editing || selecting || isEditable(e.target)) return;
       let used = false;
       if (e.key === "Delete" || e.key === "Backspace") used = deleteSelected(id);
       else if (e.key === "Escape") {
@@ -83,6 +85,9 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
   const tool = useMarkup((s) => s.tool);
   const selected = useMarkup((s) => (docId === null ? NO_IDS : (s.selected[docId] ?? NO_IDS)));
   const editing = useMarkup((s) => s.editing);
+  // Com uma ferramenta de seleção da imagem ativa, o ponteiro é da SelectionLayer (Task 7).
+  const selecting = useSelection((s) => s.selectionTool !== null);
+  const active = visible && !selecting;
   const [draft, setDraft] = useState<Annotation | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [imgTick, imageLoaded] = useReducer((x: number) => x + 1, 0);
@@ -244,7 +249,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
   }, []);
 
   const editingItem = items.find((a) => a.id === editing && a.kind === "text");
-  const cursor = !visible ? undefined : tool === "select" ? "default" : tool === "text" ? "text" : "crosshair";
+  const cursor = !active ? undefined : tool === "select" ? "default" : tool === "text" ? "text" : "crosshair";
 
   return (
     <div
@@ -252,7 +257,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       className="markup-layer"
       data-testid="markup-layer"
       aria-label={t("markup.layer")}
-      style={{ pointerEvents: visible ? "auto" : "none", cursor }}
+      style={{ pointerEvents: active ? "auto" : "none", cursor }}
     >
       <canvas ref={canvas} className="markup-canvas" />
       {docId !== null && editingItem?.kind === "text" && (
@@ -280,6 +285,7 @@ function TextEditor({ docId, item, view }: { docId: number; item: Extract<Annota
     if (st.editing !== item.id) return;
     st.setEditing(null);
     const text = value.replace(/\s+$/, "");
+    if (text && text === item.geom.text) return; // nada mudou: sem passo no desfazer
     const items = getItems(docId);
     const without = items.filter((a) => a.id !== item.id);
     // Texto recém-criado (vazio) ainda não está no histórico: o "antes" é sem ele.

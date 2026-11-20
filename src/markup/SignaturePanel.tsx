@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { SUPPORTED_EXTENSIONS } from "../file/extensions";
 import { useDocs } from "../store/docs";
 import { useUi } from "../store/ui";
 import { addAnnotation } from "./actions";
@@ -7,7 +9,7 @@ import { DEFAULT_STYLE, newId, type Point } from "./model";
 import {
   MAX_SIGNATURES,
   catmullRom,
-  importSignature,
+  importSignatureFile,
   loadSignatures,
   removeSignature,
   addSignature,
@@ -108,19 +110,20 @@ function DrawTab() {
 
 function ImportTab() {
   const { t } = useTranslation();
-  const docs = useDocs((s) => s.docs).filter((d) => !d.error);
-  const activeId = useDocs((s) => s.activeId);
-  const [from, setFrom] = useState<number | null>(activeId);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  const chosen = docs.find((d) => d.id === from) ?? docs[0];
 
   const run = async () => {
-    if (!chosen) return;
-    setBusy(true);
     setFailed(false);
+    const path = await openDialog({
+      multiple: false,
+      directory: false,
+      filters: [{ name: t("dialog.images"), extensions: [...SUPPORTED_EXTENSIONS] }],
+    });
+    if (!path) return;
+    setBusy(true);
     try {
-      if (!(await importSignature(chosen.id))) setFailed(true);
+      if (!(await importSignatureFile(path))) setFailed(true);
     } catch (e) {
       console.error("falha ao importar a assinatura:", e);
       setFailed(true);
@@ -132,17 +135,9 @@ function ImportTab() {
   return (
     <div className="sig-import">
       <p className="sig-hint">{t("markup.sig.importHint")}</p>
-      <label>
-        {t("markup.sig.importFrom")}
-        <select value={chosen?.id ?? ""} onChange={(e) => setFrom(Number(e.target.value))}>
-          {docs.map((d) => (
-            <option key={d.id} value={d.id}>{d.name}</option>
-          ))}
-        </select>
-      </label>
       {failed && <p className="sig-error" role="alert">{t("markup.sig.importFailed")}</p>}
       <div className="sig-actions">
-        <button type="button" onClick={() => void run()} disabled={!chosen || busy}>{t("markup.sig.importButton")}</button>
+        <button type="button" onClick={() => void run()} disabled={busy}>{t("markup.sig.importButton")}</button>
       </div>
     </div>
   );

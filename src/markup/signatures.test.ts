@@ -12,13 +12,23 @@ vi.mock("@tauri-apps/plugin-store", () => ({
   }),
 }));
 
+const ipc = vi.hoisted(() => ({
+  openDocuments: vi.fn(),
+  closeDocument: vi.fn(async () => {}),
+  instantAlpha: vi.fn(async () => ({ type: "rect", data: { x: 0, y: 0, w: 1, h: 1 } })),
+  renderView: vi.fn(),
+}));
+vi.mock("../ipc/commands", () => ipc);
+
 import {
   MAX_SIGNATURES,
+  MAX_SIGNATURE_CHARS,
   addSignature,
   alphaBounds,
   catmullRom,
   clearMask,
   getSignatures,
+  importSignatureFile,
   lightCorners,
   loadSignatures,
   removeSignature,
@@ -41,6 +51,15 @@ describe("assinaturas salvas", () => {
     expect(list[0].png).toBe("png11");
     expect((disk.data.get("signatures") as unknown[]).length).toBe(10);
     expect(disk.saves).toBeGreaterThan(0);
+  });
+
+  it("descarta do disco assinaturas grandes demais ou que não são base64", async () => {
+    disk.data.set("signatures", [
+      { id: "ok", png: "QUJD" },
+      { id: "grande", png: "A".repeat(MAX_SIGNATURE_CHARS + 4) },
+      { id: "lixo", png: "<svg onload=alert(1)>" },
+    ]);
+    expect((await loadSignatures()).map((s) => s.id)).toEqual(["ok"]);
   });
 
   it("carrega do disco descartando entradas inválidas e remove", async () => {
@@ -91,5 +110,39 @@ describe("importar assinatura (fundo claro)", () => {
     expect(d[5 * 4 + 3]).toBe(255);
     expect(alphaBounds(d, 4, 3)).toEqual({ x: 1, y: 1, w: 2, h: 1 });
     expect(alphaBounds(new Uint8ClampedArray(16), 2, 2)).toBeNull();
+  });
+});
+
+describe("importar assinatura de arquivo", () => {
+  const doc = (w: number, h: number, error: string | null = null) => ({
+    id: 42, path: "/a.png", name: "a.png", format: "png", width: w, height: h, frames: 1,
+    writable: true, dirty: false, canUndo: false, canRedo: false, rev: 1, error,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ipc.renderView.mockImplementation(async (_id: number, _f: number, w: number, h: number) => ({
+      width: w, height: h, data: new Uint8ClampedArray(w * h * 4).fill(255),
+    }));
+  });
+
+  it("abre como documento temporário, tira o fundo (0.15, cantos claros) e fecha", async () => {
+    ipc.openDocuments.mockResolvedValue([doc(4, 3)]);
+    await importSignatureFile("/a.png");
+    expect(ipc.openDocuments).toHaveBeenCalledWith(["/a.png"]);
+    expect(ipc.instantAlpha).toHaveBeenCalledTimes(4);
+    expect(ipc.instantAlpha).toHaveBeenCalledWith(42, 0, 0, 0.15);
+    // Máscaras antes dos pixels: o instant_alpha espera a decodificação completa.
+    expect(ipc.instantAlpha.mock.invocationCallOrder[0]).toBeLessThan(ipc.renderView.mock.invocationCallOrder[1]);
+    expect(ipc.closeDocument).toHaveBeenCalledWith(42);
+  });
+
+  it("acima de 40 MP ou com erro não importa, mas fecha", async () => {
+    ipc.openDocuments.mockResolvedValue([doc(8000, 6000)]);
+    expect(await importSignatureFile("/grande.jpg")).toBeNull();
+    ipc.openDocuments.mockResolvedValue([doc(0, 0, "corrupt")]);
+    expect(await importSignatureFile("/ruim.jpg")).toBeNull();
+    expect(ipc.instantAlpha).not.toHaveBeenCalled();
+    expect(ipc.closeDocument).toHaveBeenCalledTimes(2);
   });
 });

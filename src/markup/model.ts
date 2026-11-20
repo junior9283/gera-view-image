@@ -85,6 +85,9 @@ export const DEFAULT_STYLE: Style = {
   shadow: false,
 };
 
+/** Única origem aceita para assinaturas e imagens: PNG embutido (nada de rede ou arquivo). */
+export const PNG_DATA_URL = "data:image/png;base64,";
+
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 let seq = 0;
@@ -195,7 +198,7 @@ function validGeom(kind: Kind, g: Record<string, unknown>): boolean {
       if (kind === "polygon") return isNum(g.sides);
       if (kind === "text") return isStr(g.text);
       if (kind === "highlight") return g.shape === "rect" || g.shape === "oval";
-      if (kind === "signature" || kind === "image") return isStr(g.src);
+      if (kind === "signature" || kind === "image") return isStr(g.src) && g.src.startsWith(PNG_DATA_URL);
       if (kind === "bubble") return !!g.tail && nums(g.tail as Record<string, unknown>, "x", "y");
       return true;
     }
@@ -361,5 +364,15 @@ export function transformForOp(items: readonly Annotation[], op: Op, w: number, 
     default:
       return null;
   }
-  return items.map((a) => mapAnnotation(a, f, k));
+  return items.map((a) => {
+    const m = mapAnnotation(a, f, k);
+    return k === 1 ? m : { ...m, style: scaleStyle(m.style, k) };
+  });
 }
+
+/** Espessura e fonte acompanham a escala (redimensionar a imagem). */
+const scaleStyle = (s: Style, k: number): Style => ({
+  ...s,
+  width: s.width * k,
+  ...(s.font && { font: { ...s.font, size: s.font.size * k } }),
+});

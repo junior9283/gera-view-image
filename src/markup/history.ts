@@ -31,10 +31,14 @@ function of(id: DocId): Stacks {
   return s;
 }
 
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((l) => l());
+
 function record(id: DocId, e: Entry): void {
   const s = of(id);
   s.undo.push(e);
   s.redo = [];
+  notify();
 }
 
 export const pushMarkup = (id: DocId, before: Annotation[], after: Annotation[]) =>
@@ -58,6 +62,7 @@ async function step(id: DocId, dir: "undo" | "redo"): Promise<void> {
     if (dir === "undo" && opsHistory.canUndo(id)) {
       await opsHistory.undo(id);
       to.push({ ts: Date.now(), kind: "op" });
+      notify();
     }
     return;
   }
@@ -70,6 +75,7 @@ async function step(id: DocId, dir: "undo" | "redo"): Promise<void> {
   const change = e.kind === "markup" ? e : e.items;
   if (change) setItems(id, dir === "undo" ? change.before : change.after);
   to.push(e);
+  notify();
 }
 
 export const undo = (id: DocId) => serial(id, () => step(id, "undo"));
@@ -77,7 +83,16 @@ export const redo = (id: DocId) => serial(id, () => step(id, "redo"));
 export const canUndo = (id: DocId) => of(id).undo.length > 0 || opsHistory.canUndo(id);
 export const canRedo = (id: DocId) => of(id).redo.length > 0;
 
-export const unifiedHistory: HistoryProvider = { undo, redo, canUndo, canRedo };
+export const unifiedHistory: HistoryProvider = {
+  undo,
+  redo,
+  canUndo,
+  canRedo,
+  subscribe: (cb) => {
+    listeners.add(cb);
+    return () => listeners.delete(cb);
+  },
+};
 
 /** Esquece a pilha (documento fechado). */
 function forget(id: DocId): void {
