@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notas da versão (seção do CHANGELOG)
+        id: notes
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '
+            $0 ~ "^## \\[" v "\\]" { on=1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "Seção $v não encontrada no CHANGELOG.md" >&2; exit 1
+          fi
+          { echo "body<<NOTES_EOF"; cat release-notes.md; echo "NOTES_EOF"; } >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - name: Dependências do sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libheif-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Gera View Image ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          includeUpdaterJson: true
+          args: --bundles deb,rpm,appimage
+
+  smoke-packages:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: deb, image: "ubuntu:24.04", pattern: "*.deb" }
+          - { name: rpm, image: "fedora:41", pattern: "*.rpm" }
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Baixar o pacote do release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "${{ matrix.pattern }}" --dir pkg
+      - name: Instalar e inspecionar em ${{ matrix.image }}
+        run: |
+          docker run --rm -v "$PWD/pkg:/pkg" ${{ matrix.image }} bash -euxc '
+            if [ "${{ matrix.name }}" = deb ]; then
+              apt-get update && apt-get install -y /pkg/*.deb
+              dpkg -I /pkg/*.deb
+              dpkg -s gera-view-image
+            else
+              dnf install -y /pkg/*.rpm
+              rpm -qi gera-view-image
+            fi
+            # TODO(Tarefa 4): trocar a inspeção acima por `gera-view-image --version`
+            # quando o main.rs ganhar a flag (precisa de display/WebKit; hoje só checamos a instalação).
+            test -x /usr/bin/gera-view-image
+          '

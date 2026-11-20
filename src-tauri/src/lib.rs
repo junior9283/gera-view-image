@@ -13,6 +13,9 @@ pub fn run() {
 
     let path = std::env::args_os().nth(1).map(std::path::PathBuf::from);
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(provisional::Provisional::new(t0, path))
         .invoke_handler(tauri::generate_handler![
             provisional::render_view,
