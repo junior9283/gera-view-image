@@ -1,0 +1,44 @@
+.prefs-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.5);
+  z-index: 1000;
+}
+.prefs-dialog {
+  max-width: 440px;
+  width: calc(100% - 32px);
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: #2b2b2b;
+  color: #eee;
+  font: 14px/1.4 system-ui, sans-serif;
+}
+.prefs-dialog h3 {
+  margin: 0 0 12px;
+}
+.prefs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.prefs-row input[type="number"] {
+  width: 5em;
+}
+.prefs-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.about-dialog {
+  text-align: center;
+}
+.about-dialog p {
+  margin: 4px 0;
+}
+.about-dialog a {
+  color: #8ab4f8;
+}

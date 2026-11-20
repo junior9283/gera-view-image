@@ -4,6 +4,7 @@ const check = vi.fn();
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: (...a: unknown[]) => check(...a) }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn() }));
 
+import { resetPrefsForTests, setPrefs } from "../store/prefs";
 import { checkForUpdate, isSkipped, shouldCheck, skipVersion } from "./updater";
 
 const now = new Date("2026-11-20T12:00:00Z");
@@ -27,19 +28,20 @@ describe("isSkipped", () => {
 describe("checkForUpdate", () => {
   beforeEach(() => {
     localStorage.clear();
+    resetPrefsForTests();
     check.mockReset();
   });
   const upd = { version: "0.2.0", body: "notas", date: "2026-11-19" };
 
   it("manual ignora intervalo e versão pulada e devolve UpdateInfo", async () => {
     skipVersion("0.2.0");
-    localStorage.setItem("update.lastCheck", new Date().toISOString());
+    setPrefs({ lastUpdateCheck: new Date().toISOString() });
     check.mockResolvedValue(upd);
     expect(await checkForUpdate({ manual: true })).toEqual({ version: "0.2.0", notes: "notas", date: "2026-11-19" });
   });
 
   it("automático respeita o intervalo", async () => {
-    localStorage.setItem("update.lastCheck", new Date().toISOString());
+    setPrefs({ lastUpdateCheck: new Date().toISOString() });
     expect(await checkForUpdate({ manual: false })).toBeNull();
     expect(check).not.toHaveBeenCalled();
   });

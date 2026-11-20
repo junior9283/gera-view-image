@@ -16,6 +16,10 @@
     "core:window:allow-start-resize-dragging",
     "updater:default",
     "process:allow-restart",
+    "store:allow-load",
+    "store:allow-get",
+    "store:allow-set",
+    "store:allow-save",
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://github.com/junior9283/gera-view-image/*" }]

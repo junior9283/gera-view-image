@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import type { WinButton, WindowTheme } from "./windowTheme";
 import "./buttonStyles/breeze.css";
 import "./buttonStyles/adwaita.css";
@@ -13,13 +14,6 @@ interface Props {
   maximized: boolean;
   onAction: (action: WindowAction) => void;
 }
-
-const LABEL: Record<WindowAction, string> = {
-  minimize: "Minimizar",
-  maximize: "Maximizar",
-  restore: "Restaurar",
-  close: "Fechar",
-};
 
 const PATHS: Record<WindowAction, string> = {
   minimize: "M4 8h8",
@@ -52,6 +46,7 @@ function cssVars(theme: WindowTheme): CSSProperties {
 
 /** Os botões de um lado da barra, na ordem do sistema; botão ausente no layout não é desenhado. */
 export function WindowButtons({ side, theme, maximized, onAction }: Props) {
+  const { t } = useTranslation();
   const list: WinButton[] = theme.layout[side];
   if (list.length === 0) return null;
   return (
@@ -70,8 +65,8 @@ export function WindowButtons({ side, theme, maximized, onAction }: Props) {
             className="wb-btn"
             data-button={b}
             data-action={action}
-            aria-label={LABEL[action]}
-            title={LABEL[action]}
+            aria-label={t(`window.${action}`)}
+            title={t(`window.${action}`)}
             onClick={() => onAction(action)}
             onDoubleClick={(e) => e.stopPropagation()}
           >

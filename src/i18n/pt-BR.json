@@ -1,0 +1,57 @@
+{
+  "window": {
+    "minimize": "Minimizar",
+    "maximize": "Maximizar",
+    "restore": "Restaurar",
+    "close": "Fechar"
+  },
+  "update": {
+    "title": "Nova versão disponível",
+    "install": "Instalar e Reiniciar",
+    "later": "Depois",
+    "skip": "Pular esta versão",
+    "installing": "Instalando…",
+    "failed": "Não foi possível instalar automaticamente",
+    "installed": "Atualização instalada. Reinicie o app para concluir.",
+    "openPage": "Abrir página da versão",
+    "upToDate": "Você já está na versão mais recente.",
+    "close": "Fechar"
+  },
+  "prefs": {
+    "title": "Preferências",
+    "close": "Fechar",
+    "background": "Fundo da visualização",
+    "bg": {
+      "window": "Cor da janela",
+      "black": "Preto",
+      "white": "Branco",
+      "gray": "Cinza",
+      "custom": "Personalizado"
+    },
+    "customBg": "Cor personalizada",
+    "browseFolder": "Navegar pelas imagens da pasta",
+    "openBehavior": "Ao abrir uma imagem",
+    "open": {
+      "fit": "Ajustar à janela",
+      "actual": "Tamanho real"
+    },
+    "slideshowSeconds": "Segundos por imagem na apresentação",
+    "autoUpdate": "Verificar atualizações automaticamente",
+    "nativeUnavailable": "Indisponível: o sistema não suporta janelas transparentes",
+    "nativeDecorations": "Usar a barra de título do sistema",
+    "language": "Idioma",
+    "lang": {
+      "system": "Idioma do sistema",
+      "pt-BR": "Português (Brasil)",
+      "en": "English"
+    }
+  },
+  "about": {
+    "title": "Sobre o Gera View Image",
+    "version": "Versão {{version}}",
+    "license": "Licença MIT",
+    "repository": "Repositório no GitHub",
+    "logoAlt": "Logo do Gera View Image",
+    "close": "Fechar"
+  }
+}
