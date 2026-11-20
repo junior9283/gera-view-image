@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { release } from "./release.mjs";
+import { release, tagArgs } from "./release.mjs";
 
 function fixture(version = "0.1.0", unreleased = "### Adicionado\n- coisa\n") {
   const root = mkdtempSync(join(tmpdir(), "rel-"));
@@ -97,4 +97,8 @@ test("prerelease é menor que a versão final", () => {
   run(fixture("0.2.0-beta.1"), "0.2.0");
   assert.throws(() => run(fixture("0.2.0"), "0.2.0-beta.1", { tagExists: () => false }), /maior/);
   run(fixture("0.2.0-beta.1"), "0.2.0-beta.2");
+});
+
+test("a tag de release é anotada (a leve não sobe com --follow-tags)", () => {
+  assert.deepEqual(tagArgs("0.2.0"), ["tag", "-a", "v0.2.0", "-m", "v0.2.0"]);
 });

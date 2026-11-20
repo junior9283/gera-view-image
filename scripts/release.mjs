@@ -33,6 +33,8 @@ function compare(a, b) {
 
 const edit = (path, fn) => writeFileSync(path, fn(readFileSync(path, "utf8")));
 const git = (root, ...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+/** Tag anotada: `git push --follow-tags` ignora tags leves. */
+export const tagArgs = (version) => ["tag", "-a", `v${version}`, "-m", `v${version}`];
 const HEAD = "## [Não lançado]";
 
 export function release(
@@ -83,7 +85,7 @@ export function release(
   if (useGit) {
     git(root, "add", "package.json", "package-lock.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "CHANGELOG.md");
     git(root, "commit", "-m", `chore(release): v${version}`);
-    git(root, "tag", `v${version}`);
+    git(root, ...tagArgs(version));
   }
   return version;
 }
