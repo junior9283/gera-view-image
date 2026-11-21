@@ -413,7 +413,7 @@ mod tests {
         let a2 = snapshot(&root, &a, 100).unwrap().unwrap();
         // 120 bytes > 100: sai a mais antiga (a1), de qualquer arquivo.
         let ids = |p: &Path| list(&root, p).into_iter().map(|v| v.id).collect::<Vec<_>>();
-        assert_eq!(ids(&a), [a2.clone()]);
+        assert_eq!(ids(&a), std::slice::from_ref(&a2));
         assert_eq!(ids(&b), [b1]);
         assert_ne!(a1, a2);
         // Limite menor: a pasta de `b` fica vazia e é removida.
