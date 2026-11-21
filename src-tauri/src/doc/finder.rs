@@ -112,31 +112,43 @@ pub fn is_locked(path: &Path) -> AppResult<bool> {
     Ok(fs::metadata(path)?.mode() & 0o222 == 0)
 }
 
-/// Modo de antes do Bloquear (octal), para o Desbloquear devolver exatamente ele.
+/// Modo de antes do Bloquear, para o Desbloquear devolvê-lo: `<modo octal>:<dev>:<inode>`.
 const MODE_ATTR: &str = "user.gvi.mode";
 
-/// Bits de **escrita** guardados em [`MODE_ATTR`], se houver algum. O valor pode ter vindo de
-/// fora (arquivo baixado com o xattr forjado): só a escrita é aproveitada, nunca
-/// setuid/setgid/sticky nem execução.
-fn saved_write_bits(f: &fs::File) -> Option<u32> {
+fn mode_tag(mode: u32, m: &fs::Metadata) -> String {
+    format!("{mode:o}:{}:{}", m.dev(), m.ino())
+}
+
+/// Modo guardado pelo próprio app ao bloquear **este** arquivo. O xattr pode vir forjado (arquivo
+/// baixado ou extraído), por isso só vale se: for do mesmo dev/inode (um arquivo copiado,
+/// baixado ou extraído ganha inode novo), não tiver setuid/setgid/sticky e só diferir do modo
+/// atual nos bits de escrita (o que o Bloquear tirou). Fora disso, é descartado.
+fn saved_mode(f: &fs::File, m: &fs::Metadata, current: u32) -> Option<u32> {
     let raw = f.get_xattr(MODE_ATTR).ok()??;
-    let mode = u32::from_str_radix(std::str::from_utf8(&raw).ok()?.trim(), 8).ok()?;
-    Some(mode & 0o222).filter(|w| *w != 0)
+    let mut it = std::str::from_utf8(&raw).ok()?.trim().split(':');
+    let mode = u32::from_str_radix(it.next()?, 8).ok()?;
+    let (dev, ino): (u64, u64) = (it.next()?.parse().ok()?, it.next()?.parse().ok()?);
+    let coherent = it.next().is_none()
+        && (dev, ino) == (m.dev(), m.ino())
+        && mode & 0o7000 == 0
+        && mode & !0o222 == current;
+    coherent.then_some(mode)
 }
 
 /// Bloquear tira a escrita de todos e guarda o modo anterior (xattr, se o sistema de arquivos
-/// aceitar). Desbloquear devolve os bits de escrita guardados (sem ele, só a do dono) e nada mais.
+/// aceitar). Desbloquear devolve esse modo, se for coerente ([`saved_mode`]); senão, só `u+w`.
 pub fn set_locked(path: &Path, locked: bool) -> AppResult<()> {
     let f = open_regular(path)?;
-    let mode = f.metadata()?.mode() & 0o7777;
+    let meta = f.metadata()?;
+    let mode = meta.mode() & 0o7777;
     let new = if locked {
         if mode & 0o222 != 0 {
             // Antes do chmod: gravar xattr de usuário exige permissão de escrita.
-            let _ = f.set_xattr(MODE_ATTR, format!("{mode:o}").as_bytes());
+            let _ = f.set_xattr(MODE_ATTR, mode_tag(mode, &meta).as_bytes());
         }
         mode & !0o222
     } else {
-        mode | saved_write_bits(&f).unwrap_or(0o200)
+        saved_mode(&f, &meta, mode).unwrap_or(mode | 0o200)
     };
     if new != mode {
         f.set_permissions(fs::Permissions::from_mode(new))?;
@@ -418,13 +430,32 @@ mod tests {
         assert_eq!(mode(&f), if xattr_ok { 0o664 } else { 0o644 });
         assert_eq!(fs::File::open(&f).unwrap().get_xattr(MODE_ATTR).ok().flatten(), None);
 
-        // xattr forjado (ex.: arquivo baixado): só os bits de escrita valem, nunca suid/exec.
+        // Bloqueio legítimo de um 0o666 também volta inteiro.
         if xattr_ok {
-            fs::File::open(&f).unwrap().set_xattr(MODE_ATTR, b"4777").unwrap();
-            fs::set_permissions(&f, fs::Permissions::from_mode(0o444)).unwrap();
+            fs::set_permissions(&f, fs::Permissions::from_mode(0o666)).unwrap();
+            set_locked(&f, true).unwrap();
             set_locked(&f, false).unwrap();
             assert_eq!(fs::metadata(&f).unwrap().mode() & 0o7777, 0o666);
-            assert_eq!(fs::File::open(&f).unwrap().get_xattr(MODE_ATTR).unwrap(), None);
+        }
+
+        // xattr forjado (ex.: arquivo baixado): descartado, volta só u+w.
+        if xattr_ok {
+            let m = fs::metadata(&f).unwrap();
+            let mesmo_inode = |modo: &str| format!("{modo}:{}:{}", m.dev(), m.ino());
+            for forjado in [
+                "4777".to_string(),              // formato sem inode
+                "666".to_string(),               // coerente com 0o444, mas sem inode
+                "666:1:2".to_string(),           // de outro arquivo (inode diferente)
+                mesmo_inode("4666"),             // setuid
+                mesmo_inode("777"),              // execução que o arquivo não tinha
+            ] {
+                fs::set_permissions(&f, fs::Permissions::from_mode(0o644)).unwrap();
+                fs::File::open(&f).unwrap().set_xattr(MODE_ATTR, forjado.as_bytes()).unwrap();
+                fs::set_permissions(&f, fs::Permissions::from_mode(0o444)).unwrap();
+                set_locked(&f, false).unwrap();
+                assert_eq!(fs::metadata(&f).unwrap().mode() & 0o7777, 0o644, "{forjado}");
+                assert_eq!(fs::File::open(&f).unwrap().get_xattr(MODE_ATTR).unwrap(), None);
+            }
         }
 
         // Sem modo guardado (bloqueado por fora): devolve só a escrita do dono.
