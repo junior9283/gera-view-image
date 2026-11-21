@@ -78,6 +78,8 @@ pub fn run() {
             commands::color::list_profiles,
             commands::color::assign_profile,
             commands::paste::clipboard_image,
+            commands::paste::image_file_png,
+            commands::paste::copy_image,
             commands::ocr::recognize_text,
             commands::ocr::detect_codes,
             commands::ocr::speak,

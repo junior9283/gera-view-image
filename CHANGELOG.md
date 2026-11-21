@@ -15,6 +15,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - JPEG com XMP maior que 64 KB: o XMP estendido (ExtendedXMP, GUID MD5) é lido e gravado.
 - Menus com os itens do Pré-Visualização que ainda faltam, por enquanto desabilitados: Fechar Todas, Salvar Como, Mover para o Lixo, Etiquetas, Bloquear, Procurar Todas as Versões, Exportar como PDF, Compartilhar ▸, Importar do Scanner, Localizar ▸, Fala ▸, Ordenar Por ▸, Barra de Ferramentas, Fundo da Imagem, Abas, Voltar/Avançar, Atribuir Perfil, Remover Fundo, Copiar Objeto, Lupa, Cores, Fontes, Inspetor de Marcação, Descrição da Imagem, Texto ao Vivo ▸, janelas e Pesquisar na Ajuda. Os atalhos deles estão reservados e a tabela do README foi regenerada; ela também passa a listar Sair e as setas verticais.
 - Infraestrutura para os lotes de paridade: comandos planejados por lote, preferências, tipos e comandos IPC (stubs que respondem `unsupported`), slots `title-accessory` e `above-content` e um arquivo de registro por lote. O guia está em `docs/arquitetura/extensao.md`.
+- Editar › Colar (Ctrl+V) cola a imagem da área de transferência como camada flutuante na imagem aberta, em tamanho real (reduzida só se não couber) no centro da área visível e já selecionada: move e redimensiona com a ferramenta Selecionar da Marcação e é achatada ao salvar. Sem imagem aberta, Colar continua criando um documento novo.
+- Soltar um arquivo de imagem sobre a imagem aberta cola esse arquivo como camada no ponto do drop. Vários arquivos, ou o drop fora da imagem, continuam abrindo como documentos.
+- Copiar (Ctrl+C) sem seleção copia a imagem inteira, como no Pré-Visualização. Com anotações ainda não achatadas, a cópia (da seleção ou da imagem) sai como aparece na tela, com elas compostas por cima.
+- Tamanho da seleção retangular ou elíptica (largura × altura em px) aparece ao lado do canto durante o arraste.
+- Menu de contexto na imagem (botão direito): Recortar, Copiar, Colar, Copiar Objeto, Copiar Todo o Texto, Girar à Esquerda/Direita, Compartilhar ▸ e Abrir com…. Os itens de lotes que ainda não chegaram aparecem desabilitados.
 
 ### Corrigido
 - Imprimir e Duplicar com anotações não salvas não achatam mais o documento aberto: a imagem achatada vai para uma cópia, e as anotações continuam editáveis.
