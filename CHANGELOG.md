@@ -13,6 +13,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Salvar e Exportar em BMP levam o perfil ICC (cabeçalho BITMAPV5HEADER).
 - Palavras-chave editadas também são gravadas em TIFF (IPTC e XMP). PNG e WebP passam a manter o XMP do original ao salvar.
 - JPEG com XMP maior que 64 KB: o XMP estendido (ExtendedXMP, GUID MD5) é lido e gravado.
+- Menus com os itens do Pré-Visualização que ainda faltam, por enquanto desabilitados: Fechar Todas, Salvar Como, Mover para o Lixo, Etiquetas, Bloquear, Procurar Todas as Versões, Exportar como PDF, Compartilhar ▸, Importar do Scanner, Localizar ▸, Fala ▸, Ordenar Por ▸, Barra de Ferramentas, Fundo da Imagem, Abas, Voltar/Avançar, Atribuir Perfil, Remover Fundo, Copiar Objeto, Lupa, Cores, Fontes, Inspetor de Marcação, Descrição da Imagem, Texto ao Vivo ▸, janelas e Pesquisar na Ajuda. Os atalhos deles estão reservados e a tabela do README foi regenerada; ela também passa a listar Sair e as setas verticais.
+- Infraestrutura para os lotes de paridade: comandos planejados por lote, preferências, tipos e comandos IPC (stubs que respondem `unsupported`), slots `title-accessory` e `above-content` e um arquivo de registro por lote. O guia está em `docs/arquitetura/extensao.md`.
 
 ### Corrigido
 - Imprimir e Duplicar com anotações não salvas não achatam mais o documento aberto: a imagem achatada vai para uma cópia, e as anotações continuam editáveis.
