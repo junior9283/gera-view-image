@@ -115,15 +115,17 @@ pub fn is_locked(path: &Path) -> AppResult<bool> {
 /// Modo de antes do Bloquear (octal), para o Desbloquear devolver exatamente ele.
 const MODE_ATTR: &str = "user.gvi.mode";
 
-/// Modo guardado em [`MODE_ATTR`], se ainda fizer sentido (dá escrita a alguém).
-fn saved_mode(f: &fs::File) -> Option<u32> {
+/// Bits de **escrita** guardados em [`MODE_ATTR`], se houver algum. O valor pode ter vindo de
+/// fora (arquivo baixado com o xattr forjado): só a escrita é aproveitada, nunca
+/// setuid/setgid/sticky nem execução.
+fn saved_write_bits(f: &fs::File) -> Option<u32> {
     let raw = f.get_xattr(MODE_ATTR).ok()??;
-    let mode = u32::from_str_radix(std::str::from_utf8(&raw).ok()?, 8).ok()?;
-    (mode <= 0o7777 && mode & 0o222 != 0).then_some(mode)
+    let mode = u32::from_str_radix(std::str::from_utf8(&raw).ok()?.trim(), 8).ok()?;
+    Some(mode & 0o222).filter(|w| *w != 0)
 }
 
 /// Bloquear tira a escrita de todos e guarda o modo anterior (xattr, se o sistema de arquivos
-/// aceitar). Desbloquear devolve esse modo; sem ele, devolve só a escrita do dono.
+/// aceitar). Desbloquear devolve os bits de escrita guardados (sem ele, só a do dono) e nada mais.
 pub fn set_locked(path: &Path, locked: bool) -> AppResult<()> {
     let f = open_regular(path)?;
     let mode = f.metadata()?.mode() & 0o7777;
@@ -134,7 +136,7 @@ pub fn set_locked(path: &Path, locked: bool) -> AppResult<()> {
         }
         mode & !0o222
     } else {
-        saved_mode(&f).unwrap_or(mode | 0o200)
+        mode | saved_write_bits(&f).unwrap_or(0o200)
     };
     if new != mode {
         f.set_permissions(fs::Permissions::from_mode(new))?;
@@ -155,7 +157,8 @@ fn user_xattrs(path: &Path) -> Vec<(OsString, Vec<u8>)> {
         return Vec::new();
     };
     names
-        .filter(|n| n.as_encoded_bytes().starts_with(b"user."))
+        // O modo do Bloquear é do arquivo antigo: não passa para o novo.
+        .filter(|n| n.as_encoded_bytes().starts_with(b"user.") && n.as_encoded_bytes() != MODE_ATTR.as_bytes())
         .filter_map(|n| Some((n.clone(), f.get_xattr(&n).ok()??)))
         .collect()
 }
@@ -415,6 +418,15 @@ mod tests {
         assert_eq!(mode(&f), if xattr_ok { 0o664 } else { 0o644 });
         assert_eq!(fs::File::open(&f).unwrap().get_xattr(MODE_ATTR).ok().flatten(), None);
 
+        // xattr forjado (ex.: arquivo baixado): só os bits de escrita valem, nunca suid/exec.
+        if xattr_ok {
+            fs::File::open(&f).unwrap().set_xattr(MODE_ATTR, b"4777").unwrap();
+            fs::set_permissions(&f, fs::Permissions::from_mode(0o444)).unwrap();
+            set_locked(&f, false).unwrap();
+            assert_eq!(fs::metadata(&f).unwrap().mode() & 0o7777, 0o666);
+            assert_eq!(fs::File::open(&f).unwrap().get_xattr(MODE_ATTR).unwrap(), None);
+        }
+
         // Sem modo guardado (bloqueado por fora): devolve só a escrita do dono.
         fs::set_permissions(&f, fs::Permissions::from_mode(0o440)).unwrap();
         set_locked(&f, false).unwrap();
@@ -430,9 +442,11 @@ mod tests {
         if write_tags(&f, &s(&["Azul"])).is_err() {
             return eprintln!("sem xattr de usuário aqui");
         }
+        fs::File::open(&f).unwrap().set_xattr(MODE_ATTR, b"4777").unwrap();
         overwrite(&f, b"novo").unwrap();
         assert_eq!(fs::read(&f).unwrap(), b"novo");
         assert_eq!(read_tags(&f).unwrap(), s(&["Azul"]));
+        assert_eq!(fs::File::open(&f).unwrap().get_xattr(MODE_ATTR).unwrap(), None, "não se propaga");
         fs::remove_dir_all(&d).unwrap();
     }
 }
