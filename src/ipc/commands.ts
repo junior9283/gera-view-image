@@ -4,6 +4,7 @@ import type {
   FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, Rect, RevertTarget, SaveOutcome, TextLine,
   ViewBuffer, WindowEntry,
 } from "./types";
+import type { OcrModels, WebKind } from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -119,6 +120,11 @@ export const recognizeText = (id: DocId, frame: number) => invoke<TextLine[]>("r
 export const detectCodes = (id: DocId, frame: number) => invoke<DetectedCode[]>("detect_codes", { id, frame });
 export const speak = (text: string) => invoke<void>("speak", { text });
 export const stopSpeaking = () => invoke<void>("stop_speaking");
+export const ocrModels = () => invoke<OcrModels>("ocr_models");
+export const downloadOcrModels = () => invoke<void>("download_ocr_models");
+export const cancelTextRecognition = () => invoke<void>("cancel_text_recognition");
+export const copyText = (text: string) => invoke<void>("copy_text", { text });
+export const openWeb = (kind: WebKind, text: string, lang: string) => invoke<void>("open_web", { kind, text, lang });
 
 // Lote 4: sujeito
 export const segmentSubject = (id: DocId) => invoke<Mask>("segment_subject", { id });

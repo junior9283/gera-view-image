@@ -154,6 +154,12 @@ export interface ColorProfile { id: string; name: string }
 export interface TextWord { text: string; bbox: Rect }
 export interface TextLine { text: string; bbox: Rect; words: TextWord[] }
 export interface DetectedCode { text: string; bbox: Rect }
+/** `downloadBytes`: quanto falta baixar. */
+export interface OcrModels { installed: boolean; downloadBytes: number }
+export const OCR_MODELS_PROGRESS_EVENT = "ocr-models-progress";
+export interface OcrProgress { done: number; total: number }
+/** `images` abre a busca por imagem (sem enviar nada); `link` abre http(s), mailto: ou tel:. */
+export type WebKind = "translate" | "search" | "images" | "link";
 
 /** Lote 5 (`finder.rs`). `savedAt` em ISO 8601. */
 export interface FileVersion { id: string; savedAt: string; size: number }

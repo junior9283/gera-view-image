@@ -542,5 +542,37 @@
       "print": "Print…",
       "close": "Close"
     }
+  },
+  "livetext": {
+    "button": "Live Text",
+    "needsModels": "Live Text: download the recognition models",
+    "offerTitle": "Turn on Live Text?",
+    "offerBody": "To recognize text in images, the app needs a one-time download of the PaddleOCR models (about 12.7 MB, Apache-2.0 license) from ModelScope. Recognition runs on this computer: no image is uploaded.",
+    "download": "Download",
+    "notNow": "Not Now",
+    "cancel": "Cancel",
+    "done": "Done",
+    "copied": "Text copied",
+    "speechMissing": "To read text aloud, install Speech Dispatcher (spd-say).",
+    "findPlaceholder": "Find in image text",
+    "findCount": "{{n}} of {{count}}",
+    "findNone": "No results",
+    "imageSearchTitle": "Search image on the web?",
+    "imageSearchBody": "The image will be copied to the clipboard and Google Images will open in the browser. It is only uploaded if you paste it (Ctrl+V) on the page.",
+    "imageSearchGo": "Copy and Open",
+    "imageCopied": "Image copied: paste it (Ctrl+V) on the search page",
+    "qrOpen": "Open QR code link",
+    "qrCopy": "Copy QR code text",
+    "open": {
+      "link": "Open {{text}}",
+      "email": "Write to {{text}}",
+      "phone": "Call {{text}}"
+    },
+    "menu": {
+      "copy": "Copy",
+      "search": "Search the Web",
+      "translate": "Translate",
+      "speak": "Speak"
+    }
   }
 }

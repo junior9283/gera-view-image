@@ -1,0 +1,168 @@
+/* Texto ao Vivo (Lote 3). A camada fica no slot viewport-overlay (pointer-events: none); só as
+   palavras e os botões recebem o ponteiro. */
+.livetext-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.livetext-word {
+  position: absolute;
+  pointer-events: auto;
+  cursor: text;
+}
+.livetext-sel {
+  position: absolute;
+  background: rgb(10 132 255 / 0.35);
+  border-radius: 2px;
+}
+.livetext-find {
+  position: absolute;
+  background: rgb(255 214 10 / 0.45);
+  border-radius: 2px;
+}
+.livetext-find.current {
+  background: rgb(255 159 10 / 0.6);
+  outline: 2px solid rgb(255 159 10);
+}
+/* Botão Texto ao Vivo ligado: a imagem escurece e o texto fica em destaque. */
+.livetext-dim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.35);
+}
+.livetext-line {
+  position: absolute;
+  background: rgb(255 255 255 / 0.25);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.6);
+  border-radius: 3px;
+}
+.livetext-data {
+  position: absolute;
+  pointer-events: auto;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid rgb(255 214 10);
+  background: transparent;
+  cursor: pointer;
+}
+.livetext-code {
+  position: absolute;
+  outline: 2px solid rgb(255 214 10);
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+}
+.livetext-chip,
+.livetext-button,
+.livetext-offer button,
+.livetext-menu button {
+  font: 12px system-ui, sans-serif;
+}
+.livetext-chip {
+  pointer-events: auto;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 214 10);
+  color: #000;
+  cursor: pointer;
+}
+/* Acima do indicador de zoom (canto inferior direito). */
+.livetext-button {
+  position: absolute;
+  right: 12px;
+  bottom: 44px;
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.livetext-button.on {
+  background: rgb(10 132 255 / 0.9);
+}
+.livetext-button:disabled {
+  cursor: default;
+}
+.livetext-offer {
+  position: absolute;
+  right: 12px;
+  bottom: 84px;
+  width: min(300px, calc(100% - 24px));
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #2b2b2b;
+  color: #eee;
+  font: 12px/1.4 system-ui, sans-serif;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.45);
+  pointer-events: auto;
+}
+.livetext-offer p {
+  margin: 6px 0 10px;
+}
+.livetext-offer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.livetext-offer .primary {
+  background: var(--wm-accent, #0a84ff);
+  color: #fff;
+  border: 0;
+  border-radius: 5px;
+  padding: 3px 10px;
+}
+.livetext-menu {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #2b2b2b;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.45);
+  pointer-events: auto;
+}
+.livetext-menu button {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #eee;
+  text-align: left;
+  cursor: default;
+}
+.livetext-menu button:hover,
+.livetext-menu button:focus-visible {
+  background: var(--wm-accent, #0a84ff);
+  color: #fff;
+  outline: none;
+}
+.livetext-find-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--chrome-border);
+  background: var(--chrome-bg);
+  color: var(--chrome-fg);
+  font: 12px system-ui, sans-serif;
+}
+.livetext-find-bar input {
+  flex: 0 1 260px;
+  min-width: 0;
+}
+.livetext-find-count {
+  min-width: 6em;
+  opacity: 0.75;
+}
+.livetext-pct {
+  font-variant-numeric: tabular-nums;
+}

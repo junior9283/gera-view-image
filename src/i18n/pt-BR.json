@@ -542,5 +542,37 @@
       "print": "Imprimir…",
       "close": "Fechar"
     }
+  },
+  "livetext": {
+    "button": "Texto ao Vivo",
+    "needsModels": "Texto ao Vivo: baixar os modelos de reconhecimento",
+    "offerTitle": "Ativar o Texto ao Vivo?",
+    "offerBody": "Para reconhecer texto nas imagens, o app precisa baixar uma vez os modelos do PaddleOCR (cerca de 12,7 MB, licença Apache-2.0) do ModelScope. O reconhecimento roda neste computador: nenhuma imagem é enviada.",
+    "download": "Baixar",
+    "notNow": "Agora não",
+    "cancel": "Cancelar",
+    "done": "OK",
+    "copied": "Texto copiado",
+    "speechMissing": "Para ler o texto em voz alta, instale o Speech Dispatcher (spd-say).",
+    "findPlaceholder": "Localizar no texto da imagem",
+    "findCount": "{{n}} de {{count}}",
+    "findNone": "Nenhum resultado",
+    "imageSearchTitle": "Pesquisar imagem na web?",
+    "imageSearchBody": "A imagem será copiada para a área de transferência e o Google Imagens abrirá no navegador. Ela só é enviada se você colar (Ctrl+V) na página.",
+    "imageSearchGo": "Copiar e Abrir",
+    "imageCopied": "Imagem copiada: cole (Ctrl+V) na página de busca",
+    "qrOpen": "Abrir link do QR code",
+    "qrCopy": "Copiar texto do QR code",
+    "open": {
+      "link": "Abrir {{text}}",
+      "email": "Escrever para {{text}}",
+      "phone": "Ligar para {{text}}"
+    },
+    "menu": {
+      "copy": "Copiar",
+      "search": "Pesquisar na Web",
+      "translate": "Traduzir",
+      "speak": "Falar"
+    }
   }
 }
