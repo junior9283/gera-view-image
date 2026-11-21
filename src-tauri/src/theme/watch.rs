@@ -14,11 +14,23 @@ pub const DEBOUNCE: Duration = Duration::from_millis(200);
 const PORTAL_DEST: &str = "org.freedesktop.portal.Desktop";
 const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 const PORTAL_IFACE: &str = "org.freedesktop.portal.Settings";
+/// Limite por chamada ao portal: sem ele o zbus espera a resposta para sempre (portal ativado
+/// pelo barramento que nunca responde), e a detecção de tema nunca termina.
+const PORTAL_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Proxy do `org.freedesktop.portal.Settings` numa conexão de sessão limitada a `PORTAL_TIMEOUT`.
+fn portal_proxy() -> Option<zbus::blocking::Proxy<'static>> {
+    let conn = zbus::blocking::connection::Builder::session()
+        .ok()?
+        .method_timeout(PORTAL_TIMEOUT)
+        .build()
+        .ok()?;
+    zbus::blocking::Proxy::new_owned(conn, PORTAL_DEST, PORTAL_PATH, PORTAL_IFACE).ok()
+}
 
 /// Lê `org.freedesktop.appearance <key>` do portal (desembrulha variantes aninhadas).
 pub fn portal_read(key: &str) -> Option<Value<'static>> {
-    let conn = zbus::blocking::Connection::session().ok()?;
-    let proxy = zbus::blocking::Proxy::new(&conn, PORTAL_DEST, PORTAL_PATH, PORTAL_IFACE).ok()?;
+    let proxy = portal_proxy()?;
     let args = ("org.freedesktop.appearance", key);
     let msg = proxy
         .call_method("ReadOne", &args)
@@ -74,10 +86,7 @@ pub fn watch_config_files(dirs: &[PathBuf], tx: Sender<()>) -> notify::Result<Re
 
 fn spawn_portal_listener(tx: Sender<()>) {
     std::thread::spawn(move || {
-        let Ok(conn) = zbus::blocking::Connection::session() else { return };
-        let Ok(proxy) = zbus::blocking::Proxy::new(&conn, PORTAL_DEST, PORTAL_PATH, PORTAL_IFACE) else {
-            return;
-        };
+        let Some(proxy) = portal_proxy() else { return };
         let Ok(signals) = proxy.receive_signal("SettingChanged") else { return };
         for _ in signals {
             if tx.send(()).is_err() {

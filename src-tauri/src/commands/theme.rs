@@ -4,7 +4,10 @@ use tauri::{AppHandle, Manager, State};
 
 /// Tema atual da janela (botões, estilo, claro/escuro). Mudanças chegam pelo evento
 /// `window-theme-changed`, com o mesmo payload.
-#[tauri::command]
+///
+/// `async`: comando síncrono roda na thread principal do GTK, e a detecção consulta o portal
+/// (D-Bus) e o `gsettings`. Com o portal travado, a janela inteira congelava (E2E no CI).
+#[tauri::command(async)]
 pub fn window_theme() -> WindowTheme {
     detect_window_theme(&SystemEnv)
 }

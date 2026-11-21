@@ -25,6 +25,18 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
 - **No Wayland, rAF e `ResizeObserver` não disparam na janela do tauri-driver.** O `data-scale` nunca aparece e os
   specs esperam até o timeout. Rode num X virtual:
   `env -u WAYLAND_DISPLAY GDK_BACKEND=x11 xvfb-run -a -s "-screen 0 1280x900x24" npm run test:e2e`.
+- **No CI, os 3 specs falhavam no `before all` (portal D-Bus que não responde travava a janela).** Sintoma:
+  `waitUntil` estoura em `viewer.e2e.ts:10`/`markup.e2e.ts:45`, depois `Request timed out`, `invalid session id`
+  e `hyper::Error(IncompleteMessage)` no tauri-driver; até `elements` fica sem resposta. Causa: `window_theme`
+  era comando **síncrono**, e o Tauri roda comando síncrono na thread principal do GTK. Ele chama o portal
+  (`org.freedesktop.portal.Settings.ReadOne`) pelo zbus, que **não tem timeout de método por padrão**. No runner
+  há barramento de sessão, mas o portal é ativado e não responde: a thread principal ficava presa (o
+  `service_start_timeout` do dbus é 120 s, e são até 4 chamadas), e o WebView e o WebDriver congelavam junto.
+  Local passava porque o portal do desktop responde. Reprodução: Ubuntu 22.04 no podman com
+  `dbus-run-session` e um `org.freedesktop.portal.Desktop.service` com `Exec=/bin/sleep 100000`.
+  Correção (no app, vale para produção também): `#[tauri::command(async)]` em `window_theme` e
+  `method_timeout` de 2 s na conexão do portal (`theme/watch.rs::portal_proxy`). Lição: nada de D-Bus,
+  subprocesso ou outra E/S bloqueante em comando síncrono.
 - **`markup.e2e.ts` só passa no build com `VITE_E2E=1`** (gancho `window.__gviMarkup`). O mesmo build expõe
   `window.__gviE2E` (comandos e diálogo de atualização) para `scripts/screenshots.mjs`. O build normal não tem
   nenhum dos dois.
