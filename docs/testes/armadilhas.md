@@ -30,7 +30,8 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
   e `hyper::Error(IncompleteMessage)` no tauri-driver; até `elements` fica sem resposta. Causa: `window_theme`
   era comando **síncrono**, e o Tauri roda comando síncrono na thread principal do GTK. Ele chama o portal
   (`org.freedesktop.portal.Settings.ReadOne`) pelo zbus, que **não tem timeout de método por padrão**. No runner
-  há barramento de sessão, mas o portal é ativado e não responde: a thread principal ficava presa (o
+  há barramento de sessão (o aviso `AT-SPI … ServiceUnknown` vem dele), e o portal não responde a tempo (inferido:
+  a reprodução abaixo dá o mesmo log do CI, e a correção deixou o run 44846446415 verde): a thread principal ficava presa (o
   `service_start_timeout` do dbus é 120 s, e são até 4 chamadas), e o WebView e o WebDriver congelavam junto.
   Local passava porque o portal do desktop responde. Reprodução: Ubuntu 22.04 no podman com
   `dbus-run-session` e um `org.freedesktop.portal.Desktop.service` com `Exec=/bin/sleep 100000`.
