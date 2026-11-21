@@ -5,8 +5,9 @@ import { notify } from "../chrome/notify";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
 import * as ipc from "../ipc/commands";
+import { annotationsPng } from "../markup/flatten";
 import { forgetHistory } from "../markup/history";
-import { useMarkup } from "../markup/store";
+import { getItems, useMarkup } from "../markup/store";
 import type { CaptureMode, DocId, DocInfo, ExportOptions, RevertTarget } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { addRecent, getPrefs, setPrefs } from "../store/prefs";
@@ -135,11 +136,26 @@ async function addAndShow(info: DocInfo | null): Promise<void> {
   activate(info.id);
 }
 
+/**
+ * Cópia em memória de `id` com as anotações não salvas achatadas nela. O original não muda: as
+ * anotações continuam editáveis e o estado de "sujo" fica igual. Se o achatamento falhar, a cópia é fechada.
+ */
+async function flattenedCopy(id: DocId, name: string): Promise<DocInfo> {
+  const png = await annotationsPng(id);
+  const copy = await ipc.duplicate(id, name);
+  if (!png) return copy;
+  try {
+    return await ipc.applyOp(copy.id, { type: "composite", data: { png } });
+  } catch (e) {
+    await ipc.closeDocument(copy.id).catch(() => {});
+    throw e;
+  }
+}
+
 export async function duplicateActive(): Promise<void> {
   const d = current();
   if (!d) return;
-  await runBeforeSave(d.id);
-  await addAndShow(await ipc.duplicate(d.id, t("file.copyName", { name: stem(d.name) })));
+  await addAndShow(await flattenedCopy(d.id, t("file.copyName", { name: stem(d.name) })));
 }
 
 export const newFromClipboard = async () => addAndShow(await ipc.newFromClipboard(t("file.untitled")));
@@ -149,8 +165,15 @@ export const capture = (mode: CaptureMode) => async () => addAndShow(await ipc.c
 export async function printActive(): Promise<void> {
   const d = current();
   if (!d) return;
-  await runBeforeSave(d.id);
-  await ipc.printDocument(d.id, t("file.print.title"));
+  const title = t("file.print.title");
+  if (!getItems(d.id).length) return ipc.printDocument(d.id, title);
+  // Imprime uma cópia temporária achatada (o `print_document` renderiza o PNG antes de voltar).
+  const copy = await flattenedCopy(d.id, d.name);
+  try {
+    await ipc.printDocument(copy.id, title);
+  } finally {
+    await ipc.closeDocument(copy.id).catch(() => {});
+  }
 }
 
 export const showInFolder = async () => {
