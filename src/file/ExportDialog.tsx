@@ -16,6 +16,8 @@ const LOSSY: ExportFormat[] = ["jpeg", "webp", "avif"];
 const DEEP: ExportFormat[] = ["png", "tiff"];
 const ALPHA: ExportFormat[] = ["png", "tiff", "webp", "avif", "exr"];
 const DEFAULT_QUALITY: Partial<Record<ExportFormat, number>> = { jpeg: 90, webp: 90, avif: 80 };
+/** Perfil de saída (Lote 1): "keep" mantém o da imagem; os outros são ids de `ColorProfile`. */
+const OUTPUT_PROFILES = ["keep", "srgb", "display-p3", "adobe-rgb"] as const;
 
 /** Pasta da última exportação (padrão para documentos sem caminho). */
 let lastFolder = "";
@@ -73,6 +75,18 @@ function OptionsFields({ opts, onChange }: { opts: ExportOptions; onChange: (o: 
           {t("file.export.alpha")}
         </label>
       )}
+      <label className="file-row">
+        <span>{t("file.export.profile")}</span>
+        <select
+          value={opts.colorProfile ?? "keep"}
+          onChange={(e) => set({ colorProfile: e.target.value === "keep" ? null : e.target.value })}
+          data-testid="export-profile"
+        >
+          {OUTPUT_PROFILES.map((p) => (
+            <option key={p} value={p}>{t(`file.export.profiles.${p}`)}</option>
+          ))}
+        </select>
+      </label>
       <label className="file-check">
         <input type="checkbox" checked={opts.stripMetadata} onChange={(e) => set({ stripMetadata: e.target.checked })} />
         {t("file.export.strip")}

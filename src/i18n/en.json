@@ -44,7 +44,8 @@
       "system": "System language",
       "pt-BR": "Português (Brasil)",
       "en": "English"
-    }
+    },
+    "colorManagement": "Color matching (ICC profiles)"
   },
   "about": {
     "title": "About Gera View Image",
@@ -512,6 +513,13 @@
         "bmp": "BMP",
         "heic": "HEIC",
         "jp2": "JPEG 2000"
+      },
+      "profile": "Color profile",
+      "profiles": {
+        "keep": "Keep the image's profile",
+        "srgb": "Convert to sRGB",
+        "display-p3": "Convert to Display P3",
+        "adobe-rgb": "Convert to Adobe RGB (1998)"
       }
     },
     "rename": {
@@ -541,6 +549,19 @@
       "landscape": "Landscape",
       "print": "Print…",
       "close": "Close"
+    }
+  },
+  "color": {
+    "assign": {
+      "title": "Assign Profile",
+      "current": "Current profile: {{name}}",
+      "none": "none (sRGB assumed)",
+      "profile": "Profile",
+      "hint": "Pixel values do not change, only how their colors are interpreted.",
+      "loading": "Loading profiles…",
+      "cancel": "Cancel",
+      "ok": "Assign",
+      "failed": "Could not assign the profile."
     }
   }
 }

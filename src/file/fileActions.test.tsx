@@ -83,6 +83,16 @@ describe("ExportDialog", () => {
     expect(ipc.exportDoc).toHaveBeenCalledWith(1, "/fotos/Ação 1.webp", expect.objectContaining({ format: "webp" }), null);
   });
 
+  it("perfil de saída: mantém o da imagem por padrão e converte para sRGB quando escolhido", async () => {
+    ipc.exportDoc.mockResolvedValue(doc);
+    render(createElement(ExportDialog, { doc, mode: "export", onClose: () => {} }));
+    const profile = screen.getByLabelText("Perfil de cor") as HTMLSelectElement;
+    expect(profile.value).toBe("keep");
+    fireEvent.change(profile, { target: { value: "srgb" } });
+    await act(async () => fireEvent.click(screen.getByTestId("export-ok")));
+    expect(ipc.exportDoc).toHaveBeenCalledWith(1, "/fotos/Ação 1.jpg", expect.objectContaining({ colorProfile: "srgb" }), null);
+  });
+
   it("pergunta antes de substituir um arquivo existente", async () => {
     ipc.pathExists.mockResolvedValue(true);
     ipc.exportDoc.mockResolvedValue(doc);
