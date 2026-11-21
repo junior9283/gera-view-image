@@ -116,6 +116,58 @@ describe("Viewport", () => {
     expect(useUi.getState().view).toMatchObject({ panX: -110, panY: -120 });
   });
 
+  describe("Tamanho Real com escala da tela", () => {
+    let ratio = 2;
+    let media: { query: string; cb: () => void }[] = [];
+    beforeEach(() => {
+      ratio = 2;
+      media = [];
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => ratio });
+      window.matchMedia = ((query: string) => ({
+        matches: false,
+        addEventListener: (_: string, cb: () => void) => media.push({ query, cb }),
+        removeEventListener: (_: string, cb: () => void) => (media = media.filter((m) => m.cb !== cb)),
+      })) as unknown as typeof window.matchMedia;
+    });
+    const matchMedia = window.matchMedia;
+    afterEach(() => {
+      window.matchMedia = matchMedia;
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: 1 });
+    });
+
+    it("100 % mostra 1 px da imagem por px físico e o indicador segue em 100 %", () => {
+      useDocs.getState().add([info(1)]);
+      render(<Viewport />);
+      fireEvent.doubleClick(screen.getByTestId("viewport"), { clientX: 400, clientY: 300 });
+      expect(useUi.getState().view).toMatchObject({ scale: 0.5, mode: "actual" });
+      const zoom = screen.getByTestId("zoom-level");
+      expect(zoom.dataset.scale).toBe("1");
+      expect(zoom.textContent).toContain("100");
+    });
+
+    it("reage à mudança de escala da tela mantendo o Tamanho Real", () => {
+      useDocs.getState().add([info(1)]);
+      render(<Viewport />);
+      fireEvent.doubleClick(screen.getByTestId("viewport"), { clientX: 400, clientY: 300 });
+      expect(media.map((m) => m.query)).toContain("(resolution: 2dppx)");
+      ratio = 1;
+      act(() => media.forEach((m) => m.cb()));
+      expect(useUi.getState().view).toMatchObject({ scale: 1, mode: "actual" });
+      expect(screen.getByTestId("zoom-level").dataset.scale).toBe("1");
+      expect(media.map((m) => m.query)).toEqual(["(resolution: 1dppx)"]);
+    });
+
+    it("Ctrl+roda parte do zoom mostrado e não salta", () => {
+      useDocs.getState().add([info(1)]);
+      render(<Viewport />);
+      fireEvent.doubleClick(screen.getByTestId("viewport"), { clientX: 400, clientY: 300 });
+      fireEvent.wheel(screen.getByTestId("viewport"), { ctrlKey: true, deltaY: -10, clientX: 400, clientY: 300 });
+      const s = useUi.getState().view!.scale;
+      expect(s).toBeGreaterThan(0.5);
+      expect(s).toBeLessThan(0.6);
+    });
+  });
+
   it("Ctrl+roda dá zoom", () => {
     useDocs.getState().add([info(1)]);
     render(<Viewport />);

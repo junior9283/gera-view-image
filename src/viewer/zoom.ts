@@ -13,6 +13,9 @@ export interface Point {
 /**
  * Estado da visualização em px CSS: a origem da imagem fica em (panX, panY) e 1 px da imagem
  * ocupa `scale` px na tela. `fit` e `actual` se mantêm ao redimensionar; `free` é zoom manual.
+ *
+ * O zoom mostrado ao usuário é `scale * k`, com `k` = `devicePixelRatio` (px físicos por px CSS):
+ * 100 % (Tamanho Real) é 1 px da imagem por px físico. Degraus e limites valem no zoom mostrado.
  */
 export interface ViewState {
   scale: number;
@@ -26,23 +29,23 @@ const MIN_SCALE = ZOOM_STEPS[0];
 const MAX_SCALE = ZOOM_STEPS[ZOOM_STEPS.length - 1];
 
 const EPS = 1e-9;
-const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+const clampScale = (s: number, k: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * k)) / k;
 
-/** Escala para a imagem caber na view; nunca amplia, salvo `allowUpscale`. */
-export function fitScale(img: Size, view: Size, allowUpscale = false): number {
-  if (img.w <= 0 || img.h <= 0) return 1;
+/** Escala para a imagem caber na view; nunca passa do Tamanho Real, salvo `allowUpscale`. */
+export function fitScale(img: Size, view: Size, allowUpscale = false, k = 1): number {
+  if (img.w <= 0 || img.h <= 0) return 1 / k;
   const s = Math.min(view.w / img.w, view.h / img.h);
-  return allowUpscale ? s : Math.min(1, s);
+  return allowUpscale ? s : Math.min(1 / k, s);
 }
 
 /** Aplica `factor` mantendo fixo o ponto da imagem sob `anchor` (px da view). */
-export function zoomAt(state: ViewState, factor: number, anchor: Point): ViewState {
-  const scale = clampScale(state.scale * factor);
-  const k = scale / state.scale;
+export function zoomAt(state: ViewState, factor: number, anchor: Point, k = 1): ViewState {
+  const scale = clampScale(state.scale * factor, k);
+  const r = scale / state.scale;
   return {
     scale,
-    panX: anchor.x - (anchor.x - state.panX) * k,
-    panY: anchor.y - (anchor.y - state.panY) * k,
+    panX: anchor.x - (anchor.x - state.panX) * r,
+    panY: anchor.y - (anchor.y - state.panY) * r,
     mode: "free",
   };
 }
@@ -60,15 +63,16 @@ export function clampPan(state: ViewState, img: Size, view: Size): ViewState {
 }
 
 /** Estado inicial de `fit` (ajustar à janela) ou `actual` (100 %), centralizado. */
-export function fitState(img: Size, view: Size, mode: "fit" | "actual"): ViewState {
-  const scale = mode === "fit" ? fitScale(img, view) : 1;
+export function fitState(img: Size, view: Size, mode: "fit" | "actual", k = 1): ViewState {
+  const scale = mode === "fit" ? fitScale(img, view, false, k) : 1 / k;
   return clampPan({ scale, panX: 0, panY: 0, mode }, img, view);
 }
 
 /** Próximo degrau de `ZOOM_STEPS` na direção `dir`, parando nas pontas. */
-export function nextStep(scale: number, dir: 1 | -1): number {
-  if (dir > 0) return ZOOM_STEPS.find((s) => s > scale + EPS) ?? MAX_SCALE;
-  return [...ZOOM_STEPS].reverse().find((s) => s < scale - EPS) ?? MIN_SCALE;
+export function nextStep(scale: number, dir: 1 | -1, k = 1): number {
+  const shown = scale * k;
+  if (dir > 0) return (ZOOM_STEPS.find((s) => s > shown + EPS) ?? MAX_SCALE) / k;
+  return ([...ZOOM_STEPS].reverse().find((s) => s < shown - EPS) ?? MIN_SCALE) / k;
 }
 
 /** Retângulo da imagem (px inteiros da imagem) visível na view. */
@@ -81,8 +85,8 @@ export function visibleRegion(state: ViewState, img: Size, view: Size): Rect {
 }
 
 /** Enquadra o retângulo `r` (px da imagem) centralizado na view, dentro dos limites de escala. */
-export function rectState(r: Rect, view: Size): ViewState {
-  const scale = clampScale(Math.min(view.w / Math.max(1, r.w), view.h / Math.max(1, r.h)));
+export function rectState(r: Rect, view: Size, k = 1): ViewState {
+  const scale = clampScale(Math.min(view.w / Math.max(1, r.w), view.h / Math.max(1, r.h)), k);
   return {
     scale,
     panX: view.w / 2 - (r.x + r.w / 2) * scale,
