@@ -94,6 +94,8 @@ pub fn run() {
             commands::share::share_device,
             commands::share::open_with_apps,
             commands::share::open_with_app,
+            commands::share::share_devices,
+            commands::share::share_device_available,
             commands::sidebar::file_stats,
             commands::describe::edit_metadata,
             commands::fonts::system_fonts,
