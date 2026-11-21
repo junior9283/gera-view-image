@@ -9,6 +9,7 @@ pub mod heic;
 pub mod metadata;
 pub mod ops;
 pub mod raster;
+pub mod segment; // Lote 4
 pub mod select;
 #[cfg(test)]
 mod test_util;

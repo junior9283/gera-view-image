@@ -132,6 +132,9 @@ export const stopSpeaking = () => invoke<void>("stop_speaking");
 
 // Lote 4: sujeito
 export const segmentSubject = (id: DocId) => invoke<Mask>("segment_subject", { id });
+/** O modelo de segmentação já está no disco? Falso = `segmentSubject` vai baixá-lo (4,4 MB). */
+export const segmentModelReady = () => invoke<boolean>("segment_model_ready");
+export const segmentCancel = () => invoke<void>("segment_cancel");
 
 // Lote 5: Finder
 export const fileTags = (id: DocId) => invoke<string[]>("file_tags", { id });

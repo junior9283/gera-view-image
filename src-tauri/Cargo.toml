@@ -65,8 +65,16 @@ openjp2 = { version = "0.7.2", default-features = false, features = ["image", "r
 xattr = "1"
 libc = "0.2"
 trash = "5"
+# Lote 4 (Remover Fundo): inferência ONNX em Rust puro, download do modelo com SHA-256.
+# reqwest/rustls já vêm pelo updater (rustls + ring); aqui não se liga nada novo no NEEDED.
+tract-onnx = "0.23"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+sha2 = "0.10"
 
 [dev-dependencies]
+# Monta o ONNX mínimo dos testes de segmentação (mesma versão do tract-onnx).
+prost = "0.14"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tga", "tiff", "webp"] }
 
 # Dependências otimizadas também em dev/test: os testes decodificam imagens grandes.
