@@ -24,6 +24,10 @@ describe("matchShortcut", () => {
     expect(comboOf(key("п", { ctrlKey: true }, "KeyG"))).toBe("Ctrl+G");
   });
 
+  it("Ctrl+Q sai do app (como Cmd+Q no Pré-Visualização)", () => {
+    expect(matchShortcut(key("q", { ctrlKey: true }, "KeyQ"))).toBe("file.quit");
+  });
+
   it("layouts latinos (ABNT2, AZERTY) continuam pela tecla lógica", () => {
     // AZERTY: a tecla física Q produz "a".
     expect(matchShortcut(key("a", { ctrlKey: true }, "KeyQ"))).toBe("edit.selectAll");

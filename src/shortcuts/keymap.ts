@@ -23,6 +23,7 @@ export const KEYMAP: Record<CommandId, string> = {
   "file.captureScreen": "",
   "file.print": "Ctrl+P",
   "file.openWith": "",
+  "file.quit": "Ctrl+Q",
   "edit.undo": "Ctrl+Z",
   "edit.redo": "Ctrl+Shift+Z",
   "edit.cut": "Ctrl+X",
