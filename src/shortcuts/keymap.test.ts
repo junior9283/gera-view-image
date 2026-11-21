@@ -24,6 +24,11 @@ describe("matchShortcut", () => {
     expect(comboOf(key("п", { ctrlKey: true }, "KeyG"))).toBe("Ctrl+G");
   });
 
+  it("setas verticais navegam entre as imagens, como na barra lateral do Pré-Visualização", () => {
+    expect(matchShortcut(key("ArrowDown", {}, "ArrowDown"))).toBe("go.next");
+    expect(matchShortcut(key("ArrowUp", {}, "ArrowUp"))).toBe("go.prev");
+  });
+
   it("Ctrl+Q sai do app (como Cmd+Q no Pré-Visualização)", () => {
     expect(matchShortcut(key("q", { ctrlKey: true }, "KeyQ"))).toBe("file.quit");
   });

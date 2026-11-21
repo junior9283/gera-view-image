@@ -79,8 +79,9 @@ export const KEYMAP: Record<CommandId, string> = {
 
 /** Atalhos alternativos (não aparecem no menu). */
 export const ALIASES: Partial<Record<CommandId, string[]>> = {
-  "go.next": ["PageDown"],
-  "go.prev": ["PageUp"],
+  // Setas verticais: como na barra lateral do Pré-Visualização.
+  "go.next": ["PageDown", "ArrowDown"],
+  "go.prev": ["PageUp", "ArrowUp"],
   "view.zoomIn": ["Ctrl++"],
   "view.fullscreen": ["Ctrl+Meta+F"],
   "edit.delete": ["Backspace"],
