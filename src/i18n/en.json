@@ -573,6 +573,10 @@
       "search": "Search the Web",
       "translate": "Translate",
       "speak": "Speak"
-    }
+    },
+    "linkEmailTitle": "Write an email to this address?",
+    "linkPhoneTitle": "Call this number?",
+    "linkBody": "The address was read from the image. Check it before opening:",
+    "linkOpen": "Open"
   }
 }

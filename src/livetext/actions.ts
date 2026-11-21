@@ -1,4 +1,5 @@
 // Ações do Texto ao Vivo usadas pelos menus, pelo menu de contexto e pelos atalhos.
+import { create } from "zustand";
 import i18n from "../i18n";
 import * as ipc from "../ipc/commands";
 import type { WebKind } from "../ipc/types";
@@ -41,3 +42,18 @@ export async function stopSpeaking(): Promise<void> {
 }
 
 export const toggleLiveText = () => setPrefs({ liveText: !getPrefs().liveText });
+
+/** Pedido aguardando confirmação no `LiveTextHost`. */
+export type Pending = { kind: "image" } | { kind: "link"; href: string };
+export const useConfirm = create<{ pending: Pending | null }>(() => ({ pending: null }));
+
+export const askImageSearch = () => useConfirm.setState({ pending: { kind: "image" } });
+
+/**
+ * Abre um link lido da imagem. O Rust reconstrói e valida o link (o frontend não é barreira);
+ * `mailto:` e `tel:` abrem outro app, então pedem confirmação mostrando o destino.
+ */
+export async function openLink(href: string): Promise<void> {
+  if (/^https?:\/\//i.test(href)) return ipc.openWeb("link", href, "");
+  useConfirm.setState({ pending: { kind: "link", href } });
+}

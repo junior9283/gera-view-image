@@ -166,3 +166,9 @@
 .livetext-pct {
   font-variant-numeric: tabular-nums;
 }
+/* Destino do link lido da imagem, inteiro e legível antes de abrir. */
+.livetext-confirm-target {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+  user-select: text;
+}

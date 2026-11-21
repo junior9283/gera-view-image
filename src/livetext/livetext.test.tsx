@@ -11,6 +11,7 @@ import { resetPrefsForTests, setPrefs } from "../store/prefs";
 import { useSelection } from "../store/selection";
 import { resetUiForTests } from "../store/ui";
 import { useMarkup } from "../markup/store";
+import { useConfirm } from "./actions";
 import { LiveTextLayer } from "./LiveTextLayer";
 import { LiveTextHost } from "./LiveTextHost";
 import { buildModel } from "./text";
@@ -43,6 +44,7 @@ beforeEach(() => {
   useSelection.setState({ selection: null, selectionTool: null });
   useMarkup.setState({ visible: false });
   useDocs.setState({ docs: [], activeId: null });
+  useConfirm.setState({ pending: null });
 });
 afterEach(() => cleanup());
 
@@ -104,6 +106,69 @@ describe("camada do Texto ao Vivo", () => {
     fireEvent.click(screen.getByTestId("livetext-data"));
     await act(async () => {});
     expect(calls("open_web")).toEqual([["open_web", { kind: "link", text: "https://gera.dev", lang: "" }]]);
+  });
+
+  const withHost = () =>
+    render(
+      <>
+        <LiveTextLayer {...props} />
+        <LiveTextHost />
+      </>,
+    );
+  const item = (kind: "link" | "email" | "phone", text: string, href: string) => ({ kind, text, href, start: 0, end: 0, words: [0] });
+
+  it("link http abre direto e passa o texto cru ao Rust, que faz a sanitização", async () => {
+    ready();
+    const href = "https://gera.dev/a?b=1";
+    useLiveText.setState({ highlight: true, data: [item("link", href, href)] });
+    invoke.mockResolvedValue(undefined);
+    withHost();
+    fireEvent.click(screen.getByTestId("livetext-data"));
+    await act(async () => {});
+    expect(calls("open_web")).toEqual([["open_web", { kind: "link", text: href, lang: "" }]]);
+    expect(screen.queryByTestId("link-confirm-dialog")).toBeNull();
+  });
+
+  it("o botão mostra o destino completo no title (dados e QR code)", () => {
+    ready();
+    const qr = "https://exemplo.com.br/um/caminho/longo?x=1";
+    useLiveText.setState({
+      highlight: true,
+      data: [item("email", "ana@b.com", "mailto:ana@b.com")],
+      codes: [{ text: qr, bbox: { x: 0, y: 0, w: 10, h: 10 } }],
+    });
+    render(<LiveTextLayer {...props} />);
+    expect(screen.getByTestId("livetext-data").getAttribute("title")).toContain("mailto:ana@b.com");
+    expect(screen.getByTestId("livetext-code").getAttribute("title")).toContain(qr);
+  });
+
+  it("mailto pede confirmação mostrando o endereço; Cancelar não abre", async () => {
+    ready();
+    useLiveText.setState({ highlight: true, data: [item("email", "ana@b.com", "mailto:ana@b.com?attach=/etc/passwd")] });
+    invoke.mockResolvedValue(undefined);
+    withHost();
+    fireEvent.click(screen.getByTestId("livetext-data"));
+    await act(async () => {});
+    expect(calls("open_web")).toHaveLength(0);
+    const dialog = screen.getByTestId("link-confirm-dialog");
+    expect(dialog.textContent).toContain("mailto:ana@b.com?attach=/etc/passwd");
+    fireEvent.click(screen.getByTestId("link-confirm-cancel"));
+    expect(screen.queryByTestId("link-confirm-dialog")).toBeNull();
+    expect(calls("open_web")).toHaveLength(0);
+  });
+
+  it("tel de um QR code pede confirmação e só abre ao confirmar", async () => {
+    ready();
+    useLiveText.setState({ highlight: true, codes: [{ text: "tel:+5511987654321", bbox: { x: 0, y: 0, w: 10, h: 10 } }] });
+    invoke.mockResolvedValue(undefined);
+    withHost();
+    fireEvent.click(screen.getByTestId("livetext-code"));
+    await act(async () => {});
+    expect(calls("open_web")).toHaveLength(0);
+    expect(screen.getByTestId("link-confirm-dialog").textContent).toContain("+5511987654321");
+    fireEvent.click(screen.getByTestId("link-confirm-open"));
+    await act(async () => {});
+    expect(calls("open_web")).toEqual([["open_web", { kind: "link", text: "tel:+5511987654321", lang: "" }]]);
   });
 
   it("sem modelos, o download só começa depois de confirmar", async () => {

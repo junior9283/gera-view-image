@@ -29,7 +29,13 @@ Desempenho medido no protótipo (release, 2 threads): uma imagem de 900×260 com
 
 ## Privacidade
 
-O reconhecimento roda no computador. Só três coisas abrem um serviço externo, e todas por escolha explícita do usuário no menu: Traduzir e Pesquisar Texto na Web, que mandam o texto na URL do Google Tradutor ou da busca, e Pesquisar Imagem na Web. Esta última pede confirmação, copia a imagem para a área de transferência e abre o Google Imagens; a imagem só sai do computador se o usuário colar na página. Links, e-mails e telefones detectados abrem com o clique, e o `open_web` só aceita `http(s)`, `mailto:` e `tel:`.
+O reconhecimento roda no computador. Só três coisas abrem um serviço externo, e todas por escolha explícita do usuário no menu: Traduzir e Pesquisar Texto na Web, que mandam o texto na URL do Google Tradutor ou da busca, e Pesquisar Imagem na Web. Esta última pede confirmação, copia a imagem para a área de transferência e abre o Google Imagens; a imagem só sai do computador se o usuário colar na página. O texto lido da imagem (OCR ou QR code) não é confiável, então o `open_web` nunca repassa a string crua. Ele interpreta o link com a crate `url` e o reconstrói:
+- `http(s)` só com host válido logo depois de `//` (recusa `https:///etc` e `http:exemplo`);
+- `mailto:` com um único endereço de caracteres seguros, mais `subject`, `body`, `cc` e `bcc`; o resto (principalmente `attach`/`attachment`) é descartado;
+- `tel:` só com dígitos e `+-() `;
+- qualquer outro esquema é recusado.
+
+Na interface, o botão do link mostra o destino completo no `title`. Um `mailto:` ou `tel:` pede confirmação mostrando o endereço antes de abrir o outro app; `http(s)` abre direto.
 
 ## Fala
 

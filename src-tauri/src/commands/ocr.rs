@@ -264,17 +264,68 @@ pub fn web_url(kind: &str, text: &str, lang: &str) -> AppResult<String> {
         "translate" => format!("https://translate.google.com/?sl=auto&tl={lang}&text={}&op=translate", encode(text)),
         "search" => format!("https://www.google.com/search?q={}", encode(text)),
         "images" => "https://images.google.com/".to_string(),
-        "link" => {
-            let lower = text.to_ascii_lowercase();
-            let ok = ["https://", "http://", "mailto:", "tel:"].iter().any(|p| lower.starts_with(p))
-                && !text.chars().any(|c| c.is_whitespace() || c.is_control());
-            if !ok {
-                return Err(AppError::Unsupported(format!("link: {text}")));
-            }
-            text.to_string()
-        }
+        "link" => safe_link(text)?,
         _ => return Err(AppError::Unsupported(format!("open_web: {kind}"))),
     })
+}
+
+/// Campos de `mailto:` que podem seguir (o resto, como `attach`, é descartado).
+const MAILTO_FIELDS: [&str; 4] = ["subject", "body", "cc", "bcc"];
+
+/// Endereço de e-mail único, só com caracteres seguros (sem `%`, `,`, `/`, `?`, espaço…).
+fn plain_address(s: &str) -> bool {
+    let ok = |c: char, extra: &str| c.is_alphanumeric() || extra.contains(c);
+    match s.split_once('@') {
+        Some((local, domain)) => {
+            !local.is_empty()
+                && domain.contains('.')
+                && local.chars().all(|c| ok(c, "._+-"))
+                && domain.chars().all(|c| ok(c, ".-"))
+        }
+        None => false,
+    }
+}
+
+/// Link lido da imagem (não confiável), reconstruído a partir das partes interpretadas: nunca
+/// repassa a string crua. `http(s)` com host válido, `mailto:` com um endereço e só os campos de
+/// `MAILTO_FIELDS`, `tel:` com dígitos e `+-() `. Qualquer outro esquema é recusado.
+fn safe_link(text: &str) -> AppResult<String> {
+    let bad = || AppError::Unsupported(format!("link: {text}"));
+    let lower = text.to_ascii_lowercase();
+    if let Some(number) = lower.strip_prefix("tel:") {
+        let ok = number.chars().any(|c| c.is_ascii_digit())
+            && number.chars().all(|c| c.is_ascii_digit() || "+-() ".contains(c));
+        return if ok { Ok(format!("tel:{}", number.replace(' ', ""))) } else { Err(bad()) };
+    }
+    if text.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(bad());
+    }
+    let url = url::Url::parse(text).map_err(|_| bad())?;
+    match url.scheme() {
+        "http" | "https" => {
+            // `https:///etc` e `http:exemplo` viram hosts válidos no WHATWG: exige `//host`.
+            let host_first = lower.split_once("://").is_some_and(|(_, r)| !r.starts_with(['/', '\\']));
+            if !host_first || url.host_str().is_none_or(str::is_empty) {
+                return Err(bad());
+            }
+            Ok(url.to_string())
+        }
+        "mailto" => {
+            let address = url.path();
+            if !plain_address(address) {
+                return Err(bad());
+            }
+            let fields: Vec<String> = url
+                .query_pairs()
+                .filter_map(|(k, v)| {
+                    let k = k.to_ascii_lowercase();
+                    MAILTO_FIELDS.contains(&k.as_str()).then(|| format!("{k}={}", encode(&v)))
+                })
+                .collect();
+            Ok(if fields.is_empty() { format!("mailto:{address}") } else { format!("mailto:{address}?{}", fields.join("&")) })
+        }
+        _ => Err(bad()),
+    }
 }
 
 /// Abre Traduzir, Pesquisar Texto, Pesquisar Imagem (página de busca por imagem, sem enviar nada)
@@ -309,6 +360,41 @@ mod tests {
             assert_eq!(web_url("link", bad, "").unwrap_err().code(), "unsupported", "{bad}");
         }
         assert!(web_url("outro", "x", "").is_err());
+    }
+
+    /// O texto vem da imagem (não confiável): o link é reconstruído, nunca repassado cru.
+    #[test]
+    fn mailto_so_leva_endereco_e_campos_permitidos() {
+        let link = |s: &str| web_url("link", s, "");
+        assert_eq!(
+            link("mailto:ana@exemplo.com.br?subject=Oi%20a&attach=/etc/passwd&body=x&attachment=~/.ssh/id_rsa").unwrap(),
+            "mailto:ana@exemplo.com.br?subject=Oi%20a&body=x"
+        );
+        assert_eq!(link("MAILTO:a@b.com?cc=c@d.com&bcc=e@f.com&X-Evil=1").unwrap(), "mailto:a@b.com?cc=c%40d.com&bcc=e%40f.com");
+        assert_eq!(link("mailto:a@b.com?ATTACH=/x").unwrap(), "mailto:a@b.com");
+        for bad in ["mailto:", "mailto:?attach=/etc/passwd", "mailto:/etc/passwd", "mailto:a@b.com,c@d.com", "mailto:a@b@c"] {
+            assert!(link(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn tel_so_aceita_digitos_e_pontuacao() {
+        let link = |s: &str| web_url("link", s, "");
+        assert_eq!(link("tel:+55 (11) 98765-4321").unwrap(), "tel:+55(11)98765-4321");
+        assert_eq!(link("tel:11987654321").unwrap(), "tel:11987654321");
+        for bad in ["tel:", "tel:123;phone-context=x", "tel:123?x=1", "tel:abc", "tel:12%0A3", "tel:()"] {
+            assert!(link(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn http_exige_host_valido() {
+        let link = |s: &str| web_url("link", s, "");
+        assert_eq!(link("https://exemplo.com.br/a?b=1").unwrap(), "https://exemplo.com.br/a?b=1");
+        assert_eq!(link("HTTP://Exemplo.com").unwrap(), "http://exemplo.com/");
+        for bad in ["https:///etc/passwd", "http://", "https://a b", "https://", "http:exemplo"] {
+            assert!(link(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

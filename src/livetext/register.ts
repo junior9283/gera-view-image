@@ -2,8 +2,8 @@
 import { registerCommand } from "../shortcuts/commands";
 import { registerSlot } from "../lib/slots";
 import { activeDoc, viewable } from "../viewer/actions";
-import { copyAll, hasText, isSpeaking, lookUp, startSpeaking, stopSpeaking, toggleLiveText } from "./actions";
-import { LiveTextHost, askImageSearch } from "./LiveTextHost";
+import { askImageSearch, copyAll, hasText, isSpeaking, lookUp, startSpeaking, stopSpeaking, toggleLiveText } from "./actions";
+import { LiveTextHost } from "./LiveTextHost";
 import { LiveTextLayer } from "./LiveTextLayer";
 import { openFind, startLiveText, stepFind, useLiveText } from "./store";
 

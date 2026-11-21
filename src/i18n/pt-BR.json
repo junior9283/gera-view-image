@@ -573,6 +573,10 @@
       "search": "Pesquisar na Web",
       "translate": "Traduzir",
       "speak": "Falar"
-    }
+    },
+    "linkEmailTitle": "Escrever um e-mail para este endereço?",
+    "linkPhoneTitle": "Ligar para este número?",
+    "linkBody": "O endereço foi lido da imagem. Confira antes de abrir:",
+    "linkOpen": "Abrir"
   }
 }

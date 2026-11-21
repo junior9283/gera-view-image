@@ -7,7 +7,7 @@ import { notifyError } from "../chrome/notify";
 import { useMarkup } from "../markup/store";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
-import { copySelected } from "./actions";
+import { copySelected, openLink } from "./actions";
 import { LiveTextMenu, type MenuAt } from "./LiveTextMenu";
 import { downloadModels, setSelection, toggleHighlight, useLiveText } from "./store";
 import { wordAt, type TextModel } from "./text";
@@ -207,11 +207,11 @@ export function LiveTextLayer({ scale, panX, panY }: OverlayProps) {
               type="button"
               className="livetext-data"
               data-testid="livetext-data"
-              title={t(`livetext.open.${d.kind}`, { text: d.text })}
-              aria-label={t(`livetext.open.${d.kind}`, { text: d.text })}
+              title={t(`livetext.open.${d.kind}`, { text: d.href })}
+              aria-label={t(`livetext.open.${d.kind}`, { text: d.href })}
               style={box(r)}
               data-livetext-stop
-              onClick={() => void ipc.openWeb("link", d.href, "").catch(notifyError)}
+              onClick={() => void openLink(d.href).catch(notifyError)}
             />
           )),
         )}
@@ -225,7 +225,8 @@ export function LiveTextLayer({ scale, panX, panY }: OverlayProps) {
                 className="livetext-chip"
                 data-testid="livetext-code"
                 data-livetext-stop
-                onClick={() => void (link ? ipc.openWeb("link", c.text, "") : ipc.copyText(c.text)).catch(notifyError)}
+                title={c.text}
+                onClick={() => void (link ? openLink(c.text) : ipc.copyText(c.text)).catch(notifyError)}
               >
                 {t(link ? "livetext.qrOpen" : "livetext.qrCopy")}
               </button>
