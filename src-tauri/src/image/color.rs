@@ -1,6 +1,7 @@
 //! Ajustes de cor, histograma e níveis automáticos.
 use crate::doc::model::{ColorAdjust, Levels};
 use crate::image::thumb::{HEADER_LEN, view_buffer_size};
+use crate::image::raster::Rgba16Image;
 use ::image::RgbaImage;
 use rayon::prelude::*;
 use serde::Serialize;
@@ -85,8 +86,37 @@ pub fn adjust(img: &RgbaImage, a: &ColorAdjust) -> RgbaImage {
     out
 }
 
+/// `adjust` em RGBA de 16 bits por canal (Salvar de PNG/TIFF de 16 bits): mesma conta, em f32.
+pub fn adjust16(img: &Rgba16Image, a: &ColorAdjust) -> Rgba16Image {
+    let mut out = img.clone();
+    let (w, h) = out.dimensions();
+    adjust_in_place(&mut out, w, h, a);
+    out
+}
+
+/// Canal de 8 ou 16 bits.
+trait Sample: Copy + Into<f32> + Send + Sync {
+    const MAX: f32;
+    /// `v` já em 0..=MAX (conversão truncada, como `as`).
+    fn from_f32(v: f32) -> Self;
+}
+
+impl Sample for u8 {
+    const MAX: f32 = 255.0;
+    fn from_f32(v: f32) -> Self {
+        v as u8
+    }
+}
+
+impl Sample for u16 {
+    const MAX: f32 = 65535.0;
+    fn from_f32(v: f32) -> Self {
+        v as u16
+    }
+}
+
 /// `adjust` sobre RGBA cru de `w`x`h`, no lugar.
-fn adjust_in_place(px: &mut [u8], w: u32, h: u32, a: &ColorAdjust) {
+fn adjust_in_place<T: Sample>(px: &mut [T], w: u32, h: u32, a: &ColorAdjust) {
     if *a == ColorAdjust::default() {
         return;
     }
@@ -94,8 +124,10 @@ fn adjust_in_place(px: &mut [u8], w: u32, h: u32, a: &ColorAdjust) {
     if (ColorAdjust { sharpness: 0.0, ..*a }) != ColorAdjust::default() {
         px.par_chunks_exact_mut(4 * w.max(1) as usize).for_each(|row| {
             for p in row.chunks_exact_mut(4) {
-                let rgb = pixel(a, [p[0], p[1], p[2]]);
-                p[..3].copy_from_slice(&rgb);
+                let c = pixel(a, [p[0], p[1], p[2]].map(|v| Into::<f32>::into(v) / T::MAX));
+                for (d, v) in p.iter_mut().zip(c) {
+                    *d = T::from_f32(v * T::MAX + 0.5);
+                }
             }
         });
     }
@@ -104,8 +136,8 @@ fn adjust_in_place(px: &mut [u8], w: u32, h: u32, a: &ColorAdjust) {
     }
 }
 
-fn pixel(a: &ColorAdjust, rgb: [u8; 3]) -> [u8; 3] {
-    let mut c = rgb.map(|v| v as f32 / 255.0);
+/// Ajustes de um pixel RGB em 0..1 (o resultado também fica em 0..1).
+fn pixel(a: &ColorAdjust, mut c: [f32; 3]) -> [f32; 3] {
 
     // 1. Níveis
     let lv = a.levels;
@@ -160,7 +192,7 @@ fn pixel(a: &ColorAdjust, rgb: [u8; 3]) -> [u8; 3] {
         ];
         c = [0, 1, 2].map(|i| (c[i] + s * (sep[i] - c[i])).clamp(0.0, 1.0));
     }
-    c.map(|v| (v * 255.0 + 0.5) as u8)
+    c
 }
 
 fn saturate([r, g, b]: [f32; 3], amount: f32) -> [f32; 3] {
@@ -194,27 +226,28 @@ fn saturate([r, g, b]: [f32; 3], amount: f32) -> [f32; 3] {
 }
 
 /// *Unsharp mask* de raio 1 (desfoque 3x3 binomial), `amount` em 0..1.
-fn unsharp(px: &mut [u8], w: u32, h: u32, amount: f32) {
+fn unsharp<T: Sample>(px: &mut [T], w: u32, h: u32, amount: f32) {
     let (w, h) = (w as usize, h as usize);
     if w < 3 || h < 3 {
         return;
     }
     let src = px.to_vec();
-    const K: [[u32; 3]; 3] = [[1, 2, 1], [2, 4, 2], [1, 2, 1]];
+    // Pesos inteiros e soma em f32: exata para 8 e 16 bits (< 2^24).
+    const K: [[f32; 3]; 3] = [[1.0, 2.0, 1.0], [2.0, 4.0, 2.0], [1.0, 2.0, 1.0]];
     px.par_chunks_exact_mut(w * 4).enumerate().for_each(|(y, row)| {
         for x in 0..w {
             for ch in 0..3 {
-                let mut acc = 0u32;
+                let mut acc = 0f32;
                 for (dy, kr) in K.iter().enumerate() {
                     let yy = (y + dy).saturating_sub(1).min(h - 1);
                     for (dx, k) in kr.iter().enumerate() {
                         let xx = (x + dx).saturating_sub(1).min(w - 1);
-                        acc += k * src[(yy * w + xx) * 4 + ch] as u32;
+                        acc += k * Into::<f32>::into(src[(yy * w + xx) * 4 + ch]);
                     }
                 }
-                let blur = acc as f32 / 16.0;
-                let orig = src[(y * w + x) * 4 + ch] as f32;
-                row[x * 4 + ch] = (orig + amount * 2.0 * (orig - blur)).clamp(0.0, 255.0).round() as u8;
+                let blur = acc / 16.0;
+                let orig: f32 = src[(y * w + x) * 4 + ch].into();
+                row[x * 4 + ch] = T::from_f32((orig + amount * 2.0 * (orig - blur)).clamp(0.0, T::MAX).round());
             }
         }
     });

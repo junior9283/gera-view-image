@@ -15,7 +15,8 @@ use crate::{
     error::{AppError, AppResult},
     image::{
         decode::{self, Decoded},
-        ops, thumb,
+        ops,
+        thumb,
     },
 };
 use ::image::RgbaImage;
@@ -25,7 +26,7 @@ use std::{
     ops::Deref,
     path::Path,
     sync::{
-        Arc, Condvar, Mutex, MutexGuard, OnceLock, RwLock,
+        Arc, Condvar, Mutex, MutexGuard, OnceLock, RwLock, Weak,
         atomic::{AtomicU32, AtomicUsize, Ordering},
     },
 };
@@ -81,7 +82,7 @@ type InflightKey = (DocId, usize, u32, u64);
 type Inflight = Arc<OnceLock<Arc<RgbaImage>>>;
 
 /// Estado do documento que um render reflete: `(ops.len(), generation)`.
-type RenderState = (usize, u64);
+pub(super) type RenderState = (usize, u64);
 /// Base da prévia de ajuste: `(doc, estado, max_w, max_h)`.
 type PreviewKey = (DocId, RenderState, u32, u32);
 
@@ -110,6 +111,18 @@ pub struct Document {
     pub(super) opened_disk: Option<DiskStamp>,
     /// Decodificação da abertura, guardada quando "Reverter para o Último Salvo" troca `source`.
     pub(super) original: Option<Arc<Decoded>>,
+    /// O disco tem a versão de 16 bits de `source` com `ops[..n]` (último Salvar em 16 bits):
+    /// o próximo Salvar relê esse arquivo e refaz só o resto, sem guardar RGBA16 na memória.
+    pub(super) deep: Option<DeepBase>,
+}
+
+/// Ver [`Document::deep`].
+#[derive(Debug, Clone)]
+pub(super) struct DeepBase {
+    pub source: Weak<Decoded>,
+    pub generation: u64,
+    pub n: usize,
+    pub disk: Option<DiskStamp>,
 }
 
 /// Identidade do arquivo em disco para detectar alteração externa.
@@ -183,6 +196,7 @@ impl Document {
             disk,
             opened_disk: disk,
             original: None,
+            deep: None,
         }
     }
 
@@ -587,7 +601,7 @@ impl DocStore {
 
     /// Pixels atuais, dimensões lógicas (resolução cheia), a escala lógica→pixels
     /// (< 1 só durante a prévia) e o estado do documento que eles refletem.
-    fn pixels(
+    pub(super) fn pixels(
         &self,
         id: DocId,
         frame: u32,

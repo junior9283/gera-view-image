@@ -2,13 +2,16 @@
 //!
 //! Formatos sem codificador no binário: HEIC (o x265 é proibido no NEEDED) e JPEG 2000
 //! (a única crate madura liga a libopenjp2). Ficam ocultos no diálogo e registrados no CHANGELOG.
-use super::ops;
+use super::{
+    container::{self, TiffMeta},
+    raster::Raster,
+};
 use crate::{
-    doc::model::{ResizeFilter, SourceFormat},
+    doc::model::SourceFormat,
     error::{AppError, AppResult},
 };
 use ::image::{
-    DynamicImage, ImageEncoder, RgbImage, RgbaImage,
+    DynamicImage, ImageEncoder,
     codecs::{
         avif::AvifEncoder,
         bmp::BmpEncoder,
@@ -21,7 +24,6 @@ use ::image::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    borrow::Cow,
     fs,
     io::{Cursor, Write},
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
@@ -91,7 +93,7 @@ pub struct ExportOptions {
     pub quality: Option<u8>,
     #[serde(default = "yes")]
     pub alpha: bool,
-    /// PNG/TIFF em 16 bits por canal (o pipeline é de 8 bits: os valores são expandidos).
+    /// PNG/TIFF em 16 bits por canal (pixels de 8 bits são expandidos).
     #[serde(default)]
     pub depth16: bool,
     #[serde(default)]
@@ -111,9 +113,9 @@ pub struct MetaCarry {
     /// Bloco TIFF do EXIF (a orientação é reescrita para 1 em `encode`).
     pub exif: Option<Vec<u8>>,
     pub icc: Option<Vec<u8>>,
-    /// Registros IPTC-IIM crus do original (JPEG).
+    /// Registros IPTC-IIM crus do original (JPEG, TIFF).
     pub iptc: Option<Vec<u8>>,
-    /// Pacote XMP do original (JPEG).
+    /// Pacote XMP do original (JPEG com o estendido reunido, PNG, TIFF, WebP).
     pub xmp: Option<String>,
     /// Palavras-chave editadas: substituem IPTC 2:25 e XMP `dc:subject`.
     pub iptc_keywords: Option<Vec<String>>,
@@ -129,22 +131,24 @@ fn enc_err(e: impl std::fmt::Display) -> AppError {
     AppError::Io(format!("falha ao codificar: {e}"))
 }
 
-/// Codifica `img` (RGBA8 já com todas as operações) conforme `opts`.
-pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppResult<Vec<u8>> {
+/// Codifica `img` (RGBA8 ou RGBA16, já com todas as operações) conforme `opts`.
+pub fn encode<'a>(
+    img: impl Into<Raster<'a>>,
+    opts: &ExportOptions,
+    meta: &MetaCarry,
+) -> AppResult<Vec<u8>> {
     let fmt = opts.format;
     if !fmt.supported() {
         return Err(AppError::Unsupported(format!(
             "sem codificador para {fmt:?} neste binário"
         )));
     }
-    let img: Cow<RgbaImage> = match opts.resize {
+    let img: Raster = match opts.resize {
         Some((w, h)) if w == 0 || h == 0 => {
             return Err(AppError::Unsupported("tamanho zero".into()));
         }
-        Some((w, h)) if (w, h) != img.dimensions() => {
-            Cow::Owned(ops::resize(img, w, h, ResizeFilter::Lanczos3))
-        }
-        _ => Cow::Borrowed(img),
+        Some((w, h)) => img.into().resized(w, h),
+        None => img.into(),
     };
     let meta = if opts.strip_metadata {
         MetaCarry {
@@ -153,25 +157,27 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
         }
     } else {
         MetaCarry {
-            exif: meta.exif.as_deref().map(exif_reset_orientation),
+            exif: meta.exif.as_deref().map(|e| {
+                container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions())
+            }),
+            // Os pixels gravados são RGB: perfil CMYK ou cinza não os descreve (é descartado).
+            icc: meta.icc.clone().filter(|p| container::icc_is_rgb(p)),
             ..meta.clone()
         }
     };
-    let with_alpha = opts.alpha && fmt.keeps_alpha() && img.pixels().any(|p| p[3] != 255);
-    let pixels = if with_alpha {
-        DynamicImage::ImageRgba8(img.into_owned())
-    } else {
-        DynamicImage::ImageRgb8(rgb_on_white(&img))
-    };
+    let with_alpha = opts.alpha && fmt.keeps_alpha() && img.has_alpha();
     // Só PNG/TIFF gravam 16 bits por canal.
-    let pixels = if opts.depth16 && matches!(fmt, ExportFormat::Png | ExportFormat::Tiff) {
-        widen16(pixels)
-    } else {
-        pixels
-    };
+    let pixels = img.into_pixels(
+        with_alpha,
+        opts.depth16 && matches!(fmt, ExportFormat::Png | ExportFormat::Tiff),
+    );
     let xmp = match &meta.iptc_keywords {
         Some(k) => Some(xmp_with_keywords(meta.xmp.as_deref(), k)),
         None => meta.xmp.clone(),
+    };
+    let iptc = match &meta.iptc_keywords {
+        Some(k) => Some(iim_with_keywords(meta.iptc.as_deref(), k)),
+        None => meta.iptc.clone(),
     };
 
     let mut out = Vec::new();
@@ -186,10 +192,6 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
             }
             set_meta(&mut e, &meta);
             pixels.write_with_encoder(e).map_err(enc_err)?;
-            let iptc = match &meta.iptc_keywords {
-                Some(k) => Some(iim_with_keywords(meta.iptc.as_deref(), k)),
-                None => meta.iptc.clone(),
-            };
             out = jpeg_insert_segments(&out, iptc.as_deref(), xmp.as_deref());
         }
         ExportFormat::Png => {
@@ -210,6 +212,14 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
             }
             pixels.write_with_encoder(e).map_err(enc_err)?;
             out = c.into_inner();
+            let tm = TiffMeta {
+                exif: meta.exif.as_deref(),
+                iptc: iptc.as_deref(),
+                xmp: xmp.as_deref(),
+                icc: meta.icc.as_deref(),
+                dpi: meta.dpi,
+            };
+            out = container::tiff_with_meta(&out, &tm).unwrap_or(out);
         }
         ExportFormat::Webp => {
             let (w, h) = (pixels.width(), pixels.height());
@@ -239,6 +249,7 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
                 AVIF_SPEED,
                 opts.quality.unwrap_or(DEFAULT_AVIF_QUALITY).clamp(1, 100),
             );
+            // O ravif/avif-serialize só gravam EXIF: ICC e XMP ficam de fora no AVIF.
             if let Some(exif) = &meta.exif {
                 let _ = e.set_exif_metadata(exif.clone());
             }
@@ -248,6 +259,9 @@ pub fn encode(img: &RgbaImage, opts: &ExportOptions, meta: &MetaCarry) -> AppRes
             pixels
                 .write_with_encoder(BmpEncoder::new(&mut out))
                 .map_err(enc_err)?;
+            if let Some(icc) = &meta.icc {
+                out = container::bmp_with_icc(&out, icc).unwrap_or(out);
+            }
         }
         ExportFormat::Exr => {
             let mut c = Cursor::new(Vec::new());
@@ -268,23 +282,6 @@ fn set_meta(e: &mut impl ImageEncoder, meta: &MetaCarry) {
     }
     if let Some(exif) = &meta.exif {
         let _ = e.set_exif_metadata(exif.clone());
-    }
-}
-
-/// RGB8 com a transparência composta sobre branco (formatos sem alfa), numa passada só.
-fn rgb_on_white(img: &RgbaImage) -> RgbImage {
-    RgbImage::from_fn(img.width(), img.height(), |x, y| {
-        let p = img.get_pixel(x, y);
-        let a = p[3] as u32;
-        let c = |v: u8| ((v as u32 * a + 255 * (255 - a) + 127) / 255) as u8;
-        ::image::Rgb([c(p[0]), c(p[1]), c(p[2])])
-    })
-}
-
-fn widen16(img: DynamicImage) -> DynamicImage {
-    match img {
-        DynamicImage::ImageRgb8(_) => DynamicImage::ImageRgb16(img.into_rgb16()),
-        other => DynamicImage::ImageRgba16(other.into_rgba16()),
     }
 }
 
@@ -437,8 +434,6 @@ pub fn xmp_with_keywords(orig: Option<&str>, keywords: &[String]) -> String {
     )
 }
 
-const XMP_NS: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
-
 fn jpeg_segment(marker: u8, payload: &[u8]) -> Option<Vec<u8>> {
     let len = u16::try_from(payload.len() + 2).ok()?;
     let mut s = vec![0xFF, marker];
@@ -447,7 +442,8 @@ fn jpeg_segment(marker: u8, payload: &[u8]) -> Option<Vec<u8>> {
     Some(s)
 }
 
-/// Insere APP13 (IPTC) e APP1 (XMP) depois dos APPn que o codificador escreveu.
+/// Insere APP13 (IPTC) e APP1 (XMP, com o estendido se passar de 64 KB) depois dos APPn
+/// que o codificador escreveu.
 fn jpeg_insert_segments(jpg: &[u8], iim: Option<&[u8]>, xmp: Option<&str>) -> Vec<u8> {
     let mut extra = Vec::new();
     if let Some(iim) = iim {
@@ -459,8 +455,8 @@ fn jpeg_insert_segments(jpg: &[u8], iim: Option<&[u8]>, xmp: Option<&str>) -> Ve
         }
         extra.extend(jpeg_segment(0xED, &p).unwrap_or_default());
     }
-    if let Some(x) = xmp {
-        extra.extend(jpeg_segment(0xE1, &[XMP_NS, x.as_bytes()].concat()).unwrap_or_default());
+    for p in xmp.map(container::jpeg_xmp_payloads).unwrap_or_default() {
+        extra.extend(jpeg_segment(0xE1, &p).unwrap_or_default());
     }
     if extra.is_empty() {
         return jpg.to_vec();

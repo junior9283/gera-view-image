@@ -410,7 +410,7 @@
     "pasted": "Pasted",
     "capture": "Screenshot",
     "saved": "Saved: {{name}}",
-    "keywordsNotSaved": "Keywords were not saved: this format does not store IPTC/XMP. Export as JPEG, PNG or WebP.",
+    "keywordsNotSaved": "Keywords were not saved: this format does not store IPTC/XMP. Export as JPEG, TIFF, PNG or WebP.",
     "exported": "Exported: {{name}}",
     "exportedMany": "{{count}} images exported",
     "unsaved": {

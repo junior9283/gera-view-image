@@ -238,6 +238,28 @@ pub fn jpeg_with_iptc() -> Vec<u8> {
     jpeg_with_segment(&gradient(32, 24), 0xED, &p)
 }
 
+/// JPEG CMYK (Adobe, YCCK) 24x16, sem perfil. Gerado uma vez pelo ImageMagick
+/// (`magick -size 24x16 gradient:red-blue -colorspace CMYK -quality 90 -strip`): nem a crate
+/// `image` nem o `jpeg-decoder` gravam CMYK.
+pub fn jpeg_cmyk() -> Vec<u8> {
+    const HEX: &[&str] = &[
+        "ffd8ffee000e41646f626500640000000002ffdb0043000302020302020303030304030304050805050404050a070706",
+        "080c0a0c0c0b0a0b0b0d0e12100d0e110e0b0b1016101113141515150c0f171816141812141514ffdb00430103040405",
+        "040509050509140d0b0d1414141414141414141414141414141414141414141414141414141414141414141414141414",
+        "141414141414141414141414ffc00014080010001804011100021101031101041100ffc4001600010101000000000000",
+        "00000000000000000708ffc4001f10000102060300000000000000000000000002180104161764a2525491ffc4001701",
+        "0101010100000000000000000000000000090308ffc4001d110001030501000000000000000000000000010417021451",
+        "539115ffda000e040100021103110400003f00b5d428e703091daec4e92fecd706b473997b0a851ce02476bb13a2cd70",
+        "1ce65ec2a14738091daec4e8b35c073997b151b532bd74f84dbf62bc9dfb1c35d69c0d8f13516a657ae9f07b15e4470d",
+        "75a70363c4d45a995eba7c1ec57911c35d69c0d8f1353fffd9",
+    ];
+    let hex = HEX.concat();
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+        .collect()
+}
+
 fn save_png(img: &RgbaImage, path: &Path) {
     img.save_with_format(path, image::ImageFormat::Png).unwrap();
 }
@@ -261,6 +283,7 @@ fn generate(dir: &Path) {
     write_if_missing(&p("meta_gps.jpg"), jpeg_with_gps);
     write_if_missing(&p("meta_srgb.jpg"), jpeg_with_srgb);
     write_if_missing(&p("meta_iptc.jpg"), jpeg_with_iptc);
+    write_if_missing(&p("cmyk.jpg"), jpeg_cmyk);
     write_if_missing(&p("anim.gif"), gif_3_frames);
     write_if_missing(&p("multi.tiff"), tiff_2_pages);
     write_if_missing(&p("img.webp"), || {

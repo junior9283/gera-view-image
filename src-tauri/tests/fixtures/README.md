@@ -21,6 +21,7 @@ O gerador só cria o que falta. Para regenerar tudo, apague esta pasta e rode
 | `img.svg` | 100×50 (rasteriza em 2048×1024) | texto escrito no gerador |
 | `img.psd` | 40×30 RGB 8 bits | PSD mínimo escrito byte a byte (sem camadas, dados crus) |
 | `img.dng` | 64×48 | `rawler::dng::writer::DngWriter` (DNG *LinearRaw*, matriz identidade) |
+| `cmyk.jpg` | 24×16 CMYK (Adobe YCCK) | bytes embutidos em `make_fixtures.rs`, gerados uma vez pelo ImageMagick (nada em Rust grava JPEG CMYK) |
 | `truncado.jpg` | — | primeiros 500 bytes de um JPEG 200×200 |
 | `texto.png` | — | arquivo de texto com extensão `.png` |
 | `Ação com espaço/` | `Ação 1.jpg`, `img2.png`, `img10.png`, `notas.txt` | ordem natural, acentos e filtro de extensões |
