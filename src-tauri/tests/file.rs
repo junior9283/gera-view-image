@@ -183,20 +183,10 @@ fn salvar_preserva_permissoes() {
 
 #[test]
 fn salvar_raw_pede_exportar() {
-    for nome in [
-        "img.dng",
-        "img.psd",
-        "img.svg",
-        "anim.gif",
-        "multi.tiff",
-        "img.heic",
-    ] {
+    for nome in ["img.dng", "img.psd", "img.svg", "anim.gif", "multi.tiff"] {
         let path = copia("raw-exportar", nome);
         let store = DocStore::new();
         let info = store.open_documents(&[s(&path)]).remove(0);
-        if info.error.is_some() {
-            continue; // HEIC sem libde265 nesta máquina
-        }
         store.wait_ready(info.id).unwrap();
         assert!(!store.info(info.id).unwrap().writable, "{nome}");
         assert!(
@@ -365,12 +355,75 @@ fn exporta_cada_formato_e_reabre() {
 }
 
 #[test]
-fn formatos_sem_codificador_sao_recusados() {
-    let img = RgbaImage::new(4, 4);
-    for fmt in [ExportFormat::Heic, ExportFormat::Jp2] {
-        let err = encode(&img, &opts(fmt), &MetaCarry::default()).unwrap_err();
-        assert_eq!(err.code(), "unsupported", "{fmt:?}");
+fn salvar_regrava_heic_e_jp2_no_lugar() {
+    use gera_view_image_lib::image::{encode_heic::hevc_encoder_available, heic::hevc_available};
+    let dir = tmp("salvar-heic-jp2");
+    let jp2 = dir.join("img.jp2");
+    let img = RgbaImage::from_fn(30, 20, |x, y| {
+        image::Rgba([(x * 8) as u8, (y * 12) as u8, 90, 255])
+    });
+    fs::write(
+        &jp2,
+        encode(&img, &opts(ExportFormat::Jp2), &MetaCarry::default()).unwrap(),
+    )
+    .unwrap();
+    let mut casos = vec![(jp2, SourceFormat::Jp2)];
+    if hevc_available() && hevc_encoder_available() {
+        casos.push((copia("salvar-heic-jp2", "img.heic"), SourceFormat::Heic));
     }
+    for (path, formato) in casos {
+        let store = DocStore::new();
+        let id = abre(&store, &path);
+        let info = store.info(id).unwrap();
+        assert_eq!(info.format, formato);
+        assert!(info.writable, "{formato:?}");
+        let (w, h) = (info.width, info.height);
+        store.apply_op(id, Op::Rotate { quarter_turns: 1 }).unwrap();
+        assert!(
+            matches!(store.save(id, None).unwrap(), SaveOutcome::Saved(_)),
+            "{formato:?}"
+        );
+        let d = decode(&path).unwrap();
+        assert_eq!(d.format, formato);
+        assert_eq!(d.frames[0].dimensions(), (h, w), "{formato:?}");
+    }
+}
+
+#[test]
+fn exporta_heic_e_jp2_e_adota_o_arquivo() {
+    use gera_view_image_lib::image::encode_heic::hevc_encoder_available;
+    let store = DocStore::new();
+    let id = abre(&store, &fx("alpha.png"));
+    let dir = tmp("exporta-heic-jp2");
+    for (fmt, ext, q) in [
+        (ExportFormat::Heic, "heic", Some(60)),
+        (ExportFormat::Jp2, "jp2", None),
+        (ExportFormat::Jp2, "jp2", Some(70)),
+    ] {
+        if fmt == ExportFormat::Heic && !hevc_encoder_available() {
+            continue; // sem libkvazaar: coberto por tests/kvazaar_ausente.rs
+        }
+        let dest = dir.join(format!("saida-{}.{ext}", q.unwrap_or(0)));
+        let mut o = opts(fmt);
+        o.quality = q;
+        o.resize = Some((15, 12));
+        store.export(id, &s(&dest), &o, None).unwrap();
+        let dims = libheif_rs::HeifContext::read_from_bytes(&fs::read(&dest).unwrap())
+            .map(|c| {
+                let h = c.primary_image_handle().unwrap();
+                (h.width(), h.height())
+            })
+            .unwrap_or_else(|_| decode(&dest).unwrap().frames[0].dimensions());
+        assert_eq!(dims, (15, 12), "{fmt:?} q={q:?}");
+    }
+    // Documento sem caminho passa a ser o arquivo exportado (agora regravável).
+    let dup = store.duplicate(id, "cópia").unwrap();
+    let dest = dir.join("adotado.jp2");
+    store
+        .export(dup.id, &s(&dest), &opts(ExportFormat::Jp2), None)
+        .unwrap();
+    let info = store.info(dup.id).unwrap();
+    assert_eq!((info.format, info.writable), (SourceFormat::Jp2, true));
 }
 
 #[test]

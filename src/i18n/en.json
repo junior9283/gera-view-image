@@ -51,6 +51,7 @@
     "version": "Version {{version}}",
     "license": "MIT License",
     "repository": "GitHub repository",
+    "thirdParty": "Third-party licenses",
     "logoAlt": "Gera View Image logo",
     "close": "Close"
   },
@@ -447,6 +448,7 @@
       "failed": "Could not export “{{name}}”",
       "noFolder": "Choose the destination folder.",
       "noName": "Type a name.",
+      "heicEncoderMissing": "To save HEIC, install libkvazaar (Ubuntu/Debian: libkvazaar7; Fedora: kvazaar-libs, from RPM Fusion).",
       "formats": {
         "jpeg": "JPEG",
         "png": "PNG",

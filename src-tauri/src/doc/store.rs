@@ -181,7 +181,10 @@ impl Document {
         let read_only = std::fs::metadata(path)
             .map(|m| m.permissions().readonly())
             .unwrap_or(false);
-        !path.is_empty() && format.writable() && frames <= 1 && !read_only
+        // HEIC só é regravável com a libkvazaar (opcional, dlopen).
+        let encoder = format != SourceFormat::Heic
+            || crate::image::encode_heic::hevc_encoder_available();
+        !path.is_empty() && format.writable() && encoder && frames <= 1 && !read_only
     }
 
     fn failed(id: DocId, path: &str, err: AppError) -> Self {

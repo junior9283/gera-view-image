@@ -50,7 +50,7 @@ export const dirname = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/"))
 export const stem = (name: string) => (name.lastIndexOf(".") > 0 ? name.slice(0, name.lastIndexOf(".")) : name);
 
 /**
- * Salvar: grava no próprio arquivo. Formatos que não dá para regravar (RAW, PSD, HEIC, sem
+ * Salvar: grava no próprio arquivo. Formatos que não dá para regravar (RAW, PSD, GIF, sem
  * caminho...) abrem Exportar. `true` se gravou.
  */
 export async function saveDoc(d: DocInfo): Promise<boolean> {

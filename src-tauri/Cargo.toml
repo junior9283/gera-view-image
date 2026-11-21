@@ -31,6 +31,7 @@ fast_image_resize = { version = "6.1.0", features = ["image", "rayon"] }
 # AVIF: aom ligado dinamicamente (depends). HEIC: libde265 OPCIONAL, carregada com dlopen
 # pelo plugin de native/heic (build.rs); o binário não pode ter libde265 como NEEDED
 # (o CI confere com readelf). Não instalar libde265-dev no build: o cmake a ligaria.
+# Gravar HEIC: kvazaar (BSD-3) estático de native/kvazaar, compilado pelo build.rs.
 libheif-rs = { version = "3.0.0", default-features = false, features = ["v1_17", "embedded-libheif"] }
 # Direto só para o build.rs receber DEP_HEIF_ROOT; versão fixa porque o plugin HEIC
 # é compilado da fonte que esta versão embute.
@@ -57,6 +58,8 @@ kamadak-exif = "0.6.2"
 # WebP com perda (libwebp compilada estática pelo libwebp-sys; nada novo no NEEDED).
 webp = { version = "0.3", default-features = false }
 crc32fast = "1"
+# JPEG 2000 (abrir e gravar): porta em Rust puro do OpenJPEG (BSD-2), sem libopenjp2.
+openjp2 = { version = "0.7.2", default-features = false, features = ["image", "rayon"] }
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tga", "tiff", "webp"] }

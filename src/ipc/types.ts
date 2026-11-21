@@ -4,7 +4,7 @@ export type DocId = number;
 
 export type SourceFormat =
   | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "webp" | "heic"
-  | "avif" | "ico" | "svg" | "psd" | "tga" | "raw";
+  | "avif" | "ico" | "svg" | "psd" | "tga" | "raw" | "jp2";
 
 export type ErrorCode =
   | "not_found"
