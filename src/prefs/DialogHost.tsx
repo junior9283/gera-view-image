@@ -12,7 +12,6 @@ export function DialogHost() {
 
   useWindowEvent(OPEN_PREFERENCES_EVENT, () => setOpen("preferences"));
   useWindowEvent(OPEN_ABOUT_EVENT, () => setOpen("about"));
-  useWindowEvent("keydown", (e) => e.key === "Escape" && setOpen(null));
 
   const close = () => setOpen(null);
   if (open === "preferences") return <PreferencesDialog onClose={close} />;

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useModal } from "../lib/modal";
 import "./update.css";
 import { checkForUpdate, installUpdate, restartApp, RELEASES_URL, skipVersion, type UpdateInfo } from "./updater";
 
@@ -36,6 +37,9 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const dialog = useRef<HTMLDivElement>(null);
+  // Esc não interrompe uma instalação em andamento.
+  useModal(dialog, { onClose: () => !busy && onClose() });
 
   const install = async () => {
     setBusy(true);
@@ -59,7 +63,7 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
 
   return (
     <div className="update-backdrop" role="presentation">
-      <div className="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
+      <div ref={dialog} className="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
         <h3 id="update-title">
           {t("update.title")}: v{info.version}
         </h3>
@@ -92,7 +96,6 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
 
 /** Verifica 5 s após abrir e sob demanda (evento do menu); mostra o diálogo quando há versão nova. */
 export function UpdateHost() {
-  const { t } = useTranslation();
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [upToDate, setUpToDate] = useState(false);
 
@@ -118,16 +121,22 @@ export function UpdateHost() {
   }, [run]);
 
   if (info) return <UpdateDialog info={info} onClose={() => setInfo(null)} />;
-  if (upToDate)
-    return (
-      <div className="update-backdrop" role="presentation">
-        <div className="update-dialog" role="dialog" aria-modal="true">
-          <p>{t("update.upToDate")}</p>
-          <div className="update-actions">
-            <button onClick={() => setUpToDate(false)}>{t("update.close")}</button>
-          </div>
+  if (upToDate) return <UpToDateDialog onClose={() => setUpToDate(false)} />;
+  return null;
+}
+
+function UpToDateDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const dialog = useRef<HTMLDivElement>(null);
+  useModal(dialog, { onClose });
+  return (
+    <div className="update-backdrop" role="presentation">
+      <div ref={dialog} className="update-dialog" role="dialog" aria-modal="true">
+        <p>{t("update.upToDate")}</p>
+        <div className="update-actions">
+          <button onClick={onClose}>{t("update.close")}</button>
         </div>
       </div>
-    );
-  return null;
+    </div>
+  );
 }

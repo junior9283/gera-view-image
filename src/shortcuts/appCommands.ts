@@ -121,6 +121,8 @@ const ENTRIES: Entry[] = [
   ["tools.instantAlpha", sel.startInstantAlpha, hasDoc],
   ["tools.inspector", toggleInspector],
 
+  // Fechar a janela passa pelo `onCloseRequested`, que pergunta pelas alterações não salvas.
+  ["file.quit", () => getCurrentWindow().close()],
   ["window.minimize", () => getCurrentWindow().minimize()],
   ["window.maximize", () => getCurrentWindow().toggleMaximize()],
 

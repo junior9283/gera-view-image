@@ -85,6 +85,19 @@ describe("AdjustColorPanel", () => {
 describe("ResizeDialog", () => {
   beforeEach(() => useDocs.setState({ applyOp: ipc.applyOp as never }));
 
+  it("Esc fecha o diálogo mesmo com o foco fora dele (como Ajustar Cor e Exportar)", () => {
+    const onClose = vi.fn();
+    render(createElement(ResizeDialog, { doc, onClose, estimate: () => 0 }));
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("abre com o foco no primeiro controle", () => {
+    render(createElement(ResizeDialog, { doc, onClose: () => {}, estimate: () => 0 }));
+    expect(document.activeElement).toBe(screen.getByLabelText("Predefinição", { exact: false }));
+  });
+
   it("proporcional ajusta a altura e aplica Resize", async () => {
     const onClose = vi.fn();
     render(createElement(ResizeDialog, { doc, onClose }));

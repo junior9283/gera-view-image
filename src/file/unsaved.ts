@@ -3,8 +3,12 @@ import { hasUnsaved } from "./dirty";
 
 export type CloseChoice = "save" | "discard" | "cancel";
 
+/** `close`: fechar/navegar (Salvar, Não Salvar, Cancelar). `reload`: recarregar do disco (Recarregar, Cancelar). */
+export type UnsavedPurpose = "close" | "reload";
+
 interface Request {
   docs: DocInfo[];
+  purpose: UnsavedPurpose;
   resolve: (c: CloseChoice) => void;
 }
 
@@ -15,13 +19,14 @@ const emit = () => listeners.forEach((l) => l());
 
 /**
  * Pergunta o que fazer antes de fechar documentos com alterações (fechar documento, navegar
- * pela pasta, fechar a janela). Sem nenhum sujo, resolve `'discard'` sem diálogo.
+ * pela pasta, fechar a janela) ou de recarregá-los do disco (`purpose = "reload"`, sem Salvar).
+ * Sem nenhum sujo, resolve `'discard'` sem diálogo.
  */
-export function confirmClose(docs: DocInfo[]): Promise<CloseChoice> {
+export function confirmClose(docs: DocInfo[], purpose: UnsavedPurpose = "close"): Promise<CloseChoice> {
   const dirty = docs.filter(hasUnsaved);
   if (!dirty.length) return Promise.resolve("discard");
   return new Promise((resolve) => {
-    queue = [...queue, { docs: dirty, resolve }];
+    queue = [...queue, { docs: dirty, purpose, resolve }];
     emit();
   });
 }
@@ -32,7 +37,7 @@ export function subscribeUnsaved(l: () => void): () => void {
 }
 
 /** Pedido em exibição (o primeiro da fila). */
-export const currentUnsaved = (): { docs: DocInfo[] } | null => queue[0] ?? null;
+export const currentUnsaved = (): { docs: DocInfo[]; purpose: UnsavedPurpose } | null => queue[0] ?? null;
 
 /** Resposta do diálogo ao pedido em exibição. */
 export function answerUnsaved(c: CloseChoice): void {

@@ -1,8 +1,9 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { documentDpi } from "../ipc/commands";
 import type { DocInfo, ResizeFilter } from "../ipc/types";
 import { defaultOptions, exportFormatOf, useEstimate } from "../file/estimate";
+import { useModal } from "../lib/modal";
 import { useDocs } from "../store/docs";
 import { RESIZE_PRESETS, UNITS, fromPixels, linkDims, toPixels, type Unit } from "./units";
 import "./adjust.css";
@@ -26,6 +27,8 @@ interface Props {
 export function ResizeDialog({ doc, onClose, estimate }: Props) {
   const { t } = useTranslation();
   const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
+  useModal(dialog, { onClose });
   const [size, setSize] = useState({ w: doc.width, h: doc.height });
   const [unit, setUnit] = useState<Unit>("px");
   // DPI do documento (arquivo ou último Ajustar Tamanho); 72 quando o arquivo não informa.
@@ -98,7 +101,7 @@ export function ResizeDialog({ doc, onClose, estimate }: Props) {
 
   return (
     <div className="adjust-backdrop" role="presentation">
-      <div className="adjust-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <div ref={dialog} className="adjust-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <h3 id={titleId}>{t("resize.title")}</h3>
 
         <label className="adjust-row">

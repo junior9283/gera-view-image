@@ -12,7 +12,7 @@ export const COMMAND_IDS = [
   "file.newFromClipboard", "file.open", "file.openRecent", "file.close", "file.save", "file.duplicate",
   "file.rename", "file.moveTo", "file.showInFolder", "file.revertLastSaved", "file.revertOriginal", "file.export",
   "file.exportSelected", "file.captureSelection", "file.captureWindow", "file.captureScreen", "file.print",
-  "file.openWith",
+  "file.openWith", "file.quit",
   // Editar
   "edit.undo", "edit.redo", "edit.cut", "edit.copy", "edit.paste", "edit.delete", "edit.selectAll",
   "edit.deselect", "edit.invertSelection", "edit.preferences",

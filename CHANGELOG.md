@@ -5,6 +5,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Adicionado
+- Arquivo › Sair (Ctrl+Q, pergunta pelas alterações não salvas) e Abrir com… no menu Arquivo.
+- Setas para cima e para baixo navegam entre as imagens, como na barra lateral do Pré-Visualização.
+
+### Corrigido
+- Imprimir e Duplicar com anotações não salvas não achatam mais o documento aberto: a imagem achatada vai para uma cópia, e as anotações continuam editáveis.
+- Esc fecha Ajustar Tamanho mesmo com o foco fora do diálogo.
+- Diálogos prendem o foco do teclado (Tab e Shift+Tab), começam no primeiro controle e devolvem o foco ao fechar.
+- Atalhos de letra funcionam em layouts de teclado não latinos (cirílico, grego, hebraico) pela tecla física; layouts latinos (ABNT2, AZERTY) continuam pela tecla lógica.
+- "Recarregar" na faixa de arquivo alterado pergunta antes de descartar alterações não salvas.
+
 ## [0.2.1] - 2026-11-21
 
 ### Corrigido
@@ -30,10 +41,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Arrastar uma miniatura para fora da janela (para outro app) ainda não existe; a barra lateral só reordena.
 - GIF animado toca com 100 ms fixos por quadro (a duração de cada quadro do arquivo é ignorada).
 - Salvar em TIFF, BMP e AVIF não leva todos os metadados (EXIF/IPTC/ICC conforme o formato); imagens de 16 bits são salvas em 8 bits; JPEG CMYK é regravado em RGB.
-- Imprimir e Duplicar com anotações não salvas achatam as anotações no documento aberto.
 - Tamanho Real usa 1 pixel da imagem por pixel CSS (sem compensar a escala da tela).
-- Atalhos de letra não funcionam em layouts de teclado não latinos (ex.: cirílico).
-- Foco do teclado não fica preso dentro de alguns diálogos (acessibilidade).
 
 ## [0.1.2] - 2026-11-20
 
