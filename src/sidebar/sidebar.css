@@ -28,6 +28,9 @@
   cursor: default;
   touch-action: none;
 }
+.sidebar-item.selected {
+  background: rgb(10 132 255 / 0.15);
+}
 .sidebar-item.active {
   background: rgb(10 132 255 / 0.25);
 }

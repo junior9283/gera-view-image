@@ -46,6 +46,9 @@ export interface DocInfo {
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
+/** Item de `start_drag`: `export` = arrastar um PNG temporário em vez do arquivo. */
+export interface DragSource { id: DocId; export: boolean }
+
 export type ResizeFilter = "nearest" | "bilinear" | "lanczos3";
 
 export interface Levels { black: number; gamma: number; white: number }

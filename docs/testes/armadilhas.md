@@ -50,3 +50,11 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
 - **Sem compositing, o WebKit no Xvfb deixa regiões sem redesenhar** (tema escuro sai preto, o canvas fica com o
   quadro antigo). Para prints, rode com `GVI_GPU_ACCEL=1` (padrão do `screenshots.mjs`) e capture o framebuffer
   do X (`import -window root`): o snapshot do WebDriver devolve o canvas desatualizado.
+
+## Arraste para fora (drag-source GTK)
+
+- **Testar o arraste nativo no Xvfb precisa de um alvo GTK e de um WM.** Sem alvo de drop, o arraste só é
+  cancelado; sem WM (ex.: `openbox &`), `xdotool windowquit` não fecha a janela, o `RunEvent::Exit` não vem e os
+  temporários de `<cache>/drag/<pid>` ficam (a próxima abertura os apaga). Roteiro: uma janela Python/GTK3 com
+  `drag_dest_add_uri_targets` que imprime as URIs, o app com duas imagens, `xdotool mousedown 1` na miniatura,
+  `mousemove` em passos até a janela alvo e `mouseup 1`. O jsdom não cobre isso.

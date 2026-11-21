@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { subscribe } from "../lib/events";
+import { draggingOut } from "../sidebar/dragOut";
 import { useDocs } from "../store/docs";
 import { activate } from "./actions";
 
@@ -17,6 +18,8 @@ export function useFileDrop(): boolean {
   useEffect(() => {
     return subscribe(
       getCurrentWebview().onDragDropEvent(({ payload }) => {
+        // Miniatura arrastada para fora e trazida de volta: não reabre o próprio arquivo.
+        if (draggingOut()) return setOver(false);
         if (payload.type === "enter") setOver(payload.paths.length > 0);
         else if (payload.type === "leave") setOver(false);
         else if (payload.type === "drop") {
