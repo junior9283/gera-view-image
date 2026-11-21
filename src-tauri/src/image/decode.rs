@@ -158,6 +158,7 @@ fn ext_format(ext: &str) -> Option<SourceFormat> {
         "webp" => Webp,
         "heic" | "heif" | "hif" => Heic,
         "avif" => Avif,
+        "jp2" => Jp2,
         "ico" => Ico,
         "svg" => Svg,
         "psd" | "psb" => Psd,
@@ -211,6 +212,8 @@ pub fn detect_format(path: &Path, head: &[u8]) -> Option<SourceFormat> {
         Some(Ico)
     } else if starts(b"8BPS") {
         Some(Psd)
+    } else if starts(b"\0\0\0\x0cjP  \r\n\x87\n") {
+        Some(Jp2)
     } else {
         None
     };
@@ -272,6 +275,7 @@ fn decode_format(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
         Svg => decode_svg(bytes),
         Psd => decode_psd(bytes),
         Raw => decode_raw(bytes),
+        Jp2 => decode_jp2(bytes),
     }?;
     if d.dpi.is_none() {
         d.dpi = match format {
@@ -544,6 +548,34 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
         icc: handle.color_profile_raw().map(|p| p.data),
         exif,
         ..Decoded::single(RgbaImage::from_raw(w, h, out).ok_or_else(short)?, format)
+    })
+}
+
+/// Memória de trabalho do OpenJPEG: planos `i32` por componente (até 16 B/pixel em RGBA),
+/// mais o RGBA8 final. 4/5 do teto para o decodificador deixa o pico perto de `MAX_DECODE_BYTES`.
+const JP2_DECODER_BYTES: u64 = MAX_DECODE_BYTES as u64 / 5 * 4;
+
+fn decode_jp2(bytes: &[u8]) -> AppResult<Decoded> {
+    use openjp2::{
+        DecodeLimits, DecodeParameters, Decoder, Error as E, Image, J2KFormat, Stream,
+    };
+    let map = |e: E| match e {
+        E::Unsupported(m) => AppError::Unsupported(m),
+        other => AppError::Corrupt(other.to_string()),
+    };
+    // Recusa pelo cabeçalho, antes de alocar os planos.
+    let header = Decoder::new(J2KFormat::JP2)
+        .and_then(|mut d| d.read_header(&mut Stream::from_bytes(bytes.to_vec())))
+        .map_err(map)?;
+    check_budget(header.width(), header.height(), 0)?;
+    let params =
+        DecodeParameters::new().limits(DecodeLimits::new().max_mem_alloc(JP2_DECODER_BYTES));
+    let img = Image::from_bytes_with(bytes, params).map_err(map)?;
+    let rgba = DynamicImage::try_from(&img).map_err(map)?.into_rgba8();
+    let icc = Some(img.into_core_image().icc_profile_buf).filter(|p| !p.is_empty());
+    Ok(Decoded {
+        icc,
+        ..Decoded::single(rgba, SourceFormat::Jp2)
     })
 }
 

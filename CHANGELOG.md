@@ -6,6 +6,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 ## [Não lançado]
 
 ### Adicionado
+- Gravar HEIC e JPEG 2000 (Salvar e Exportar), com qualidade ajustável e transparência. HEIC leva EXIF e perfil ICC e usa o codificador HEVC kvazaar, carregado só se a `libkvazaar` estiver instalada (como a `libde265` para abrir; os pacotes a recomendam): sem ela, HEIC some do Exportar e o Salvar explica o que instalar. JPEG 2000 usa o `openjp2` (Rust puro), sem perdas por padrão ao salvar, e leva o perfil ICC (o formato não tem lugar padrão para EXIF). A qualidade do JPEG 2000 é uma taxa de compressão: em imagens muito simples (gráficos, cores chapadas) o arquivo com perdas pode sair maior que o sem perdas; nesses casos use "Sem perdas".
+- Abrir JPEG 2000 (`.jp2`).
+- Avisos de licença de terceiros (`THIRD_PARTY_LICENSES`) nos pacotes e link em Ajuda › Sobre.
 - Arquivo › Sair (Ctrl+Q, pergunta pelas alterações não salvas) e Abrir com… no menu Arquivo.
 - Setas para cima e para baixo navegam entre as imagens, como na barra lateral do Pré-Visualização.
 - Arrastar miniaturas da barra lateral para fora da janela (gerenciador de arquivos, navegador, outro app) entrega o arquivo (validado em X11; Wayland ainda sem teste manual). Com várias miniaturas selecionadas (Ctrl+clique alterna, Shift+clique seleciona o intervalo), arrasta todas. Imagem com alterações não salvas ou sem arquivo (ex.: colada da área de transferência) vai como PNG temporário numa pasta privada do app, apagada ao sair. Anotações ainda não achatadas não entram nesse PNG. Dentro da janela, o arraste continua reordenando.
@@ -47,7 +50,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - README com prints, E2E (WebdriverIO + tauri-driver sob Xvfb) no CI e prints gerados por `scripts/screenshots.mjs` com imagens sintéticas.
 
 ### Limitações conhecidas (o que falta para a 1.0)
-- HEIC e JPEG 2000 ainda não podem ser gravados: o codificador HEVC (x265) não pode ir no binário e não há crate JPEG 2000 sem a libopenjp2. HEIC é aberto normalmente (precisa da `libde265`, no Fedora pelo RPM Fusion); Salvar leva a Exportar.
+- Salvar HEIC regrava com perdas (qualidade 80) e não leva XMP/palavras-chave, imagens auxiliares (mapa de profundidade, ganho HDR) nem o perfil nclx (ex.: Display P3 sem ICC vira sRGB). JPEG 2000 de 12/16 bits é salvo em 8 bits.
 - AVIF salvo leva só o EXIF: o codificador (ravif/avif-serialize) não grava perfil ICC nem XMP, então as palavras-chave ficam pendentes. JPEG CMYK é regravado em RGB, sem perfil, com a conversão simples do decodificador (sem gestão de cor pelo perfil CMYK).
 
 ## [0.1.2] - 2026-11-20

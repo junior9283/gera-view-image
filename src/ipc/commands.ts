@@ -73,6 +73,9 @@ export const exportDoc = (id: DocId, dest: string, opts: ExportOptions, keywords
 
 export const estimateSize = (id: DocId, opts: ExportOptions) => invoke<number>("estimate_size", { id, opts });
 
+/** Há codificador HEVC (libkvazaar, opcional): sem ele o HEIC some do Exportar. */
+export const heicEncoderAvailable = () => invoke<boolean>("heic_encoder_available");
+
 export const revert = (id: DocId, to: RevertTarget) => invoke<DocInfo>("revert", { id, to });
 
 export const renameDoc = (id: DocId, name: string) => invoke<DocInfo>("rename", { id, name });

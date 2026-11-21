@@ -51,6 +51,7 @@
     "version": "Versão {{version}}",
     "license": "Licença MIT",
     "repository": "Repositório no GitHub",
+    "thirdParty": "Licenças de terceiros",
     "logoAlt": "Logo do Gera View Image",
     "close": "Fechar"
   },
@@ -451,6 +452,7 @@
       "failed": "Falha ao exportar “{{name}}”",
       "noFolder": "Escolha a pasta de destino.",
       "noName": "Digite um nome.",
+      "heicEncoderMissing": "Para gravar HEIC, instale a libkvazaar (Ubuntu/Debian: libkvazaar7; Fedora: kvazaar-libs, pelo RPM Fusion).",
       "formats": {
         "jpeg": "JPEG",
         "png": "PNG",

@@ -55,6 +55,7 @@ pub fn run() {
             commands::file::save,
             commands::file::export,
             commands::file::estimate_size,
+            commands::file::heic_encoder_available,
             commands::file::revert,
             commands::file::rename,
             commands::file::move_to,
