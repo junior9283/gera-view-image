@@ -578,7 +578,8 @@
       "empty": "Nenhuma versão guardada ainda. Cada Salvar guarda a versão anterior do arquivo.",
       "restore": "Restaurar",
       "close": "Concluído",
-      "restored": "Versão restaurada. Salve para gravá-la no arquivo."
+      "restored": "Versão restaurada. Salve para gravá-la no arquivo.",
+      "confirmUnsaved": "{{name}} tem alterações não salvas. Restaurar a versão e descartá-las?"
     }
   }
 }

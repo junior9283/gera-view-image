@@ -112,12 +112,35 @@ pub fn is_locked(path: &Path) -> AppResult<bool> {
     Ok(fs::metadata(path)?.mode() & 0o222 == 0)
 }
 
+/// Modo de antes do Bloquear (octal), para o Desbloquear devolver exatamente ele.
+const MODE_ATTR: &str = "user.gvi.mode";
+
+/// Modo guardado em [`MODE_ATTR`], se ainda fizer sentido (dá escrita a alguém).
+fn saved_mode(f: &fs::File) -> Option<u32> {
+    let raw = f.get_xattr(MODE_ATTR).ok()??;
+    let mode = u32::from_str_radix(std::str::from_utf8(&raw).ok()?, 8).ok()?;
+    (mode <= 0o7777 && mode & 0o222 != 0).then_some(mode)
+}
+
+/// Bloquear tira a escrita de todos e guarda o modo anterior (xattr, se o sistema de arquivos
+/// aceitar). Desbloquear devolve esse modo; sem ele, devolve só a escrita do dono.
 pub fn set_locked(path: &Path, locked: bool) -> AppResult<()> {
     let f = open_regular(path)?;
     let mode = f.metadata()?.mode() & 0o7777;
-    let new = if locked { mode & !0o222 } else { mode | 0o200 };
+    let new = if locked {
+        if mode & 0o222 != 0 {
+            // Antes do chmod: gravar xattr de usuário exige permissão de escrita.
+            let _ = f.set_xattr(MODE_ATTR, format!("{mode:o}").as_bytes());
+        }
+        mode & !0o222
+    } else {
+        saved_mode(&f).unwrap_or(mode | 0o200)
+    };
     if new != mode {
         f.set_permissions(fs::Permissions::from_mode(new))?;
+    }
+    if !locked {
+        let _ = f.remove_xattr(MODE_ATTR);
     }
     Ok(())
 }
@@ -308,6 +331,7 @@ impl DocStore {
     /// Restaurar: a versão vira o conteúdo do documento, **sem gravar**. O documento fica com
     /// alterações; o Salvar (que guarda a atual como versão) é que grava no arquivo.
     pub fn restore_version(&self, id: DocId, version: &str) -> AppResult<DocInfo> {
+        self.wait_ready(id)?;
         let (file, bytes) = self.read_version(id, version)?;
         let dec = decode::decode_bytes(&file, &bytes)?;
         let (_, info) = self.with_doc_mut(id, |d| {
@@ -376,17 +400,25 @@ mod tests {
     }
 
     #[test]
-    fn bloquear_tira_a_escrita_e_desbloquear_devolve_a_do_dono() {
+    fn bloquear_tira_a_escrita_e_desbloquear_volta_ao_modo_original() {
         let d = tmp("lock");
         let f = d.join("a.png");
         fs::write(&f, b"x").unwrap();
+        let mode = |f: &Path| fs::metadata(f).unwrap().mode() & 0o777;
         fs::set_permissions(&f, fs::Permissions::from_mode(0o664)).unwrap();
         assert!(!is_locked(&f).unwrap());
         set_locked(&f, true).unwrap();
-        assert_eq!(fs::metadata(&f).unwrap().mode() & 0o777, 0o444);
+        assert_eq!(mode(&f), 0o444);
         assert!(is_locked(&f).unwrap());
         set_locked(&f, false).unwrap();
-        assert_eq!(fs::metadata(&f).unwrap().mode() & 0o777, 0o644);
+        let xattr_ok = fs::File::open(&f).unwrap().set_xattr("user.gvi.teste", b"1").is_ok();
+        assert_eq!(mode(&f), if xattr_ok { 0o664 } else { 0o644 });
+        assert_eq!(fs::File::open(&f).unwrap().get_xattr(MODE_ATTR).ok().flatten(), None);
+
+        // Sem modo guardado (bloqueado por fora): devolve só a escrita do dono.
+        fs::set_permissions(&f, fs::Permissions::from_mode(0o440)).unwrap();
+        set_locked(&f, false).unwrap();
+        assert_eq!(mode(&f), 0o640);
         fs::remove_dir_all(&d).unwrap();
     }
 

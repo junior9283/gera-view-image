@@ -8,6 +8,7 @@ import * as ipc from "../ipc/commands";
 import type { DocInfo, FileVersion, ViewBuffer } from "../ipc/types";
 import { useModal } from "../lib/modal";
 import { restoreVersion } from "./actions";
+import { useFinderUi } from "./store";
 import "../file/file.css";
 import "./finder.css";
 
@@ -48,7 +49,9 @@ export function VersionsBrowser({ doc, onClose }: { doc: DocInfo; onClose: () =>
   const { t, i18n } = useTranslation();
   const titleId = useId();
   const dialog = useRef<HTMLDivElement>(null);
-  useModal(dialog, { onClose });
+  // Com a confirmação de descartar aberta por cima, ela é que prende o foco.
+  const asking = useFinderUi((s) => s.confirm !== null);
+  useModal(dialog, { onClose, active: !asking });
   const [versions, setVersions] = useState<FileVersion[] | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,12 +82,11 @@ export function VersionsBrowser({ doc, onClose }: { doc: DocInfo; onClose: () =>
     if (!chosen) return;
     setBusy(true);
     try {
-      await restoreVersion(doc.id, chosen);
-      onClose();
+      if (await restoreVersion(doc.id, chosen)) return onClose();
     } catch (e) {
       notifyError(e);
-      setBusy(false);
     }
+    setBusy(false);
   };
 
   const chosenVersion = versions?.find((v) => v.id === chosen);

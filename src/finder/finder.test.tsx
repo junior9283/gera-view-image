@@ -1,5 +1,5 @@
 // Lote 5 (Finder no Linux): Salvar Como, Lixo, etiquetas, bloquear, versões e popover do título.
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocInfo } from "../ipc/types";
 
@@ -193,6 +193,30 @@ describe("Procurar Todas as Versões", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(useDocs.getState().docs[0].dirty).toBe(true);
     expect(ipc.versionPreview).toHaveBeenCalledWith(1, "1-0.jpg", expect.any(Number));
+  });
+
+  it("com alterações não salvas, Restaurar pergunta; Cancelar mantém as edições", async () => {
+    ipc.listVersions.mockResolvedValue([{ id: "1-0.jpg", savedAt: "2026-11-20T10:00:00.000Z", size: 1024 }]);
+    ipc.restoreVersion.mockResolvedValue({ ...doc, dirty: true, rev: 3 });
+    const sujo = { ...doc, dirty: true, canUndo: true, rev: 2 };
+    useDocs.setState({ docs: [sujo], activeId: 1 });
+    render(<Slot name="above-content" props={{}} />);
+    act(() => openVersions(1));
+    await screen.findByRole("button", { pressed: true });
+    fireEvent.click(screen.getByRole("button", { name: "Restaurar" }));
+    const pergunta = await screen.findByRole("alertdialog");
+    expect(pergunta.textContent).toContain("Restaurar a versão e descartá-las?");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(ipc.restoreVersion).not.toHaveBeenCalled();
+    expect(useDocs.getState().docs[0]).toEqual(sujo);
+    // O navegador continua aberto, e confirmar restaura.
+    const restaurar = screen.getByRole("button", { name: "Restaurar" }) as HTMLButtonElement;
+    await waitFor(() => expect(restaurar.disabled).toBe(false));
+    fireEvent.click(restaurar);
+    const ok = await screen.findByRole("alertdialog");
+    fireEvent.click(within(ok).getByRole("button", { name: "Restaurar" }));
+    await waitFor(() => expect(ipc.restoreVersion).toHaveBeenCalledWith(1, "1-0.jpg"));
   });
 
   it("sem versões explica que cada Salvar guarda uma", async () => {

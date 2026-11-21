@@ -14,7 +14,7 @@ import { useMarkup } from "../markup/store";
 import { useDocs } from "../store/docs";
 import { addRecent } from "../store/prefs";
 import { activeDoc } from "../viewer/actions";
-import { askTrash, closePopover, setLockedState } from "./store";
+import { askDiscard, closePopover, setLockedState } from "./store";
 
 const t = (k: string, o: Record<string, unknown> = {}) => i18n.t(k, o);
 const update = (info: DocInfo) => useDocs.getState().update(info);
@@ -62,7 +62,7 @@ export async function saveAsActive(): Promise<void> {
 export async function moveActiveToTrash(): Promise<void> {
   const d = activeFile();
   if (!d) return;
-  if (hasUnsaved(d) && !(await askTrash(d.id, d.name))) return;
+  if (hasUnsaved(d) && !(await askDiscard(d.id, d.name, "finder.trash.confirmUnsaved", "finder.trash.ok"))) return;
   await ipc.moveToTrash(d.id);
   closePopover();
   await useDocs.getState().close(d.id);
@@ -98,8 +98,16 @@ export const splitTags = (raw: string): string[] => raw.split(",").map((s) => s.
 /** Acrescenta etiquetas sem repetir, na ordem. */
 export const addTags = (tags: string[], raw: string): string[] => [...new Set([...tags, ...splitTags(raw)])];
 
-/** Restaurar uma versão: vira o conteúdo do documento, que fica com alterações (o Salvar grava). */
-export async function restoreVersion(id: DocId, version: string): Promise<void> {
+/**
+ * Restaurar uma versão: vira o conteúdo do documento, que fica com alterações (o Salvar grava).
+ * Com alterações não salvas, pergunta antes. `false` se o usuário cancelou.
+ */
+export async function restoreVersion(id: DocId, version: string): Promise<boolean> {
+  const d = useDocs.getState().docs.find((x) => x.id === id);
+  if (!d) return false;
+  if (hasUnsaved(d) && !(await askDiscard(id, d.name, "finder.versions.confirmUnsaved", "finder.versions.restore"))) {
+    return false;
+  }
   update(await ipc.restoreVersion(id, version));
   // Como no Reverter: anotações e desfazer do JS não valem para o conteúdo novo.
   useMarkup.getState().drop(id);
@@ -107,4 +115,5 @@ export async function restoreVersion(id: DocId, version: string): Promise<void> 
   clearKeywords(id);
   markChanged(id, null);
   notify(t("finder.versions.restored"));
+  return true;
 }

@@ -578,7 +578,8 @@
       "empty": "No versions saved yet. Each Save keeps the previous version of the file.",
       "restore": "Restore",
       "close": "Done",
-      "restored": "Version restored. Save to write it to the file."
+      "restored": "Version restored. Save to write it to the file.",
+      "confirmUnsaved": "{{name}} has unsaved changes. Restore the version and discard them?"
     }
   }
 }

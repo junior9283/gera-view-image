@@ -2,6 +2,15 @@
 import { create } from "zustand";
 import type { DocId } from "../ipc/types";
 
+/** `text` e `ok` são chaves de i18n (`text` recebe `{ name }`). */
+interface Confirm {
+  id: DocId;
+  name: string;
+  text: string;
+  ok: string;
+  resolve: (ok: boolean) => void;
+}
+
 interface FinderUi {
   /** Documento cujo popover do título está aberto. */
   popover: DocId | null;
@@ -9,14 +18,14 @@ interface FinderUi {
   focusTags: boolean;
   /** Documento no navegador de versões. */
   versions: DocId | null;
-  /** Pedido de confirmação para mandar ao Lixo um documento com alterações. */
-  confirmTrash: { id: DocId; name: string; resolve: (ok: boolean) => void } | null;
+  /** Pedido de confirmação antes de descartar alterações (Lixo, Restaurar versão). */
+  confirm: Confirm | null;
   /** Último estado de bloqueio conhecido de cada documento. */
   locked: Record<DocId, boolean>;
 }
 
 export const useFinderUi = create<FinderUi>(() => ({
-  popover: null, focusTags: false, versions: null, confirmTrash: null, locked: {},
+  popover: null, focusTags: false, versions: null, confirm: null, locked: {},
 }));
 
 export const openPopover = (id: DocId, focusTags = false) => useFinderUi.setState({ popover: id, focusTags });
@@ -27,20 +36,20 @@ export const setLockedState = (id: DocId, locked: boolean) =>
   useFinderUi.setState((s) => ({ locked: { ...s.locked, [id]: locked } }));
 
 /** Pergunta (diálogo do `FinderHost`) se pode descartar as alterações; `true` = pode. */
-export function askTrash(id: DocId, name: string): Promise<boolean> {
+export function askDiscard(id: DocId, name: string, text: string, ok: string): Promise<boolean> {
   return new Promise((resolve) => {
-    useFinderUi.getState().confirmTrash?.resolve(false);
-    useFinderUi.setState({ confirmTrash: { id, name, resolve } });
+    useFinderUi.getState().confirm?.resolve(false);
+    useFinderUi.setState({ confirm: { id, name, text, ok, resolve } });
   });
 }
 
-export function answerTrash(ok: boolean): void {
-  const req = useFinderUi.getState().confirmTrash;
-  useFinderUi.setState({ confirmTrash: null });
+export function answerConfirm(ok: boolean): void {
+  const req = useFinderUi.getState().confirm;
+  useFinderUi.setState({ confirm: null });
   req?.resolve(ok);
 }
 
 /** Só para testes. */
 export function resetFinderUiForTests(): void {
-  useFinderUi.setState({ popover: null, focusTags: false, versions: null, confirmTrash: null, locked: {} });
+  useFinderUi.setState({ popover: null, focusTags: false, versions: null, confirm: null, locked: {} });
 }
