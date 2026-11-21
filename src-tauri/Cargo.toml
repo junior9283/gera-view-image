@@ -59,6 +59,9 @@ webp = { version = "0.3", default-features = false }
 crc32fast = "1"
 # GUID do XMP estendido do JPEG (MD5 do pacote, exigido pela especificação).
 md5 = "0.8"
+xattr = "1"
+libc = "0.2"
+trash = "5"
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tga", "tiff", "webp"] }

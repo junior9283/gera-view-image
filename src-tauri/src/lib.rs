@@ -90,6 +90,9 @@ pub fn run() {
             commands::finder::list_versions,
             commands::finder::restore_version,
             commands::finder::save_as,
+            commands::finder::file_locked,
+            commands::finder::version_preview,
+            commands::finder::set_versions_limit,
             commands::share::share_email,
             commands::share::share_device,
             commands::share::open_with_apps,
@@ -119,6 +122,8 @@ pub fn run() {
             app.manage(commands::drag::DragTemp(
                 drag_root.join(std::process::id().to_string()),
             ));
+            // Lote 5: versões guardadas a cada Salvar (~/.local/share/gera-view-image/versions).
+            doc::versions::configure(app.path().data_dir()?.join("gera-view-image").join("versions"));
             theme::watch::start(app.handle().clone());
             commands::file::start_watch(
                 app.handle().clone(),

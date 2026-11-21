@@ -1787,6 +1787,7 @@ dependencies = [
  "imagesize",
  "jpeg-decoder",
  "kamadak-exif",
+ "libc",
  "libheif-rs",
  "libheif-sys",
  "md5",
@@ -1808,8 +1809,10 @@ dependencies = [
  "tauri-plugin-updater",
  "thiserror 2.0.21",
  "tiff",
+ "trash",
  "unicode-normalization",
  "webp",
+ "xattr",
  "zbus",
 ]
 
@@ -6296,6 +6299,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "trash"
+version = "5.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7363f9516b65bd2e855f4e6c3338b1a98efc2773c25349c958908897e1170ded"
+dependencies = [
+ "jiff 1.0.1",
+ "libc",
+ "log",
+ "objc2",
+ "objc2-foundation",
+ "once_cell",
+ "percent-encoding",
+ "scopeguard",
+ "urlencoding",
+ "windows",
+ "windows-core",
+]
+
+[[package]]
 name = "tray-icon"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6420,6 +6442,12 @@ dependencies = [
  "serde",
  "serde_derive",
 ]
+
+[[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "urlpattern"
