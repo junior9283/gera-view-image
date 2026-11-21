@@ -418,7 +418,10 @@
       "body": "Your changes will be lost if you don’t save them.",
       "save": "Save",
       "discard": "Don’t Save",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "reloadTitle": "Discard changes to “{{name}}” and reload?",
+      "reloadBody": "The file was changed outside the app. Reloading discards the changes made here.",
+      "reload": "Reload"
     },
     "export": {
       "title": "Export",

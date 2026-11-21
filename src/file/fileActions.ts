@@ -13,6 +13,7 @@ import { useDocs } from "../store/docs";
 import { addRecent, getPrefs, setPrefs } from "../store/prefs";
 import { activate, activeDoc, viewable } from "../viewer/actions";
 import { runBeforeSave } from "./beforeSave";
+import { confirmClose } from "./unsaved";
 
 export type FileDialog =
   | { kind: "export"; id: DocId; mode: "export" | "save" }
@@ -104,8 +105,12 @@ export async function revert(to: RevertTarget): Promise<void> {
   if (d) await revertDoc(d.id, to);
 }
 
-/** Recarregar (faixa de alteração externa): relê o arquivo. */
-export const reload = (id: DocId) => revertDoc(id, "lastSaved");
+/** Recarregar (faixa de alteração externa): relê o arquivo; com alterações não salvas, pergunta antes. */
+export async function reload(id: DocId): Promise<void> {
+  const d = useDocs.getState().docs.find((x) => x.id === id);
+  if (d && (await confirmClose([d], "reload")) !== "discard") return;
+  await revertDoc(id, "lastSaved");
+}
 
 export async function ignoreChange(id: DocId): Promise<void> {
   markChanged(id, null);

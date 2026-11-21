@@ -418,7 +418,10 @@
       "body": "Se não salvar, as alterações serão perdidas.",
       "save": "Salvar",
       "discard": "Não Salvar",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "reloadTitle": "Descartar as alterações em “{{name}}” e recarregar?",
+      "reloadBody": "O arquivo foi alterado fora do app. Recarregar descarta as alterações feitas aqui.",
+      "reload": "Recarregar"
     },
     "export": {
       "title": "Exportar",
