@@ -7,6 +7,20 @@ import "./prefs.css";
 
 const REPOSITORY_URL = "https://github.com/junior9283/gera-view-image/";
 
+function ExternalLink({ url, children }: { url: string; children: string }) {
+  return (
+    <a
+      href={url}
+      onClick={(e) => {
+        e.preventDefault();
+        void openUrl(url);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [version, setVersion] = useState("");
@@ -26,15 +40,13 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
         {version && <p>{t("about.version", { version })}</p>}
         <p>{t("about.license")}</p>
         <p>
-          <a
-            href={REPOSITORY_URL}
-            onClick={(e) => {
-              e.preventDefault();
-              void openUrl(REPOSITORY_URL);
-            }}
-          >
-            {t("about.repository")}
-          </a>
+          <ExternalLink url={REPOSITORY_URL}>{t("about.repository")}</ExternalLink>
+        </p>
+        <p>
+          {/* O mesmo arquivo vai nos pacotes (bundle.resources); o link abre o da versão instalada. */}
+          <ExternalLink url={`${REPOSITORY_URL}blob/${version ? `v${version}` : "main"}/THIRD_PARTY_LICENSES`}>
+            {t("about.thirdParty")}
+          </ExternalLink>
         </p>
         <div className="prefs-actions">
           <button onClick={onClose}>{t("about.close")}</button>

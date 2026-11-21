@@ -39,6 +39,9 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true,
+    "resources": {
+      "../THIRD_PARTY_LICENSES": "THIRD_PARTY_LICENSES"
+    },
     "category": "GraphicsAndDesign",
     "shortDescription": "Visualizador e editor de imagens para Linux",
     "linux": {
@@ -47,7 +50,8 @@
           "libaom3"
         ],
         "recommends": [
-          "libde265-0"
+          "libde265-0",
+          "libkvazaar7"
         ],
         "desktopTemplate": "linux/gera-view-image.desktop.hbs"
       },
@@ -56,7 +60,8 @@
           "libaom"
         ],
         "recommends": [
-          "libde265"
+          "libde265",
+          "libkvazaar.so.7()(64bit)"
         ],
         "desktopTemplate": "linux/gera-view-image.desktop.hbs"
       }

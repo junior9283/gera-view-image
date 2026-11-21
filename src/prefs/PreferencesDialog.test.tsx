@@ -68,6 +68,8 @@ describe("AboutDialog", () => {
     render(createElement(AboutDialog, { onClose: () => {} }));
     expect(await screen.findByText("Versão 1.2.3")).toBeTruthy();
     expect(screen.getByText("Licença MIT")).toBeTruthy();
-    expect(screen.getByRole("link").getAttribute("href")).toContain("junior9283/gera-view-image");
+    const [repo, licenses] = screen.getAllByRole("link");
+    expect(repo.getAttribute("href")).toContain("junior9283/gera-view-image");
+    expect(licenses.getAttribute("href")).toMatch(/gera-view-image\/blob\/v1\.2\.3\/THIRD_PARTY_LICENSES$/);
   });
 });
