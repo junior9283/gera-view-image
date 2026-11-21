@@ -83,6 +83,8 @@ pub fn run() {
             commands::ocr::speak,
             commands::ocr::stop_speaking,
             commands::segment::segment_subject,
+            commands::segment::segment_model_ready,
+            commands::segment::segment_cancel,
             commands::finder::file_tags,
             commands::finder::set_file_tags,
             commands::finder::set_locked,
