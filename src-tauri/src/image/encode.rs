@@ -4,6 +4,7 @@
 //! (a única crate madura liga a libopenjp2). Ficam ocultos no diálogo e registrados no CHANGELOG.
 use super::{
     container::{self, TiffMeta},
+    icc,
     raster::Raster,
 };
 use crate::{
@@ -100,6 +101,11 @@ pub struct ExportOptions {
     pub strip_metadata: bool,
     #[serde(default)]
     pub resize: Option<(u32, u32)>,
+    /// Perfil de saída (Lote 1): os pixels são convertidos do perfil da imagem para este e ele é
+    /// embutido no arquivo, mesmo sem metadados. `None` = manter o perfil da imagem.
+    /// Valores: os ids de `icc::BUILTIN` ou o caminho de um .icc.
+    #[serde(default)]
+    pub color_profile: Option<String>,
 }
 
 fn yes() -> bool {
@@ -150,9 +156,19 @@ pub fn encode<'a>(
         Some((w, h)) => img.into().resized(w, h),
         None => img.into(),
     };
+    let src_icc = meta.icc.as_deref().filter(|p| icc::is_rgb_profile(p));
+    let (img, out_icc) = match &opts.color_profile {
+        Some(id) => {
+            let dst = icc::profile_bytes(id)?;
+            let src = src_icc.unwrap_or(icc::srgb_icc());
+            (icc::convert_raster(img, src, &dst), Some(dst.to_vec()))
+        }
+        None => (img, None),
+    };
     let meta = if opts.strip_metadata {
         MetaCarry {
             dpi: meta.dpi,
+            icc: out_icc,
             ..MetaCarry::default()
         }
     } else {
@@ -161,7 +177,7 @@ pub fn encode<'a>(
                 container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions())
             }),
             // Os pixels gravados são RGB: perfil CMYK ou cinza não os descreve (é descartado).
-            icc: meta.icc.clone().filter(|p| container::icc_is_rgb(p)),
+            icc: out_icc.or_else(|| meta.icc.clone().filter(|p| container::icc_is_rgb(p))),
             ..meta.clone()
         }
     };
@@ -734,5 +750,68 @@ mod tests {
         );
         assert!(!out.windows(6).any(|w| w == [0x1C, 2, 25, 0, 1, b'x']));
         assert!(out.ends_with(&[0x1C, 2, 25, 0, 1, b'y']));
+    }
+
+    /// Perfil de saída: os pixels vão do perfil da imagem para o escolhido, que é embutido
+    /// (também sem metadados). Sem escolha, os pixels e o perfil original ficam como estão.
+    #[test]
+    fn perfil_de_saida_converte_e_embute() {
+        let p3 = icc::profile_bytes("display-p3").unwrap().to_vec();
+        let srgb = icc::profile_bytes("srgb").unwrap().to_vec();
+        let img = ::image::RgbaImage::from_pixel(3, 2, ::image::Rgba([200, 100, 50, 255]));
+        let meta = MetaCarry {
+            icc: Some(p3.clone()),
+            ..MetaCarry::default()
+        };
+        let reread = |opts: &ExportOptions| {
+            let png = encode(&img, opts, &meta).unwrap();
+            let d = super::super::decode::decode_bytes(Path::new("x.png"), &png).unwrap();
+            (d.frames[0].get_pixel(0, 0).0, d.icc)
+        };
+        let base = ExportOptions {
+            format: ExportFormat::Png,
+            quality: None,
+            alpha: true,
+            depth16: false,
+            strip_metadata: false,
+            resize: None,
+            color_profile: None,
+        };
+        assert_eq!(reread(&base), ([200, 100, 50, 255], Some(p3.clone())));
+        for strip in [false, true] {
+            let opts = ExportOptions {
+                strip_metadata: strip,
+                color_profile: Some("srgb".into()),
+                ..base.clone()
+            };
+            let (px, icc) = reread(&opts);
+            let want = [215, 93, 31];
+            assert!(px[..3].iter().zip(want).all(|(a, b)| a.abs_diff(b) <= 2), "{px:?}");
+            assert_eq!(icc.as_ref(), Some(&srgb), "strip={strip}");
+        }
+        let unknown = ExportOptions {
+            color_profile: Some("nao-existe".into()),
+            ..base
+        };
+        assert!(encode(&img, &unknown, &meta).is_err());
+    }
+
+    #[test]
+    fn perfil_de_saida_em_16_bits() {
+        let img = super::super::raster::Rgba16Image::from_pixel(2, 2, ::image::Rgba([65535, 0, 0, 65535]));
+        let opts = ExportOptions {
+            format: ExportFormat::Png,
+            quality: None,
+            alpha: true,
+            depth16: true,
+            strip_metadata: true,
+            resize: None,
+            color_profile: Some("display-p3".into()),
+        };
+        let png = encode(&img, &opts, &MetaCarry::default()).unwrap();
+        let d = ::image::load_from_memory(&png).unwrap().into_rgba16();
+        let p = d.get_pixel(0, 0).0;
+        let want = [234.0, 51.0, 35.0];
+        assert!(p[..3].iter().zip(want).all(|(c, w)| (*c as f64 / 257.0 - w).abs() <= 2.0), "{p:?}");
     }
 }

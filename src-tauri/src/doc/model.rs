@@ -170,4 +170,16 @@ pub enum Op {
         #[serde(with = "serde_bytes")]
         png: Vec<u8>,
     },
+    /// Atribuir Perfil… (Lote 1): reinterpreta os pixels com outro perfil ICC, sem mudá-los.
+    /// `profile`: id de `image::icc::BUILTIN` ou caminho absoluto de um .icc/.icm.
+    AssignProfile {
+        profile: String,
+    },
+}
+
+impl Op {
+    /// A operação não altera os pixels (só como eles são interpretados).
+    pub fn keeps_pixels(&self) -> bool {
+        matches!(self, Op::AssignProfile { .. })
+    }
 }

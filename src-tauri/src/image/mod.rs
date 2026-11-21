@@ -4,6 +4,7 @@ pub mod container;
 pub mod decode;
 pub mod encode;
 pub mod heic;
+pub mod icc;
 pub mod metadata;
 pub mod ops;
 pub mod raster;

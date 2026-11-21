@@ -95,6 +95,7 @@ pub async fn preview_adjust(
     blocking(move || {
         let mut buf = store.preview_base(id, max_w, max_h)?.to_vec();
         color::adjust_view_buffer(&mut buf, &adjust);
+        store.to_display(id, &mut buf[thumb::HEADER_LEN..]);
         Ok(buf)
     })
     .await

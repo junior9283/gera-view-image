@@ -1790,6 +1790,7 @@ dependencies = [
  "libheif-rs",
  "libheif-sys",
  "md5",
+ "moxcms",
  "notify",
  "psd",
  "rawler",

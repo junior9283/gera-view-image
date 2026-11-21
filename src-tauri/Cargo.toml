@@ -59,6 +59,8 @@ webp = { version = "0.3", default-features = false }
 crc32fast = "1"
 # GUID do XMP estendido do JPEG (MD5 do pacote, exigido pela especificação).
 md5 = "0.8"
+# Gerência de cor (Lote 1): Rust puro, já vinha pela crate `image`; nada novo no NEEDED.
+moxcms = "0.8.1"
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tga", "tiff", "webp"] }

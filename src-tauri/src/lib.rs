@@ -77,6 +77,7 @@ pub fn run() {
             commands::color::display_profile,
             commands::color::list_profiles,
             commands::color::assign_profile,
+            commands::color::set_color_management,
             commands::paste::clipboard_image,
             commands::ocr::recognize_text,
             commands::ocr::detect_codes,

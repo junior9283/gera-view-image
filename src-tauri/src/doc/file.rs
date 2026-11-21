@@ -185,8 +185,10 @@ impl DocStore {
         read_file: bool,
     ) -> AppResult<(Pixels, MetaCarry, Option<Vec<u8>>, RenderState)> {
         let (px, _, _, state) = self.pixels(id, 0, false)?;
-        let (path, source, dpi) =
-            self.with_doc(id, |d| (d.info.path.clone(), d.source.clone(), d.dpi()))?;
+        let (path, source, dpi, icc) = self.with_doc(id, |d| {
+            let icc = d.profile().map(|p| p.bytes().to_vec());
+            (d.info.path.clone(), d.source.clone(), d.dpi(), icc)
+        })?;
         let file = (read_file && !path.is_empty())
             .then(|| std::fs::read(&path).ok())
             .flatten();
@@ -196,7 +198,7 @@ impl DocStore {
             .unwrap_or_default();
         let meta = MetaCarry {
             exif: source.exif.clone(),
-            icc: source.icc.clone(),
+            icc,
             iptc,
             xmp,
             iptc_keywords: keywords,
@@ -244,6 +246,7 @@ impl DocStore {
         };
         let out = ops[start..]
             .iter()
+            .filter(|op| !op.keeps_pixels())
             .fold(base, |img, op| raster::apply16(&img, op));
         (out.dimensions() == px.dimensions()).then_some(out)
     }
@@ -279,6 +282,7 @@ impl DocStore {
             depth16: deep.is_some(),
             strip_metadata: false,
             resize: None,
+            color_profile: None,
         };
         let bytes = match &deep {
             Some(d) => encode::encode(d, &opts, &meta)?,
