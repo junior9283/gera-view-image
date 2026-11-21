@@ -88,12 +88,7 @@ pub fn clamp_rect(r: Rect, w: u32, h: u32) -> Rect {
 
 /// Redimensiona com `fast_image_resize` (alfa pré-multiplicado internamente).
 pub fn resize(img: &RgbaImage, w: u32, h: u32, filter: ResizeFilter) -> RgbaImage {
-    use fast_image_resize::{FilterType, ResizeAlg};
-    let alg = match filter {
-        ResizeFilter::Nearest => ResizeAlg::Nearest,
-        ResizeFilter::Bilinear => ResizeAlg::Convolution(FilterType::Bilinear),
-        ResizeFilter::Lanczos3 => ResizeAlg::Convolution(FilterType::Lanczos3),
-    };
+    let alg = resize_alg(filter);
     let mut out = vec![0u8; w as usize * h as usize * 4];
     crate::image::thumb::resize_into(
         img,
@@ -109,6 +104,16 @@ pub fn resize(img: &RgbaImage, w: u32, h: u32, filter: ResizeFilter) -> RgbaImag
         &mut out,
     );
     RgbaImage::from_raw(w, h, out).expect("buffer com o tamanho exato")
+}
+
+/// Algoritmo do `fast_image_resize` para o filtro.
+pub fn resize_alg(filter: ResizeFilter) -> fast_image_resize::ResizeAlg {
+    use fast_image_resize::{FilterType, ResizeAlg};
+    match filter {
+        ResizeFilter::Nearest => ResizeAlg::Nearest,
+        ResizeFilter::Bilinear => ResizeAlg::Convolution(FilterType::Bilinear),
+        ResizeFilter::Lanczos3 => ResizeAlg::Convolution(FilterType::Lanczos3),
+    }
 }
 
 /// Percorre as linhas em paralelo, chamando `f(pixel, dentro_da_mascara)`.

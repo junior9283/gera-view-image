@@ -116,6 +116,58 @@ describe("Viewport", () => {
     expect(useUi.getState().view).toMatchObject({ panX: -110, panY: -120 });
   });
 
+  describe("Tamanho Real com escala da tela", () => {
+    let ratio = 2;
+    let media: { query: string; cb: () => void }[] = [];
+    beforeEach(() => {
+      ratio = 2;
+      media = [];
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => ratio });
+      window.matchMedia = ((query: string) => ({
+        matches: false,
+        addEventListener: (_: string, cb: () => void) => media.push({ query, cb }),
+        removeEventListener: (_: string, cb: () => void) => (media = media.filter((m) => m.cb !== cb)),
+      })) as unknown as typeof window.matchMedia;
+    });
+    const matchMedia = window.matchMedia;
+    afterEach(() => {
+      window.matchMedia = matchMedia;
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: 1 });
+    });
+
+    it("100 % mostra 1 px da imagem por px físico e o indicador segue em 100 %", () => {
+      useDocs.getState().add([info(1)]);
+      render(<Viewport />);
+      fireEvent.doubleClick(screen.getByTestId("viewport"), { clientX: 400, clientY: 300 });
+      expect(useUi.getState().view).toMatchObject({ scale: 0.5, mode: "actual" });
+      const zoom = screen.getByTestId("zoom-level");
+      expect(zoom.dataset.scale).toBe("1");
+      expect(zoom.textContent).toContain("100");
+    });
+
+    it("reage à mudança de escala da tela mantendo o Tamanho Real", () => {
+      useDocs.getState().add([info(1)]);
+      render(<Viewport />);
+      fireEvent.doubleClick(screen.getByTestId("viewport"), { clientX: 400, clientY: 300 });
+      expect(media.map((m) => m.query)).toContain("(resolution: 2dppx)");
+      ratio = 1;
+      act(() => media.forEach((m) => m.cb()));
+      expect(useUi.getState().view).toMatchObject({ scale: 1, mode: "actual" });
+      expect(screen.getByTestId("zoom-level").dataset.scale).toBe("1");
+      expect(media.map((m) => m.query)).toEqual(["(resolution: 1dppx)"]);
+    });
+
+    it("Ctrl+roda parte do zoom mostrado e não salta", () => {
+      useDocs.getState().add([info(1)]);
+      render(<Viewport />);
+      fireEvent.doubleClick(screen.getByTestId("viewport"), { clientX: 400, clientY: 300 });
+      fireEvent.wheel(screen.getByTestId("viewport"), { ctrlKey: true, deltaY: -10, clientX: 400, clientY: 300 });
+      const s = useUi.getState().view!.scale;
+      expect(s).toBeGreaterThan(0.5);
+      expect(s).toBeLessThan(0.6);
+    });
+  });
+
   it("Ctrl+roda dá zoom", () => {
     useDocs.getState().add([info(1)]);
     render(<Viewport />);
@@ -183,6 +235,48 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByText("Página 2"));
     expect(useDocs.getState().activeId).toBe(3);
     expect(useUi.getState().page).toBe(1);
+  });
+
+  const item = (name: string) => screen.getByText(name).closest("button")!;
+  const moveTo = (clientX: number, clientY: number) =>
+    act(() => void window.dispatchEvent(new MouseEvent("pointermove", { clientX, clientY })));
+  const startDragCalls = () => invoke.mock.calls.filter(([c]) => c === "start_drag");
+
+  it("arrastar dentro da janela continua reordenando, sem arraste nativo", () => {
+    useDocs.getState().add([info(1), info(2), info(3)]);
+    render(<Sidebar />);
+    fireEvent.pointerDown(item("1.png"), { button: 0, clientX: 50, clientY: 10 });
+    moveTo(50, 300);
+    act(() => void window.dispatchEvent(new MouseEvent("pointerup", { clientX: 50, clientY: 300 })));
+    expect(useDocs.getState().docs.map((d) => d.id)).toEqual([2, 3, 1]);
+    expect(startDragCalls()).toHaveLength(0);
+  });
+
+  it("sair da janela arrasta a seleção (Ctrl) para fora; o temporário só para quem tem alteração", () => {
+    useDocs.getState().add([info(1), info(2, { dirty: true }), info(3)]);
+    render(<Sidebar />);
+    fireEvent.click(item("2.png"), { ctrlKey: true });
+    expect(item("1.png").getAttribute("aria-pressed")).toBe("true");
+    expect(item("3.png").getAttribute("aria-pressed")).toBe("false");
+    fireEvent.pointerDown(item("2.png"), { button: 0, clientX: 50, clientY: 10 });
+    moveTo(-3, 10);
+    expect(startDragCalls()).toEqual([["start_drag", { items: [{ id: 1, export: false }, { id: 2, export: true }] }]]);
+    // O arraste interno acabou: soltar depois não reordena.
+    act(() => void window.dispatchEvent(new MouseEvent("pointerup", { clientX: -3, clientY: 10 })));
+    expect(useDocs.getState().docs.map((d) => d.id)).toEqual([1, 2, 3]);
+  });
+
+  it("miniatura fora da seleção vai sozinha; Shift seleciona o intervalo", () => {
+    useDocs.getState().add([info(1), info(2), info(3), info(4, { path: "" })]);
+    render(<Sidebar />);
+    fireEvent.click(item("3.png"), { shiftKey: true });
+    expect(useDocs.getState().activeId).toBe(3);
+    fireEvent.pointerDown(item("4.png"), { button: 0, clientX: 50, clientY: 10 });
+    moveTo(50, window.innerHeight + 5);
+    expect(startDragCalls()).toEqual([["start_drag", { items: [{ id: 4, export: true }] }]]);
+    fireEvent.pointerDown(item("2.png"), { button: 0, clientX: 50, clientY: 10 });
+    moveTo(window.innerWidth, 10);
+    expect(startDragCalls()[1]).toEqual(["start_drag", { items: [1, 2, 3].map((id) => ({ id, export: false })) }]);
   });
 });
 

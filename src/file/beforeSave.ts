@@ -1,4 +1,5 @@
-// Ganchos que rodam antes de gravar (Salvar, Exportar, Exportar Selecionadas e Imprimir).
+// Ganchos que rodam antes de gravar (Salvar, Exportar e Exportar Selecionadas). Imprimir e Duplicar
+// não passam por aqui: usam uma cópia achatada (`flattenedCopy`) e deixam o original como está.
 // A Marcação (Task 8) registra aqui o achatamento das anotações (`flattenAnnotations`).
 import type { DocId } from "../ipc/types";
 

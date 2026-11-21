@@ -54,6 +54,17 @@ describe("saveDoc", () => {
     expect(useDocs.getState().docs[0].dirty).toBe(false);
   });
 
+  it.each([
+    ["tiff", null],
+    ["avif", ["praia"]],
+    ["bmp", ["praia"]],
+  ] as const)("palavras-chave salvas em %s saem da fila só se o formato as grava", async (format, pending) => {
+    ipc.save.mockResolvedValue({ type: "saved", data: { ...doc, format, dirty: false, rev: 2 } });
+    addKeyword(1, "praia");
+    expect(await saveDoc({ ...doc, format })).toBe(true);
+    expect(getPendingKeywords(1)).toEqual(pending);
+  });
+
   it("formato que não regrava abre Exportar em modo Salvar", async () => {
     ipc.save.mockResolvedValue({ type: "needsExport" });
     expect(await saveDoc(doc)).toBe(false);

@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useWindowEvent } from "../lib/events";
+import { useModal } from "../lib/modal";
 import { SHOW_SHORTCUTS_EVENT } from "../shortcuts/events";
 import { KEYMAP, formatShortcut } from "../shortcuts/keymap";
 import { MENUS, type MenuItem } from "./menus";
@@ -22,9 +23,7 @@ export function ShortcutsDialog() {
   const dialog = useRef<HTMLDivElement>(null);
   useWindowEvent(SHOW_SHORTCUTS_EVENT, () => setOpen(true));
 
-  useEffect(() => {
-    if (open) dialog.current?.focus();
-  }, [open]);
+  useModal(dialog, { active: open, onClose: () => setOpen(false) });
 
   if (!open) return null;
   return (
@@ -36,11 +35,6 @@ export function ShortcutsDialog() {
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        onKeyDown={(e) => {
-          if (e.key !== "Escape") return;
-          e.preventDefault();
-          setOpen(false);
-        }}
       >
         <h3 id={titleId}>{t("shortcuts.title")}</h3>
         <div className="shortcuts-list">

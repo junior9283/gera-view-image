@@ -5,7 +5,7 @@ pub mod image;
 pub mod platform;
 pub mod theme;
 
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, RunEvent};
 
 pub fn run() {
     commands::mark_start();
@@ -72,7 +72,8 @@ pub fn run() {
             commands::capture::new_from_clipboard,
             commands::capture::capture_screen,
             commands::theme::window_theme,
-            commands::theme::compositing_available
+            commands::theme::compositing_available,
+            commands::drag::start_drag
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -83,6 +84,11 @@ pub fn run() {
             app.manage(commands::theme::Compositing(
                 commands::theme::probe_compositing(app.handle()),
             ));
+            let drag_root = app.path().app_cache_dir()?.join("drag");
+            commands::drag::sweep_stale(&drag_root, commands::drag::pid_alive);
+            app.manage(commands::drag::DragTemp(
+                drag_root.join(std::process::id().to_string()),
+            ));
             theme::watch::start(app.handle().clone());
             commands::file::start_watch(
                 app.handle().clone(),
@@ -90,6 +96,13 @@ pub fn run() {
             );
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("erro ao executar o aplicativo Tauri");
+        .build(tauri::generate_context!())
+        .expect("erro ao executar o aplicativo Tauri")
+        .run(|app, event| {
+            if let RunEvent::Exit = event
+                && let Some(temp) = app.try_state::<commands::drag::DragTemp>()
+            {
+                commands::drag::cleanup(&temp.0);
+            }
+        });
 }

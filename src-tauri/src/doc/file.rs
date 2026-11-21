@@ -4,7 +4,7 @@
 //! carimbo da abertura (ou do último salvar) e falha com `changed_on_disk`.
 use super::{
     model::{DocId, DocInfo, Op},
-    store::{DiskStamp, DocStore, Document, Pixels, not_found},
+    store::{DeepBase, DiskStamp, DocStore, Document, Pixels, RenderState, not_found},
 };
 use crate::{
     error::{AppError, AppResult},
@@ -12,6 +12,7 @@ use crate::{
         decode::{self, Decoded},
         encode::{self, ExportFormat, ExportOptions, MetaCarry},
         metadata,
+        raster::{self, Rgba16Image},
     },
 };
 use ::image::RgbaImage;
@@ -175,14 +176,15 @@ impl DocStore {
             .collect()
     }
 
-    /// Pixels finais (quadro 0) e os metadados a levar. `file` = bytes atuais do arquivo (IPTC/XMP).
+    /// Pixels finais (quadro 0), os metadados a levar, os bytes atuais do arquivo (IPTC/XMP)
+    /// e o estado `(ops.len(), geração)` que os pixels refletem.
     fn render_for_write(
         &self,
         id: DocId,
         keywords: Option<Vec<String>>,
         read_file: bool,
-    ) -> AppResult<(Pixels, MetaCarry, Option<Vec<u8>>)> {
-        let px = self.render_full(id, 0)?;
+    ) -> AppResult<(Pixels, MetaCarry, Option<Vec<u8>>, RenderState)> {
+        let (px, _, _, state) = self.pixels(id, 0, false)?;
         let (path, source, dpi) =
             self.with_doc(id, |d| (d.info.path.clone(), d.source.clone(), d.dpi()))?;
         let file = (read_file && !path.is_empty())
@@ -190,7 +192,7 @@ impl DocStore {
             .flatten();
         let (iptc, xmp) = file
             .as_deref()
-            .map(metadata::jpeg_iim_xmp)
+            .map(metadata::file_iim_xmp)
             .unwrap_or_default();
         let meta = MetaCarry {
             exif: source.exif.clone(),
@@ -200,29 +202,70 @@ impl DocStore {
             iptc_keywords: keywords,
             dpi,
         };
-        Ok((px, meta, file))
+        Ok((px, meta, file, state))
+    }
+
+    /// Pixels finais em 16 bits, se o documento veio de um PNG/TIFF de 16 bits: as operações
+    /// `ops[..n]` (o estado `state` dos pixels de 8 bits `px`) são refeitas em 16 bits sobre o
+    /// arquivo atual `file`. Ele vale como base se ainda for a origem (confere com os pixels de
+    /// 8 bits) ou se for o último Salvar em 16 bits (`Document::deep`): aí só o resto é refeito.
+    fn render_deep(
+        &self,
+        id: DocId,
+        file: Option<&[u8]>,
+        px: &RgbaImage,
+        (n, generation): RenderState,
+    ) -> Option<Rgba16Image> {
+        let (source, ops, saved) = self
+            .with_doc(id, |d| {
+                let saved = d
+                    .deep
+                    .as_ref()
+                    .filter(|b| {
+                        std::ptr::eq(b.source.as_ptr(), Arc::as_ptr(&d.source))
+                            && b.generation == generation
+                            && b.n <= n
+                            && b.disk.is_some()
+                            && b.disk == d.disk
+                    })
+                    .map(|b| b.n);
+                let ops = (d.generation == generation)
+                    .then(|| d.ops.get(..n).map(<[Op]>::to_vec))
+                    .flatten();
+                (d.source.clone(), ops, saved)
+            })
+            .ok()?;
+        let ops = ops?;
+        let base = raster::decode16(file?, source.format)?;
+        let start = match saved {
+            Some(k) => k,
+            None if source.frames.first().is_some_and(|f| raster::matches8(&base, f)) => 0,
+            None => return None,
+        };
+        let out = ops[start..]
+            .iter()
+            .fold(base, |img, op| raster::apply16(&img, op));
+        (out.dimensions() == px.dimensions()).then_some(out)
     }
 
     /// Salvar (Ctrl+S): grava no próprio arquivo, de forma atômica, se o formato permitir.
     /// `keywords`: palavras-chave editadas no inspetor (substituem as do arquivo).
     pub fn save(&self, id: DocId, keywords: Option<Vec<String>>) -> AppResult<SaveOutcome> {
         self.wait_ready(id)?;
-        let (path, format, writable, n, generation) = self.with_doc(id, |d| {
-            (
-                d.info.path.clone(),
-                d.info.format,
-                d.info.writable,
-                d.ops.len(),
-                d.generation,
-            )
-        })?;
+        let (path, format, writable) =
+            self.with_doc(id, |d| (d.info.path.clone(), d.info.format, d.info.writable))?;
         let Some(fmt) = ExportFormat::for_save(format).filter(|_| writable) else {
             return Ok(SaveOutcome::NeedsExport);
         };
         if let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, file) = self.render_for_write(id, keywords, true)?;
+        let (px, meta, file, state) = self.render_for_write(id, keywords, true)?;
+        let (n, generation) = state;
+        // PNG/TIFF de 16 bits continuam com 16 bits.
+        let deep = matches!(fmt, ExportFormat::Png | ExportFormat::Tiff)
+            .then(|| self.render_deep(id, file.as_deref(), &px, state))
+            .flatten();
         let quality = match fmt {
             ExportFormat::Jpeg => file.as_deref().and_then(encode::jpeg_quality),
             // WebP com perda: sem como estimar a qualidade, usa 90; sem perdas continua sem perdas.
@@ -233,11 +276,14 @@ impl DocStore {
             format: fmt,
             quality,
             alpha: true,
-            depth16: false,
+            depth16: deep.is_some(),
             strip_metadata: false,
             resize: None,
         };
-        let bytes = encode::encode(&px, &opts, &meta)?;
+        let bytes = match &deep {
+            Some(d) => encode::encode(d, &opts, &meta)?,
+            None => encode::encode(&*px, &opts, &meta)?,
+        };
         encode::write_file_atomic(Path::new(&path), &bytes)?;
         let (_, info) = self.with_doc_mut(id, |d| {
             d.disk = DiskStamp::of(Path::new(&path));
@@ -246,6 +292,12 @@ impl DocStore {
             } else {
                 usize::MAX
             };
+            d.deep = deep.is_some().then(|| DeepBase {
+                source: Arc::downgrade(&d.source),
+                generation,
+                n,
+                disk: d.disk,
+            });
         })?;
         Ok(SaveOutcome::Saved(info))
     }
@@ -266,8 +318,16 @@ impl DocStore {
         if same_file && let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, _) = self.render_for_write(id, keywords, true)?;
-        let bytes = encode::encode(&px, opts, &meta)?;
+        let (px, meta, file, state) = self.render_for_write(id, keywords, true)?;
+        // Exportar em 16 bits de uma origem de 16 bits usa os 16 bits de verdade.
+        let deep = opts
+            .depth16
+            .then(|| self.render_deep(id, file.as_deref(), &px, state))
+            .flatten();
+        let bytes = match &deep {
+            Some(d) => encode::encode(d, opts, &meta)?,
+            None => encode::encode(&*px, opts, &meta)?,
+        };
         encode::write_file_atomic(&dest_path, &bytes)?;
         let adopt = path.is_empty()
             && opts.resize.is_none()
@@ -293,11 +353,11 @@ impl DocStore {
 
     /// Tamanho estimado do arquivo com `opts` (codifica de verdade; imagens grandes por amostra).
     pub fn estimate_size(&self, id: DocId, opts: &ExportOptions) -> AppResult<u64> {
-        let (px, meta, _) = self.render_for_write(id, None, false)?;
+        let (px, meta, ..) = self.render_for_write(id, None, false)?;
         let (w, h) = opts.resize.unwrap_or(px.dimensions());
         let area = w as u64 * h as u64;
         if area <= ESTIMATE_MAX_PIXELS {
-            return Ok(encode::encode(&px, opts, &meta)?.len() as u64);
+            return Ok(encode::encode(&*px, opts, &meta)?.len() as u64);
         }
         let k = (ESTIMATE_MAX_PIXELS as f64 / area as f64).sqrt();
         let (sw, sh) = (
@@ -309,7 +369,7 @@ impl DocStore {
             ..MetaCarry::default()
         };
         let small = encode::encode(
-            &px,
+            &*px,
             &ExportOptions {
                 resize: Some((sw, sh)),
                 ..opts.clone()

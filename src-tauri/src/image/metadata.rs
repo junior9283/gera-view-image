@@ -2,7 +2,7 @@
 //! Tudo é tolerante: bloco corrompido vira lista vazia, nunca erro nem pânico.
 use super::decode::Decoded;
 use crate::error::AppResult;
-use ::image::{ImageDecoder, ImageReader};
+use ::image::{ImageDecoder, ImageFormat, ImageReader};
 use exif::{Context, In, Reader, Tag, Value};
 use rayon::prelude::*;
 use serde::Serialize;
@@ -104,16 +104,17 @@ pub fn parse_blocks(file: &[u8], exif_tiff: Option<&[u8]>) -> Blocks {
         }
         out.gps = gps_of(&exif);
     }
-    if file.starts_with(&[0xFF, 0xD8]) {
-        let (iptc, mut keywords) = iptc_of(file);
-        out.iptc = iptc;
-        for k in xmp_keywords(file) {
-            if !keywords.contains(&k) {
-                keywords.push(k);
-            }
-        }
-        out.keywords = keywords;
+    let (iim, xmp) = file_iim_xmp(file);
+    let mut keywords = Vec::new();
+    if let Some(iim) = iim {
+        parse_iim(&iim, &mut out.iptc, &mut keywords);
     }
+    for k in xmp.as_deref().map(xmp_keywords).unwrap_or_default() {
+        if !keywords.contains(&k) {
+            keywords.push(k);
+        }
+    }
+    out.keywords = keywords;
     out
 }
 
@@ -188,18 +189,37 @@ fn jpeg_segments(b: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {
     })
 }
 
-/// Blocos crus de um JPEG para levar ao arquivo salvo: IPTC-IIM (recurso 0x0404 do APP13)
-/// e o pacote XMP (APP1). Fora de JPEG, `(None, None)`.
-pub fn jpeg_iim_xmp(file: &[u8]) -> (Option<Vec<u8>>, Option<String>) {
-    if !file.starts_with(&[0xFF, 0xD8]) {
-        return (None, None);
+/// IPTC-IIM e XMP crus do arquivo, para o inspetor e para levar ao arquivo salvo.
+/// JPEG: APP13 (recurso 0x0404) e APP1 com o XMP estendido reunido. TIFF: tags 33723 e 700.
+/// PNG e WebP: só XMP. Outros formatos: `(None, None)`.
+pub fn file_iim_xmp(file: &[u8]) -> (Option<Vec<u8>>, Option<String>) {
+    use super::container::{TAG_IPTC, TAG_XMP, tiff_tag};
+    let text = |b: Vec<u8>| String::from_utf8_lossy(&b).into_owned();
+    if file.starts_with(&[0xFF, 0xD8]) {
+        jpeg_iim_xmp(file)
+    } else if file.starts_with(b"II*\0") || file.starts_with(b"MM\0*") {
+        (tiff_tag(file, TAG_IPTC), tiff_tag(file, TAG_XMP).map(text))
+    } else {
+        let xmp = ImageReader::new(Cursor::new(file))
+            .with_guessed_format()
+            .ok()
+            .filter(|r| matches!(r.format(), Some(ImageFormat::Png | ImageFormat::WebP)))
+            .and_then(|r| r.into_decoder().ok())
+            .and_then(|mut d| d.xmp_metadata().ok().flatten());
+        (None, xmp.map(text))
     }
-    let (mut iim, mut xmp) = (None, None);
+}
+
+fn jpeg_iim_xmp(file: &[u8]) -> (Option<Vec<u8>>, Option<String>) {
+    use super::container::{XMP_EXT_NS, XMP_NS, jpeg_merge_xmp};
+    let (mut iim, mut xmp, mut ext) = (None, None, Vec::new());
     for (marker, seg) in jpeg_segments(file) {
-        if marker == 0xE1
-            && let Some(x) = seg.strip_prefix(b"http://ns.adobe.com/xap/1.0/\0")
-        {
-            xmp = Some(String::from_utf8_lossy(x).into_owned());
+        if marker == 0xE1 {
+            if let Some(x) = seg.strip_prefix(XMP_NS) {
+                xmp = Some(String::from_utf8_lossy(x).into_owned());
+            } else if seg.starts_with(XMP_EXT_NS) {
+                ext.push(seg);
+            }
         }
         if marker == 0xED
             && let Some(rest) = seg.strip_prefix(b"Photoshop 3.0\0")
@@ -207,7 +227,7 @@ pub fn jpeg_iim_xmp(file: &[u8]) -> (Option<Vec<u8>>, Option<String>) {
             iim = photoshop_resource(rest, 0x0404).map(<[u8]>::to_vec).or(iim);
         }
     }
-    (iim, xmp)
+    (iim, xmp.map(|x| jpeg_merge_xmp(x, &ext)))
 }
 
 /// Dados do recurso `id` numa sequência de recursos `8BIM`.
@@ -251,21 +271,6 @@ fn iptc_label(dataset: u8) -> Option<&'static str> {
     })
 }
 
-/// IPTC-IIM do recurso 0x0404 do APP13 (`Photoshop 3.0`). Devolve `(campos, palavras-chave)`.
-fn iptc_of(file: &[u8]) -> (Vec<(String, String)>, Vec<String>) {
-    let (mut fields, mut keywords) = (vec![], vec![]);
-    for (marker, seg) in jpeg_segments(file) {
-        if let Some(data) = (marker == 0xED)
-            .then(|| seg.strip_prefix(b"Photoshop 3.0\0"))
-            .flatten()
-            .and_then(|rest| photoshop_resource(rest, 0x0404))
-        {
-            parse_iim(data, &mut fields, &mut keywords);
-        }
-    }
-    (fields, keywords)
-}
-
 fn parse_iim(mut d: &[u8], fields: &mut Vec<(String, String)>, keywords: &mut Vec<String>) {
     while d.len() >= 5 && d[0] == 0x1C {
         let (rec, num) = (d[1], d[2]);
@@ -289,29 +294,22 @@ fn parse_iim(mut d: &[u8], fields: &mut Vec<(String, String)>, keywords: &mut Ve
     }
 }
 
-/// Itens de `<dc:subject>` no pacote XMP (APP1 `http://ns.adobe.com/xap/1.0/`).
-fn xmp_keywords(file: &[u8]) -> Vec<String> {
-    const NS: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
+/// Itens de `<dc:subject>` de um pacote XMP.
+fn xmp_keywords(xmp: &str) -> Vec<String> {
     let mut out = vec![];
-    for (marker, seg) in jpeg_segments(file) {
-        let Some(xmp) = (marker == 0xE1).then(|| seg.strip_prefix(NS)).flatten() else {
+    let Some(a) = xmp.find("<dc:subject>") else {
+        return out;
+    };
+    let body = &xmp[a..];
+    let body = &body[..body.find("</dc:subject>").unwrap_or(body.len())];
+    for part in body.split("<rdf:li").skip(1) {
+        let (Some(s), Some(e)) = (part.find('>'), part.find("</rdf:li>")) else {
             continue;
         };
-        let xmp = String::from_utf8_lossy(xmp);
-        let Some(a) = xmp.find("<dc:subject>") else {
-            continue;
-        };
-        let body = &xmp[a..];
-        let body = &body[..body.find("</dc:subject>").unwrap_or(body.len())];
-        for part in body.split("<rdf:li").skip(1) {
-            let (Some(s), Some(e)) = (part.find('>'), part.find("</rdf:li>")) else {
-                continue;
-            };
-            if s < e {
-                let t = xml_unescape(part[s + 1..e].trim());
-                if !t.is_empty() && !out.contains(&t) {
-                    out.push(t);
-                }
+        if s < e {
+            let t = xml_unescape(part[s + 1..e].trim());
+            if !t.is_empty() && !out.contains(&t) {
+                out.push(t);
             }
         }
     }

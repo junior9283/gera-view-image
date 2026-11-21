@@ -5,7 +5,7 @@ use crate::{
 };
 use ::image::{
     AnimationDecoder, DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits, RgbaImage,
-    metadata::Orientation,
+    metadata::{LoopCount, Orientation},
 };
 use std::{
     io::Cursor,
@@ -19,6 +19,8 @@ pub struct Decoded {
     pub frames: Vec<RgbaImage>,
     /// Um por quadro (0 para imagens estáticas).
     pub delays_ms: Vec<u32>,
+    /// Vezes que a animação toca no total; 0 = para sempre (também quando o arquivo não declara).
+    pub plays: u32,
     pub format: SourceFormat,
     pub icc: Option<Vec<u8>>,
     /// Bloco EXIF começando no cabeçalho TIFF (`II*\0`/`MM\0*`), exatamente como no arquivo.
@@ -33,6 +35,7 @@ impl Decoded {
         Decoded {
             frames: vec![img],
             delays_ms: vec![0],
+            plays: 0,
             format,
             icc: None,
             exif: None,
@@ -43,6 +46,31 @@ impl Decoded {
     pub fn bytes(&self) -> usize {
         self.frames.iter().map(|f| f.as_raw().len()).sum()
     }
+
+    /// Como a animação toca: atrasos vazios quando não há animação (estática, TIFF de páginas).
+    pub fn playback(&self) -> Playback {
+        let animated =
+            self.frames.len() > 1 && matches!(self.format, SourceFormat::Gif | SourceFormat::Webp);
+        if !animated {
+            return Playback::default();
+        }
+        Playback {
+            // Regra dos navegadores: atraso de até 10 ms vira 100 ms.
+            delays_ms: self
+                .delays_ms
+                .iter()
+                .map(|&ms| if ms <= 10 { 100 } else { ms })
+                .collect(),
+            plays: self.plays,
+        }
+    }
+}
+
+/// Atraso de cada quadro (ms, já normalizado) e total de vezes que toca (0 = para sempre).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Playback {
+    pub delays_ms: Vec<u32>,
+    pub plays: u32,
 }
 
 /// Teto de memória de uma imagem decodificada (RGBA8, todas as páginas somadas).
@@ -256,6 +284,12 @@ fn decode_format(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
             _ => None,
         };
     }
+    match format {
+        // O EXIF do TIFF está no próprio IFD0 (e nos sub-IFDs EXIF/GPS).
+        Tiff if d.exif.is_none() => d.exif = super::container::tiff_exif_block(bytes),
+        Bmp if d.icc.is_none() => d.icc = super::container::bmp_icc(bytes),
+        _ => {}
+    }
     Ok(d)
 }
 
@@ -302,10 +336,18 @@ fn into_rgba(img: DynamicImage) -> RgbaImage {
 
 /// Quadros de uma animação, somando cada um contra o teto antes de guardar o próximo.
 fn frames_of<'a>(
-    frames: ::image::Frames<'a>,
+    dec: impl AnimationDecoder<'a>,
     format: SourceFormat,
     max: usize,
 ) -> AppResult<Decoded> {
+    let plays = match dec.loop_count() {
+        LoopCount::Infinite => 0,
+        // GIF declara as repetições depois da primeira volta (NETSCAPE2.0: n => n + 1 vezes,
+        // como nos navegadores); o WebP declara o total.
+        LoopCount::Finite(n) if format == SourceFormat::Gif => n.get().saturating_add(1),
+        LoopCount::Finite(n) => n.get(),
+    };
+    let frames = dec.into_frames();
     let (mut images, mut delays_ms, mut total) = (Vec::new(), Vec::new(), 0);
     for f in frames {
         let f = f?;
@@ -321,6 +363,7 @@ fn frames_of<'a>(
     Ok(Decoded {
         frames: images,
         delays_ms,
+        plays,
         format,
         icc: None,
         exif: None,
@@ -334,13 +377,13 @@ fn decode_gif(bytes: &[u8]) -> AppResult<Decoded> {
 
 fn decode_gif_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
     let dec = ::image::codecs::gif::GifDecoder::new(Cursor::new(bytes))?;
-    frames_of(dec.into_frames(), SourceFormat::Gif, max)
+    frames_of(dec, SourceFormat::Gif, max)
 }
 
 fn decode_webp(bytes: &[u8]) -> AppResult<Decoded> {
     let dec = ::image::codecs::webp::WebPDecoder::new(Cursor::new(bytes))?;
     if dec.has_animation() {
-        frames_of(dec.into_frames(), SourceFormat::Webp, MAX_DECODE_BYTES)
+        frames_of(dec, SourceFormat::Webp, MAX_DECODE_BYTES)
     } else {
         decode_image_crate(bytes, ImageFormat::WebP, SourceFormat::Webp)
     }
@@ -417,6 +460,7 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
     Ok(Decoded {
         frames,
         delays_ms: vec![0; n],
+        plays: 0,
         format: SourceFormat::Tiff,
         icc,
         exif: None,
@@ -507,16 +551,26 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
     })
 }
 
+/// Memória de trabalho do OpenJPEG: planos `i32` por componente (até 16 B/pixel em RGBA),
+/// mais o RGBA8 final. 4/5 do teto para o decodificador deixa o pico perto de `MAX_DECODE_BYTES`.
+const JP2_DECODER_BYTES: u64 = MAX_DECODE_BYTES as u64 / 5 * 4;
+
 fn decode_jp2(bytes: &[u8]) -> AppResult<Decoded> {
-    use openjp2::{DecodeLimits, DecodeParameters, Error as E, Image};
+    use openjp2::{
+        DecodeLimits, DecodeParameters, Decoder, Error as E, Image, J2KFormat, Stream,
+    };
     let map = |e: E| match e {
         E::Unsupported(m) => AppError::Unsupported(m),
         other => AppError::Corrupt(other.to_string()),
     };
+    // Recusa pelo cabeçalho, antes de alocar os planos.
+    let header = Decoder::new(J2KFormat::JP2)
+        .and_then(|mut d| d.read_header(&mut Stream::from_bytes(bytes.to_vec())))
+        .map_err(map)?;
+    check_budget(header.width(), header.height(), 0)?;
     let params =
-        DecodeParameters::new().limits(DecodeLimits::new().max_mem_alloc(MAX_DECODE_BYTES as u64));
+        DecodeParameters::new().limits(DecodeLimits::new().max_mem_alloc(JP2_DECODER_BYTES));
     let img = Image::from_bytes_with(bytes, params).map_err(map)?;
-    check_budget(img.width(), img.height(), 0)?;
     let rgba = DynamicImage::try_from(&img).map_err(map)?.into_rgba8();
     let icc = Some(img.into_core_image().icc_profile_buf).filter(|p| !p.is_empty());
     Ok(Decoded {
@@ -922,5 +976,46 @@ mod tests {
             decode_gif_max(&buf, 60_000).unwrap().frames.len(),
             5
         );
+    }
+
+    /// GIF com atrasos diferentes por quadro e repetição finita declarada (NETSCAPE2.0).
+    fn gif_com_atrasos(delays_ms: &[u32], repeat: Option<u16>) -> Vec<u8> {
+        use ::image::{
+            Delay, Frame,
+            codecs::gif::{GifEncoder, Repeat},
+        };
+        let mut buf = Vec::new();
+        {
+            let mut enc = GifEncoder::new(&mut buf);
+            if let Some(n) = repeat {
+                enc.set_repeat(Repeat::Finite(n)).unwrap();
+            }
+            let frames = delays_ms.iter().enumerate().map(|(i, &ms)| {
+                let img = RgbaImage::from_pixel(4, 4, ::image::Rgba([i as u8 * 60, 0, 0, 255]));
+                Frame::from_parts(img, 0, 0, Delay::from_numer_denom_ms(ms, 1))
+            });
+            enc.encode_frames(frames).unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn gif_respeita_atraso_de_cada_quadro_e_regra_dos_navegadores() {
+        // 0 e 10 ms viram 100 ms (como nos navegadores); 20, 70 e 500 ms ficam.
+        let d = decode_gif(&gif_com_atrasos(&[0, 10, 20, 70, 500], Some(2))).unwrap();
+        assert_eq!(d.delays_ms, vec![0, 10, 20, 70, 500]);
+        let p = d.playback();
+        assert_eq!(p.delays_ms, vec![100, 100, 20, 70, 500]);
+        // NETSCAPE com 2 repetições: toca 3 vezes no total, como nos navegadores.
+        assert_eq!(p.plays, 3);
+    }
+
+    #[test]
+    fn gif_sem_contagem_toca_para_sempre_e_estatica_nao_anima() {
+        let d = decode_gif(&gif_com_atrasos(&[30, 40], None)).unwrap();
+        assert_eq!(d.playback().plays, 0);
+        assert_eq!(d.playback().delays_ms, vec![30, 40]);
+        let um = decode_gif(&gif_com_atrasos(&[30], Some(1))).unwrap();
+        assert!(um.playback().delays_ms.is_empty(), "um quadro não anima");
     }
 }

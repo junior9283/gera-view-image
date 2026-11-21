@@ -308,7 +308,8 @@
       "captureWindow": "From Window…",
       "captureScreen": "From Entire Screen",
       "print": "Print…",
-      "openWith": "Open With…"
+      "openWith": "Open With…",
+      "quit": "Quit"
     },
     "edit": {
       "title": "Edit",
@@ -410,7 +411,7 @@
     "pasted": "Pasted",
     "capture": "Screenshot",
     "saved": "Saved: {{name}}",
-    "keywordsNotSaved": "Keywords were not saved: this format does not store IPTC/XMP. Export as JPEG, PNG or WebP.",
+    "keywordsNotSaved": "Keywords were not saved: this format does not store IPTC/XMP. Export as JPEG, TIFF, PNG or WebP.",
     "exported": "Exported: {{name}}",
     "exportedMany": "{{count}} images exported",
     "unsaved": {
@@ -419,7 +420,10 @@
       "body": "Your changes will be lost if you don’t save them.",
       "save": "Save",
       "discard": "Don’t Save",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "reloadTitle": "Discard changes to “{{name}}” and reload?",
+      "reloadBody": "The file was changed outside the app. Reloading discards the changes made here.",
+      "reload": "Reload"
     },
     "export": {
       "title": "Export",

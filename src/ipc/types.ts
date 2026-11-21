@@ -30,6 +30,10 @@ export interface DocInfo {
   width: number;
   height: number;
   frames: number;
+  /** Atraso de cada quadro em ms (atraso de até 10 ms já vira 100 ms); vazio sem animação. */
+  delaysMs?: number[];
+  /** Vezes que a animação toca no total; 0 = para sempre. */
+  plays?: number;
   writable: boolean;
   dirty: boolean;
   canUndo: boolean;
@@ -41,6 +45,9 @@ export interface DocInfo {
 }
 
 export interface Rect { x: number; y: number; w: number; h: number }
+
+/** Item de `start_drag`: `export` = arrastar um PNG temporário em vez do arquivo. */
+export interface DragSource { id: DocId; export: boolean }
 
 export type ResizeFilter = "nearest" | "bilinear" | "lanczos3";
 

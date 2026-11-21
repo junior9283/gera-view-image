@@ -79,4 +79,24 @@ describe("zoom", () => {
       h: 80,
     });
   });
+
+  describe("escala da tela (devicePixelRatio)", () => {
+    it("100 % é 1 px da imagem por px físico", () => {
+      expect(fitState({ w: 4000, h: 3000 }, { w: 800, h: 600 }, "actual", 2).scale).toBe(0.5);
+      expect(fitState({ w: 4000, h: 3000 }, { w: 800, h: 600 }, "actual", 1.25).scale).toBe(0.8);
+    });
+
+    it("ajustar nunca passa do Tamanho Real", () => {
+      expect(fitScale({ w: 100, h: 50 }, { w: 800, h: 600 }, false, 2)).toBe(0.5);
+      expect(fitScale({ w: 4000, h: 3000 }, { w: 800, h: 600 }, false, 2)).toBe(0.2);
+    });
+
+    it("degraus e limites valem no zoom mostrado", () => {
+      expect(nextStep(0.5, 1, 2)).toBe(0.625); // 100 % -> 125 %
+      expect(nextStep(0.5, -1, 2)).toBe(0.375); // 100 % -> 75 %
+      const s: ViewState = { scale: 15, panX: 0, panY: 0, mode: "free" };
+      expect(zoomAt(s, 10, { x: 0, y: 0 }, 2).scale).toBe(16); // 3200 % mostrados
+      expect(zoomAt({ ...s, scale: 0.03 }, 0.1, { x: 0, y: 0 }, 2).scale).toBe(0.025);
+    });
+  });
 });

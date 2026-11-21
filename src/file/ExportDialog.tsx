@@ -1,9 +1,10 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { notify, notifyError } from "../chrome/notify";
 import * as ipc from "../ipc/commands";
 import type { DocInfo, ExportFormat, ExportOptions } from "../ipc/types";
+import { useModal } from "../lib/modal";
 import { useDocs } from "../store/docs";
 import { addRecent } from "../store/prefs";
 import { viewable } from "../viewer/actions";
@@ -109,11 +110,12 @@ const join = (dir: string, name: string) => `${dir.replace(/\/+$/, "")}/${name}`
 
 function Frame({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
+  useModal(dialog, { onClose });
   return (
     <div className="file-backdrop" role="presentation">
       <div
-        className="file-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}
-        onKeyDown={(e) => e.key === "Escape" && onClose()}
+        ref={dialog} className="file-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}
       >
         <h3 id={titleId}>{title}</h3>
         {children}

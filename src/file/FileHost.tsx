@@ -1,6 +1,7 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../chrome/notify";
+import { useModal } from "../lib/modal";
 import { useDocs } from "../store/docs";
 import { usePrefs, setPrefs } from "../store/prefs";
 import { ExportDialog, ExportSelectedDialog } from "./ExportDialog";
@@ -12,6 +13,8 @@ import "./file.css";
 function RenameDialog({ id, name, onClose }: { id: number; name: string; onClose: () => void }) {
   const { t } = useTranslation();
   const titleId = useId();
+  const dialog = useRef<HTMLFormElement>(null);
+  useModal(dialog, { onClose });
   const [value, setValue] = useState(name);
   const ok = async () => {
     try {
@@ -24,8 +27,7 @@ function RenameDialog({ id, name, onClose }: { id: number; name: string; onClose
   return (
     <div className="file-backdrop" role="presentation">
       <form
-        className="file-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}
-        onKeyDown={(e) => e.key === "Escape" && onClose()}
+        ref={dialog} className="file-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}
         onSubmit={(e) => {
           e.preventDefault();
           void ok();
@@ -35,7 +37,7 @@ function RenameDialog({ id, name, onClose }: { id: number; name: string; onClose
         <label className="file-row">
           <span>{t("file.rename.name")}</span>
           <input
-            type="text" value={value} autoFocus onChange={(e) => setValue(e.target.value)}
+            type="text" value={value} onChange={(e) => setValue(e.target.value)}
             // Seleciona só o nome, sem a extensão (como o Preview).
             onFocus={(e) => e.target.setSelectionRange(0, Math.max(0, value.lastIndexOf(".")) || value.length)}
           />
@@ -54,12 +56,13 @@ function RenameDialog({ id, name, onClose }: { id: number; name: string; onClose
 function RecentDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
+  useModal(dialog, { onClose });
   const recent = usePrefs((p) => p.recent);
   return (
     <div className="file-backdrop" role="presentation">
       <div
-        className="file-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}
-        onKeyDown={(e) => e.key === "Escape" && onClose()}
+        ref={dialog} className="file-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}
       >
         <h3 id={titleId}>{t("file.recent.title")}</h3>
         {recent.length ? (

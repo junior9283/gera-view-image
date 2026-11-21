@@ -1,7 +1,8 @@
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useForcedNative } from "../chrome/nativeDecorations";
 import { setPrefs, usePrefs, type Prefs } from "../store/prefs";
+import { useModal } from "../lib/modal";
 import "./prefs.css";
 
 const BACKGROUNDS: Prefs["background"][] = ["window", "black", "white", "gray", "custom"];
@@ -21,6 +22,8 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const prefs = usePrefs();
   const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
+  useModal(dialog, { onClose });
   const forcedNative = useForcedNative();
   // Edição local: deixa o campo ficar vazio/parcial; só ao confirmar vira inteiro entre 1 e 60.
   const [secs, setSecs] = useState<string | null>(null);
@@ -32,7 +35,7 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="prefs-backdrop" role="presentation">
-      <div className="prefs-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div ref={dialog} className="prefs-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <h3 id={titleId}>{t("prefs.title")}</h3>
 
         <Row label={t("prefs.background")}>

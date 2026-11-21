@@ -308,7 +308,8 @@
       "captureWindow": "Da Janela…",
       "captureScreen": "Da Tela Inteira",
       "print": "Imprimir…",
-      "openWith": "Abrir com…"
+      "openWith": "Abrir com…",
+      "quit": "Sair"
     },
     "edit": {
       "title": "Editar",
@@ -410,7 +411,7 @@
     "pasted": "Colada",
     "capture": "Captura de tela",
     "saved": "Salvo: {{name}}",
-    "keywordsNotSaved": "As palavras-chave não foram gravadas: este formato não guarda IPTC/XMP. Exporte em JPEG, PNG ou WebP.",
+    "keywordsNotSaved": "As palavras-chave não foram gravadas: este formato não guarda IPTC/XMP. Exporte em JPEG, TIFF, PNG ou WebP.",
     "exported": "Exportado: {{name}}",
     "exportedMany": "{{count}} imagens exportadas",
     "unsaved": {
@@ -419,7 +420,10 @@
       "body": "Se não salvar, as alterações serão perdidas.",
       "save": "Salvar",
       "discard": "Não Salvar",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "reloadTitle": "Descartar as alterações em “{{name}}” e recarregar?",
+      "reloadBody": "O arquivo foi alterado fora do app. Recarregar descarta as alterações feitas aqui.",
+      "reload": "Recarregar"
     },
     "export": {
       "title": "Exportar",

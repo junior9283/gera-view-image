@@ -106,6 +106,22 @@ mod tests {
     }
 
     #[test]
+    fn dimensoes_gigantes_recusadas_pelo_cabecalho() {
+        let img = ::image::RgbImage::from_pixel(8, 8, ::image::Rgb([1, 2, 3]));
+        let mut out = encode(&DynamicImage::ImageRgb8(img), None, &MetaCarry::default()).unwrap();
+        let find = |pat: &[u8]| out.windows(pat.len()).position(|w| w == pat).unwrap();
+        let big = 40_000u32.to_be_bytes();
+        // ihdr: altura, largura. SIZ (FF51): Lsiz, Rsiz, Xsiz, Ysiz, XOsiz, YOsiz, XTsiz, YTsiz.
+        let ihdr = find(b"ihdr") + 4;
+        let siz = find(&[0xFF, 0x51]) + 6;
+        for off in [ihdr, ihdr + 4, siz, siz + 4, siz + 16, siz + 20] {
+            out[off..off + 4].copy_from_slice(&big);
+        }
+        let e = decode_bytes(Path::new("x.jp2"), &out).unwrap_err();
+        assert_eq!(e.code(), "unsupported", "{e:?}");
+    }
+
+    #[test]
     fn lixo_vira_corrupt() {
         let e = decode_bytes(Path::new("x.jp2"), b"\0\0\0\x0cjP  \r\n\x87\nlixo").unwrap_err();
         assert_eq!(e.code(), "corrupt");

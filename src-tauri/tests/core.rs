@@ -42,14 +42,7 @@ fn pattern(w: u32, h: u32) -> RgbaImage {
 }
 
 fn decoded(img: RgbaImage) -> Decoded {
-    Decoded {
-        frames: vec![img],
-        delays_ms: vec![0],
-        format: SourceFormat::Png,
-        icc: None,
-        exif: None,
-        dpi: None,
-    }
+    Decoded::single(img, SourceFormat::Png)
 }
 
 #[test]
