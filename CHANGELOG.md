@@ -5,6 +5,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Adicionado
+- Salvar e Exportar em TIFF levam EXIF (IFD0 e sub-IFDs EXIF/GPS), IPTC, XMP, perfil ICC e DPI; o EXIF de um TIFF aberto também aparece no inspetor.
+- Salvar e Exportar em BMP levam o perfil ICC (cabeçalho BITMAPV5HEADER).
+- Palavras-chave editadas também são gravadas em TIFF (IPTC e XMP). PNG e WebP passam a manter o XMP do original ao salvar.
+- JPEG com XMP maior que 64 KB: o XMP estendido (ExtendedXMP, GUID MD5) é lido e gravado.
+
+### Corrigido
+- PNG e TIFF de 16 bits continuam com 16 bits ao salvar: as operações são refeitas em 16 bits sobre o arquivo original (ajustes de cor em ponto flutuante). Exportar em 16 bits de uma origem de 16 bits também usa os 16 bits de verdade.
+- `PixelXDimension`/`PixelYDimension` do EXIF passam a refletir o tamanho gravado depois de recortar, girar ou redimensionar.
+- JPEG CMYK (ou cinza) com perfil ICC não grava mais o perfil CMYK/cinza num arquivo RGB, o que deixava as cores erradas em outros programas.
+
 ## [0.2.1] - 2026-11-21
 
 ### Corrigido
@@ -29,7 +40,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - HEIC e JPEG 2000 ainda não podem ser gravados: o codificador HEVC (x265) não pode ir no binário e não há crate JPEG 2000 sem a libopenjp2. HEIC é aberto normalmente (precisa da `libde265`, no Fedora pelo RPM Fusion); Salvar leva a Exportar.
 - Arrastar uma miniatura para fora da janela (para outro app) ainda não existe; a barra lateral só reordena.
 - GIF animado toca com 100 ms fixos por quadro (a duração de cada quadro do arquivo é ignorada).
-- Salvar em TIFF, BMP e AVIF não leva todos os metadados (EXIF/IPTC/ICC conforme o formato); imagens de 16 bits são salvas em 8 bits; JPEG CMYK é regravado em RGB.
+- AVIF salvo leva só o EXIF: o codificador (ravif/avif-serialize) não grava perfil ICC nem XMP, então as palavras-chave ficam pendentes. JPEG CMYK é regravado em RGB, sem perfil, com a conversão simples do decodificador (sem gestão de cor pelo perfil CMYK).
 - Imprimir e Duplicar com anotações não salvas achatam as anotações no documento aberto.
 - Tamanho Real usa 1 pixel da imagem por pixel CSS (sem compensar a escala da tela).
 - Atalhos de letra não funcionam em layouts de teclado não latinos (ex.: cirílico).

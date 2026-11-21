@@ -78,8 +78,8 @@ describe("estado não salvo além das Op", () => {
     expect(isEnabled("file.save")).toBe(false);
   });
 
-  it("formato sem IPTC/XMP (TIFF): mantém as palavras-chave pendentes e avisa", async () => {
-    const tif = doc({ format: "tiff", path: "/f/a.tif", name: "a.tif" });
+  it("formato sem IPTC/XMP (BMP): mantém as palavras-chave pendentes e avisa", async () => {
+    const tif = doc({ format: "bmp", path: "/f/a.bmp", name: "a.bmp" });
     useDocs.setState({ docs: [tif], activeId: 1 });
     act(() => addKeyword(1, "praia"));
     ipc.save.mockResolvedValue({ type: "saved", data: { ...tif, rev: 2 } });

@@ -76,8 +76,11 @@ export async function exportDoc(id: DocId, dest: string, opts: ExportOptions): P
   return info;
 }
 
-/** Formatos cujo codificador grava IPTC/XMP (`dc:subject`); os outros perdem as palavras-chave. */
-const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "png", "webp"]);
+/**
+ * Formatos em que o Salvar/Exportar grava as palavras-chave: IPTC 2:25 (JPEG, TIFF) e/ou XMP
+ * `dc:subject` (JPEG, TIFF, PNG, WebP). AVIF (o codificador só grava EXIF), BMP e OpenEXR as perdem.
+ */
+const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "tiff", "png", "webp"]);
 
 /**
  * Depois de gravar no próprio arquivo: palavras-chave pendentes saem da fila só se o formato as
