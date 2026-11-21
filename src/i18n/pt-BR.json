@@ -444,7 +444,28 @@
     "share": "Compartilhar",
     "markup": "Mostrar barra de marcação",
     "rotate": "Girar à esquerda (com Alt: à direita)",
-    "inspector": "Mostrar inspetor"
+    "inspector": "Mostrar inspetor",
+    "items": {
+      "sidebar": "Barra Lateral",
+      "zoom": "Zoom",
+      "share": "Compartilhar",
+      "markup": "Marcação",
+      "rotate": "Girar",
+      "inspector": "Inspetor",
+      "crop": "Recortar",
+      "adjustColor": "Ajustar Cor",
+      "resize": "Ajustar Tamanho",
+      "instantAlpha": "Alfa Instantâneo",
+      "flipH": "Espelhar Horizontalmente",
+      "flipV": "Espelhar Verticalmente",
+      "actualSize": "Tamanho Real",
+      "fit": "Ajustar à Janela",
+      "slideshow": "Apresentação de Slides",
+      "export": "Exportar",
+      "print": "Imprimir"
+    },
+    "openWith": "Abrir com",
+    "openWithOther": "Outro…"
   },
   "shortcuts": {
     "title": "Atalhos de Teclado",
@@ -546,5 +567,28 @@
       "print": "Imprimir…",
       "close": "Fechar"
     }
+  },
+  "customize": {
+    "title": "Personalizar Barra de Ferramentas",
+    "bar": "Barra de ferramentas",
+    "barHint": "Arraste para mudar de lugar ou para fora para tirar. Teclado: Delete tira, Ctrl+←/→ move.",
+    "palette": "Itens disponíveis",
+    "paletteHint": "Arraste os itens favoritos para a barra de ferramentas…",
+    "defaultHint": "…ou arraste o conjunto padrão para a barra de ferramentas.",
+    "restore": "Restaurar o conjunto padrão",
+    "show": "Mostrar:",
+    "modeIcon": "Ícone",
+    "modeIconText": "Ícone e Texto",
+    "modeText": "Somente Texto",
+    "done": "OK"
+  },
+  "share": {
+    "sent": "Enviado para {{name}}.",
+    "noDevice": "Nenhum aparelho do KDE Connect disponível.",
+    "pickDevice": "Enviar para qual aparelho?",
+    "cancel": "Cancelar"
+  },
+  "helpSearch": {
+    "noResults": "Nenhum item de menu encontrado"
   }
 }

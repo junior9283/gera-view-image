@@ -26,6 +26,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Copiar (Ctrl+C) sem seleção copia a imagem inteira, como no Pré-Visualização. Com anotações ainda não achatadas, a cópia (da seleção ou da imagem) sai como aparece na tela, com elas compostas por cima.
 - Tamanho da seleção retangular ou elíptica (largura × altura em px) aparece ao lado do canto durante o arraste.
 - Menu de contexto na imagem (botão direito): Recortar, Copiar, Colar, Copiar Objeto, Copiar Todo o Texto, Girar à Esquerda/Direita, Compartilhar ▸ e Abrir com…. Os itens de lotes que ainda não chegaram aparecem desabilitados.
+- Visualizar › Personalizar Barra de Ferramentas…: arraste itens da paleta para a barra (e para fora, para tirar), arraste o conjunto padrão para restaurar e escolha Ícone, Ícone e Texto ou Somente Texto. Pelo teclado, clique acrescenta, Delete tira e Ctrl+←/→ move. Itens opcionais: Recortar, Ajustar Cor, Ajustar Tamanho, Alfa Instantâneo, Espelhar, Tamanho Real, Ajustar à Janela, Apresentação, Exportar e Imprimir. A escolha fica nas preferências.
+- Visualizar › Ocultar Barra de Ferramentas (Ctrl+Shift+T).
+- Arquivo › Compartilhar ▸ e o botão Compartilhar: E-mail… abre o cliente de e-mail com a imagem anexada (portal `org.freedesktop.portal.Email`; sem portal, `xdg-email --attach`). KDE Connect… aparece quando o `kdeconnect-cli` está instalado: com um aparelho, envia direto; com vários, pergunta qual. O botão também tem Copiar, Exportar e Abrir com ▸, que lista os apps que abrem o tipo do arquivo (padrão do sistema primeiro) e mantém "Outro…" com o seletor do sistema.
+- Ajuda › Pesquisar (Ctrl+?): o menu Ajuda abre com um campo de busca que acha qualquer item de menu pelo nome, sem diferenciar acentos, e mostra onde ele fica. Enter executa o primeiro resultado.
 
 ### Corrigido
 - Imprimir e Duplicar com anotações não salvas não achatam mais o documento aberto: a imagem achatada vai para uma cópia, e as anotações continuam editáveis.

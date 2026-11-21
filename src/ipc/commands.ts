@@ -4,6 +4,8 @@ import type {
   FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, Rect, RevertTarget, SaveOutcome, TextLine,
   ViewBuffer, WindowEntry,
 } from "./types";
+// Lote 6
+import type { Device } from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -142,7 +144,9 @@ export const saveAs = (id: DocId, dest: string, opts: ExportOptions) => invoke<D
 
 // Lote 6: Compartilhar
 export const shareEmail = (ids: DocId[]) => invoke<void>("share_email", { ids });
-export const shareDevice = (ids: DocId[]) => invoke<void>("share_device", { ids });
+export const shareDevice = (ids: DocId[], device: string) => invoke<void>("share_device", { ids, device });
+export const shareDevices = () => invoke<Device[]>("share_devices");
+export const shareDeviceAvailable = () => invoke<boolean>("share_device_available");
 export const openWithApps = (id: DocId) => invoke<AppEntry[]>("open_with_apps", { id });
 export const openWithApp = (id: DocId, app: string) => invoke<void>("open_with_app", { id, app });
 

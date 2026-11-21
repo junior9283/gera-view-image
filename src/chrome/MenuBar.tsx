@@ -1,21 +1,42 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useWindowEvent } from "../lib/events";
 import { COMMAND_IDS, commandsVersion, isEnabled, runCommand, type CommandId } from "../shortcuts/commands";
 import { subscribeEnabled } from "../shortcuts/useEnabled";
 import { KEYMAP, formatShortcut } from "../shortcuts/keymap";
 import { MENUS, type MenuItem } from "./menus";
+import { searchMenus } from "./menuSearch";
 
-type Entry = Exclude<MenuItem, { separator: true }>;
+/** Item calculado na hora (resultado da busca, app do Abrir com): texto já traduzido. */
+export interface ActionItem {
+  text: string;
+  run: () => void;
+  /** Texto à direita (no lugar do atalho). */
+  hint?: string;
+  disabled?: boolean;
+  label?: never;
+  command?: never;
+  submenu?: never;
+}
+export type ListItem = MenuItem | ActionItem | { label: string; submenu: ListItem[]; command?: never };
+type Entry = Exclude<ListItem, { separator: true }>;
 
-const enabled = (i: Entry): boolean => (i.submenu ? i.submenu.some((s) => !("separator" in s) && enabled(s)) : isEnabled(i.command));
+const isAction = (i: Entry): i is ActionItem => "run" in i;
+const enabled = (i: Entry): boolean =>
+  isAction(i) ? !i.disabled : i.submenu ? i.submenu.some((s) => !("separator" in s) && enabled(s)) : isEnabled(i.command);
+
+/** Ajuda › Pesquisar (Ctrl+?): abre o menu Ajuda com o foco no campo de busca. */
+export const HELP_SEARCH_EVENT = "gvi:help-search";
+const HELP = MENUS.findIndex((m) => m.label === "menu.help.title");
 
 /** Itens focáveis da própria lista (sem os dos submenus). */
 const rows = (ul: HTMLElement) => Array.from(ul.querySelectorAll<HTMLElement>(":scope > li[role=menuitem]"));
 
 interface ListProps {
   label: string;
-  items: MenuItem[];
+  items: ListItem[];
+  /** Primeira linha fixa, fora da navegação por setas (campo Pesquisar). */
+  header?: ReactNode;
   /** 0 = menu da barra; >0 = submenu. */
   level: number;
   autoFocus: boolean;
@@ -29,7 +50,7 @@ interface ListProps {
 }
 
 /** Lista de menu acessível (também usada pelo botão Compartilhar da barra de ferramentas). */
-export function MenuList({ label, items, level, autoFocus, onRun, onClose, onCloseAll, onSwitch }: ListProps) {
+export function MenuList({ label, items, header, level, autoFocus, onRun, onClose, onCloseAll, onSwitch }: ListProps) {
   const { t } = useTranslation();
   const ul = useRef<HTMLUListElement>(null);
   const [sub, setSub] = useState<{ index: number; focus: boolean } | null>(null);
@@ -40,7 +61,10 @@ export function MenuList({ label, items, level, autoFocus, onRun, onClose, onClo
 
   const activate = (it: Entry, index: number, focus: boolean) => {
     if (!enabled(it)) return;
-    if (it.submenu) setSub({ index, focus });
+    if (isAction(it)) {
+      onCloseAll();
+      it.run();
+    } else if (it.submenu) setSub({ index, focus });
     else onRun(it.command);
   };
 
@@ -83,6 +107,7 @@ export function MenuList({ label, items, level, autoFocus, onRun, onClose, onClo
   let index = -1;
   return (
     <ul ref={ul} className={`menu menu-level-${level}`} role="menu" aria-label={label} onKeyDown={onKeyDown}>
+      {header && <li role="none" className="menu-header">{header}</li>}
       {items.map((it, key) => {
         if ("separator" in it) return <li key={key} role="separator" className="menu-separator" />;
         const i = ++index;
@@ -102,11 +127,11 @@ export function MenuList({ label, items, level, autoFocus, onRun, onClose, onClo
               activate(it, i, false);
             }}
           >
-            <span className="menu-label">{t(it.label)}</span>
+            <span className="menu-label">{isAction(it) ? it.text : t(it.label)}</span>
             {it.submenu ? (
               <span className="menu-arrow" aria-hidden>▸</span>
             ) : (
-              <span className="menu-shortcut">{formatShortcut(KEYMAP[it.command])}</span>
+              <span className="menu-shortcut">{isAction(it) ? it.hint : formatShortcut(KEYMAP[it.command])}</span>
             )}
             {it.submenu && sub?.index === i && (
               <MenuList
@@ -130,6 +155,55 @@ export function MenuList({ label, items, level, autoFocus, onRun, onClose, onClo
   );
 }
 
+interface SearchProps {
+  value: string;
+  onChange: (q: string) => void;
+  /** Enter: executa o primeiro resultado. */
+  onEnter: () => void;
+  onCloseAll: () => void;
+  onSwitch: (dir: 1 | -1) => void;
+  inputRef: RefObject<HTMLInputElement | null>;
+}
+
+/** Campo Pesquisar do menu Ajuda. Seta para baixo desce aos resultados; as demais teclas ficam no campo. */
+function HelpSearch({ value, onChange, onEnter, onCloseAll, onSwitch, inputRef }: SearchProps) {
+  const { t } = useTranslation();
+  useEffect(() => inputRef.current?.focus(), [inputRef]);
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const ul = e.currentTarget.closest("ul");
+    switch (e.key) {
+      case "ArrowDown": if (ul) rows(ul)[0]?.focus(); break;
+      case "Enter": onEnter(); break;
+      case "Escape":
+        if (value) onChange("");
+        else onCloseAll();
+        break;
+      case "Tab": onCloseAll(); break;
+      case "ArrowLeft":
+      case "ArrowRight":
+        if (value) return;
+        onSwitch(e.key === "ArrowLeft" ? -1 : 1);
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+  };
+  return (
+    <input
+      ref={inputRef}
+      type="search"
+      className="menu-search"
+      aria-label={t("menu.help.search")}
+      placeholder={t("menu.help.search")}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={onKeyDown}
+    />
+  );
+}
+
 /** Barra de menus (Arquivo … Ajuda). Alt ou F10 abre; setas navegam; Esc fecha e devolve o foco. */
 export function MenuBar() {
   const { t } = useTranslation();
@@ -143,12 +217,15 @@ export function MenuBar() {
   const restore = useRef<HTMLElement | null>(null);
   /** Alt pressionado sem outra tecla depois. */
   const armed = useRef(false);
+  const [query, setQuery] = useState("");
+  const search = useRef<HTMLInputElement>(null);
 
   const show = (i: number) => {
     if (open === null && !bar.current?.contains(document.activeElement)) {
       restore.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     }
     setOpen((i + MENUS.length) % MENUS.length);
+    setQuery("");
   };
 
   const close = (refocus = true) => {
@@ -192,6 +269,24 @@ export function MenuBar() {
     runCommand(id);
   };
 
+  useWindowEvent(HELP_SEARCH_EVENT, () => {
+    if (open === HELP) search.current?.focus();
+    else show(HELP);
+  });
+
+  // Com o Pesquisar registrado, o item vira o campo e os resultados entram no topo do menu Ajuda.
+  const hits = searchMenus(query, MENUS, t);
+  const helpItems = (items: MenuItem[]): ListItem[] => {
+    const rest = items.filter((it) => !("command" in it && it.command === "help.search"));
+    if (rest[0] && "separator" in rest[0]) rest.shift();
+    if (!query.trim()) return rest;
+    const found: ListItem[] = hits.length
+      ? hits.map((h) => ({ text: h.label, hint: h.path.join(" ▸ "), run: () => runCommand(h.command), disabled: !isEnabled(h.command) }))
+      : [{ text: t("helpSearch.noResults"), run: () => {}, disabled: true }];
+    return [...found, { separator: true }, ...rest];
+  };
+  const searching = open === HELP && isEnabled("help.search");
+
   return (
     <div ref={bar} className="menubar" role="menubar" aria-label={t("menu.bar")}>
       {MENUS.map((m, i) => (
@@ -212,9 +307,24 @@ export function MenuBar() {
             <MenuList
               key={i}
               label={t(m.label)}
-              items={m.items}
+              items={searching && i === HELP ? helpItems(m.items) : m.items}
+              header={
+                searching && i === HELP ? (
+                  <HelpSearch
+                    value={query}
+                    onChange={setQuery}
+                    onEnter={() => {
+                      const h = hits.find((x) => isEnabled(x.command));
+                      if (h) run(h.command);
+                    }}
+                    onCloseAll={close}
+                    onSwitch={(dir) => show(i + dir)}
+                    inputRef={search}
+                  />
+                ) : undefined
+              }
               level={0}
-              autoFocus
+              autoFocus={!(searching && i === HELP)}
               onRun={run}
               onClose={close}
               onCloseAll={close}
