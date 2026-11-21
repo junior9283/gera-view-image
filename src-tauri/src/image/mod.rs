@@ -5,6 +5,7 @@ pub mod decode;
 pub mod encode;
 pub mod heic;
 pub mod metadata;
+pub mod ocr; // Lote 3
 pub mod ops;
 pub mod raster;
 pub mod select;
