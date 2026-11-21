@@ -15,7 +15,9 @@ use crate::{
     error::{AppError, AppResult},
     image::{
         decode::{self, Decoded},
-        ops, thumb,
+        ops,
+        raster::Rgba16Image,
+        thumb,
     },
 };
 use ::image::RgbaImage;
@@ -25,7 +27,7 @@ use std::{
     ops::Deref,
     path::Path,
     sync::{
-        Arc, Condvar, Mutex, MutexGuard, OnceLock, RwLock,
+        Arc, Condvar, Mutex, MutexGuard, OnceLock, RwLock, Weak,
         atomic::{AtomicU32, AtomicUsize, Ordering},
     },
 };
@@ -110,6 +112,9 @@ pub struct Document {
     pub(super) opened_disk: Option<DiskStamp>,
     /// Decodificação da abertura, guardada quando "Reverter para o Último Salvo" troca `source`.
     pub(super) original: Option<Arc<Decoded>>,
+    /// Versão de 16 bits de `source` (PNG/TIFF), lida do disco no primeiro Salvar enquanto o
+    /// arquivo ainda é o de `source`. `None` dentro: o arquivo não tem 16 bits (ou não bate).
+    pub(super) deep: Option<(Weak<Decoded>, Option<Arc<Rgba16Image>>)>,
 }
 
 /// Identidade do arquivo em disco para detectar alteração externa.
@@ -172,6 +177,7 @@ impl Document {
             disk,
             opened_disk: disk,
             original: None,
+            deep: None,
         }
     }
 
