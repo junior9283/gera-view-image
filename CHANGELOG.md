@@ -5,6 +5,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+## [0.3.0] - 2026-11-21
+
 ### Adicionado
 - Gravar HEIC e JPEG 2000 (Salvar e Exportar), com qualidade ajustável e transparência. HEIC leva EXIF e perfil ICC e usa o codificador HEVC kvazaar, carregado só se a `libkvazaar` estiver instalada (como a `libde265` para abrir; os pacotes a recomendam): sem ela, HEIC some do Exportar e o Salvar explica o que instalar. JPEG 2000 usa o `openjp2` (Rust puro), sem perdas por padrão ao salvar, e leva o perfil ICC (o formato não tem lugar padrão para EXIF). A qualidade do JPEG 2000 é uma taxa de compressão: em imagens muito simples (gráficos, cores chapadas) o arquivo com perdas pode sair maior que o sem perdas; nesses casos use "Sem perdas".
 - Abrir JPEG 2000 (`.jp2`).
