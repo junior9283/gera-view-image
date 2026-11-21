@@ -103,7 +103,9 @@
     "layer": "Camada de seleção",
     "instantAlphaHint": "Arraste para ajustar a tolerância. Enter ou Delete torna transparente.",
     "noAlphaNotice": "Este formato não tem transparência: o resultado será salvo como PNG ou exportado.",
-    "pasteUnavailable": "Colar ainda não está disponível."
+    "pasteUnavailable": "Colar ainda não está disponível.",
+    "size": "{{w}} × {{h}} px",
+    "contextMenu": "Menu de contexto da imagem"
   },
   "adjust": {
     "title": "Ajustar Cor",

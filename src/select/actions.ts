@@ -1,5 +1,6 @@
 // Ações de seleção para os menus/atalhos (Task 6). Atuam no documento ativo.
 import * as ipc from "../ipc/commands";
+import { annotationsPng } from "../markup/flatten";
 import type { DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
@@ -41,10 +42,13 @@ export async function cropToSelection() {
   deselect();
 }
 
+/** Copiar: a seleção ou, sem seleção, a imagem inteira, sempre como aparece (com as anotações). */
 export async function copySelection() {
   const doc = activeDoc();
+  if (!doc) return;
   const { selection } = sel();
-  if (doc && selection) await ipc.copyRegion(doc.id, selection);
+  const png = await annotationsPng(doc.id);
+  await (png ? ipc.copyImage(doc.id, selection, png) : ipc.copyRegion(doc.id, selection));
 }
 
 export async function deleteSelection() {
@@ -58,6 +62,3 @@ export async function cutSelection() {
   await copySelection();
   await deleteSelection();
 }
-
-/** Colar cria uma anotação de imagem móvel (Task 8); até lá fica desabilitado. */
-export const canPaste = () => false;

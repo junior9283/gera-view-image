@@ -113,6 +113,11 @@ export const assignProfile = (id: DocId, profile: string) => invoke<DocInfo>("as
 
 // Lote 2: PNG da área de transferência, para colar como camada
 export const clipboardImage = async () => new Uint8Array(await invoke<ArrayBuffer>("clipboard_image"));
+/** PNG do primeiro quadro de um arquivo solto sobre a imagem aberta. */
+export const imageFilePng = async (path: string) => new Uint8Array(await invoke<ArrayBuffer>("image_file_png", { path }));
+/** Copiar com as anotações (`png` no tamanho da imagem) compostas por cima; `mask` nula = imagem inteira. */
+export const copyImage = (id: DocId, mask: Mask | null, png: Uint8Array) =>
+  invoke<void>("copy_image", { id, mask, png: Array.from(png) });
 
 // Lote 3: Texto ao Vivo e fala
 export const recognizeText = (id: DocId, frame: number) => invoke<TextLine[]>("recognize_text", { id, frame });

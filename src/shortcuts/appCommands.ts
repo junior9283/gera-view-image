@@ -84,7 +84,7 @@ const ENTRIES: Entry[] = [
   ["edit.undo", withActive(undo), activeCan(canUndo)],
   ["edit.redo", withActive(redo), activeCan(canRedo)],
   ["edit.cut", sel.cutSelection, hasSelection],
-  ["edit.copy", sel.copySelection, hasSelection],
+  ["edit.copy", sel.copySelection, hasDoc],
   ["edit.delete", sel.deleteSelection, hasSelection],
   ["edit.selectAll", sel.selectAll, hasDoc],
   ["edit.deselect", escape, () => {
