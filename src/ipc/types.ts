@@ -144,3 +144,44 @@ export type CaptureMode = "selection" | "window" | "screen";
 /** Evento do vigia: o arquivo do documento mudou (ou sumiu) fora do app. */
 export const DOC_CHANGED_ON_DISK_EVENT = "doc-changed-on-disk";
 export interface DiskChanged { id: DocId; removed: boolean }
+
+// ---------- Lotes de paridade: espelho dos stubs do Lote 0 em `src-tauri/src/commands/` ----------
+
+/** Lote 1 (`color.rs`). `id`: "srgb", "display-p3", "adobe-rgb" ou caminho de um .icc. */
+export interface ColorProfile { id: string; name: string }
+
+/** Lote 3 (`ocr.rs`): caixas em px da imagem. */
+export interface TextWord { text: string; bbox: Rect }
+export interface TextLine { text: string; bbox: Rect; words: TextWord[] }
+export interface DetectedCode { text: string; bbox: Rect }
+
+/** Lote 5 (`finder.rs`). `savedAt` em ISO 8601. */
+export interface FileVersion { id: string; savedAt: string; size: number }
+
+/** Lote 6 (`share.rs`): `id` = nome do .desktop. */
+export interface AppEntry { id: string; name: string; icon: string | null }
+
+/** Lote 7 (`sidebar.rs`): `null` sem arquivo. */
+export interface FileStat { id: DocId; modifiedMs: number | null; size: number | null }
+
+/** Lote 9 (`describe.rs`): `null`/ausente = manter o do arquivo. */
+export interface MetadataEdits {
+  title?: string | null;
+  description?: string | null;
+  author?: string | null;
+  altText?: string | null;
+}
+
+/** Lote 11 (`print.rs`). */
+export interface PrintOptions {
+  copies: number;
+  /** Escala em %; `null` = usar `fit`. */
+  scalePercent: number | null;
+  fit: "whole" | "fill";
+  autoRotate: boolean;
+  perPage: number;
+  showMarkup: boolean;
+}
+
+/** Lote 12 (`window.rs`). */
+export interface WindowEntry { label: string; title: string }

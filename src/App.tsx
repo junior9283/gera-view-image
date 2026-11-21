@@ -73,6 +73,7 @@ export default function App() {
           <Slot name="below-toolbar" props={{}} />
         </>
       )}
+      <Slot name="above-content" props={{}} />
       <div className="app-body">
         {sidebar === "thumbs" && <Sidebar />}
         {sidebar === "contact" ? <ContactSheet /> : <Viewport />}

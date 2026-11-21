@@ -309,7 +309,19 @@
       "captureScreen": "From Entire Screen",
       "print": "Print…",
       "openWith": "Open With…",
-      "quit": "Quit"
+      "quit": "Quit",
+      "closeAll": "Close All",
+      "closeWindow": "Close Window",
+      "saveAs": "Save As…",
+      "moveToTrash": "Move to Trash",
+      "tags": "Tags…",
+      "lock": "Lock",
+      "browseVersions": "Browse All Versions…",
+      "exportPdf": "Export as PDF…",
+      "share": "Share",
+      "shareEmail": "Email…",
+      "shareDevice": "KDE Connect…",
+      "importScanner": "Import from Scanner…"
     },
     "edit": {
       "title": "Edit",
@@ -322,7 +334,14 @@
       "selectAll": "Select All",
       "deselect": "Deselect All",
       "invertSelection": "Invert Selection",
-      "preferences": "Preferences…"
+      "preferences": "Preferences…",
+      "findMenu": "Find",
+      "find": "Find…",
+      "findNext": "Find Next",
+      "findPrev": "Find Previous",
+      "speech": "Speech",
+      "startSpeaking": "Start Speaking",
+      "stopSpeaking": "Stop Speaking"
     },
     "view": {
       "title": "View",
@@ -336,14 +355,26 @@
       "zoomToSelection": "Zoom to Selection",
       "markupBar": "Show Markup Toolbar",
       "slideshow": "Slideshow",
-      "fullscreen": "Full Screen"
+      "fullscreen": "Full Screen",
+      "sortBy": "Sort By",
+      "sortByName": "Name",
+      "sortByDate": "Date",
+      "sortByKind": "Kind",
+      "sortBySize": "Size",
+      "toolbar": "Hide Toolbar",
+      "customizeToolbar": "Customize Toolbar…",
+      "imageBackground": "Show Image Background",
+      "tabBar": "Show Tab Bar",
+      "allTabs": "Show All Tabs"
     },
     "go": {
       "title": "Go",
       "prev": "Previous",
       "next": "Next",
       "first": "First",
-      "last": "Last"
+      "last": "Last",
+      "back": "Back",
+      "forward": "Forward"
     },
     "tools": {
       "title": "Tools",
@@ -369,18 +400,38 @@
         "loupe": "Loupe",
         "highlight": "Highlight",
         "signature": "Signature"
-      }
+      },
+      "assignProfile": "Assign Profile…",
+      "removeBackground": "Remove Background",
+      "copySubject": "Copy Subject",
+      "magnifier": "Show Magnifier",
+      "showColors": "Show Colors",
+      "showFonts": "Show Fonts",
+      "markupInspector": "Show Markup Inspector",
+      "imageDescription": "Image Description…",
+      "liveTextMenu": "Live Text",
+      "liveText": "Show Live Text",
+      "copyAllText": "Copy All Text",
+      "translateText": "Translate…",
+      "searchText": "Search Text on the Web…",
+      "searchImageWeb": "Search Image on the Web…"
     },
     "window": {
       "title": "Window",
       "minimize": "Minimize",
-      "maximize": "Maximize"
+      "maximize": "Maximize",
+      "prevTab": "Show Previous Tab",
+      "nextTab": "Show Next Tab",
+      "moveTabToNewWindow": "Move Tab to New Window",
+      "mergeAllWindows": "Merge All Windows",
+      "bringAllToFront": "Bring All to Front"
     },
     "help": {
       "title": "Help",
       "shortcuts": "Keyboard Shortcuts",
       "checkUpdates": "Check for Updates…",
-      "about": "About Gera View Image"
+      "about": "About Gera View Image",
+      "search": "Search…"
     }
   },
   "toolbar": {

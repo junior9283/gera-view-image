@@ -309,7 +309,19 @@
       "captureScreen": "Da Tela Inteira",
       "print": "Imprimir…",
       "openWith": "Abrir com…",
-      "quit": "Sair"
+      "quit": "Sair",
+      "closeAll": "Fechar Todas",
+      "closeWindow": "Fechar Janela",
+      "saveAs": "Salvar Como…",
+      "moveToTrash": "Mover para o Lixo",
+      "tags": "Etiquetas…",
+      "lock": "Bloquear",
+      "browseVersions": "Procurar Todas as Versões…",
+      "exportPdf": "Exportar como PDF…",
+      "share": "Compartilhar",
+      "shareEmail": "E-mail…",
+      "shareDevice": "KDE Connect…",
+      "importScanner": "Importar do Scanner…"
     },
     "edit": {
       "title": "Editar",
@@ -322,7 +334,14 @@
       "selectAll": "Selecionar Tudo",
       "deselect": "Desmarcar Tudo",
       "invertSelection": "Inverter Seleção",
-      "preferences": "Preferências…"
+      "preferences": "Preferências…",
+      "findMenu": "Localizar",
+      "find": "Localizar…",
+      "findNext": "Localizar Próxima",
+      "findPrev": "Localizar Anterior",
+      "speech": "Fala",
+      "startSpeaking": "Iniciar Fala",
+      "stopSpeaking": "Parar Fala"
     },
     "view": {
       "title": "Visualizar",
@@ -336,14 +355,26 @@
       "zoomToSelection": "Ampliar Seleção",
       "markupBar": "Mostrar Barra de Marcação",
       "slideshow": "Apresentação",
-      "fullscreen": "Tela Cheia"
+      "fullscreen": "Tela Cheia",
+      "sortBy": "Ordenar Por",
+      "sortByName": "Nome",
+      "sortByDate": "Data",
+      "sortByKind": "Tipo",
+      "sortBySize": "Tamanho",
+      "toolbar": "Ocultar Barra de Ferramentas",
+      "customizeToolbar": "Personalizar Barra de Ferramentas…",
+      "imageBackground": "Mostrar Fundo da Imagem",
+      "tabBar": "Mostrar Barra de Abas",
+      "allTabs": "Mostrar Todas as Abas"
     },
     "go": {
       "title": "Ir",
       "prev": "Anterior",
       "next": "Próximo",
       "first": "Primeiro",
-      "last": "Último"
+      "last": "Último",
+      "back": "Voltar",
+      "forward": "Avançar"
     },
     "tools": {
       "title": "Ferramentas",
@@ -369,18 +400,38 @@
         "loupe": "Lupa",
         "highlight": "Realce",
         "signature": "Assinatura"
-      }
+      },
+      "assignProfile": "Atribuir Perfil…",
+      "removeBackground": "Remover Fundo",
+      "copySubject": "Copiar Objeto",
+      "magnifier": "Mostrar Lupa",
+      "showColors": "Mostrar Cores",
+      "showFonts": "Mostrar Fontes",
+      "markupInspector": "Mostrar Inspetor de Marcação",
+      "imageDescription": "Descrição da Imagem…",
+      "liveTextMenu": "Texto ao Vivo",
+      "liveText": "Mostrar Texto ao Vivo",
+      "copyAllText": "Copiar Todo o Texto",
+      "translateText": "Traduzir…",
+      "searchText": "Pesquisar Texto na Web…",
+      "searchImageWeb": "Pesquisar Imagem na Web…"
     },
     "window": {
       "title": "Janela",
       "minimize": "Minimizar",
-      "maximize": "Maximizar"
+      "maximize": "Maximizar",
+      "prevTab": "Mostrar Aba Anterior",
+      "nextTab": "Mostrar Próxima Aba",
+      "moveTabToNewWindow": "Mover Aba para Nova Janela",
+      "mergeAllWindows": "Juntar Todas as Janelas",
+      "bringAllToFront": "Trazer Tudo para a Frente"
     },
     "help": {
       "title": "Ajuda",
       "shortcuts": "Atalhos de Teclado",
       "checkUpdates": "Verificar Atualizações…",
-      "about": "Sobre o Gera View Image"
+      "about": "Sobre o Gera View Image",
+      "search": "Pesquisar…"
     }
   },
   "toolbar": {

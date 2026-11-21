@@ -20,7 +20,7 @@ describe("matchShortcut", () => {
     expect(matchShortcut(key("Я", { ctrlKey: true, shiftKey: true }, "KeyZ"))).toBe("edit.redo");
     expect(matchShortcut(key("ς", { ctrlKey: true }, "KeyW"))).toBe("file.close");
     expect(matchShortcut(key("ז", { ctrlKey: true }, "KeyZ"))).toBe("edit.undo");
-    expect(matchShortcut(key("כ", { ctrlKey: true }, "KeyF"))).toBeNull();
+    expect(matchShortcut(key("כ", { ctrlKey: true }, "KeyF"))).toBe("edit.find");
     expect(comboOf(key("п", { ctrlKey: true }, "KeyG"))).toBe("Ctrl+G");
   });
 
@@ -88,7 +88,7 @@ describe("matchShortcut", () => {
     expect(matchShortcut(key("f", { ctrlKey: true, metaKey: true }, "KeyF"))).toBe("view.fullscreen");
     expect(matchShortcut(key("F", { ctrlKey: true, shiftKey: true }, "KeyF"))).toBe("view.slideshow");
     expect(matchShortcut(key("Escape", {}, "Escape"))).toBe("edit.deselect");
-    expect(matchShortcut(key("f", { ctrlKey: true }, "KeyF"))).toBeNull();
+    expect(matchShortcut(key("f", { ctrlKey: true }, "KeyF"))).toBe("edit.find"); // Ctrl+F sem Meta não é tela cheia: é Localizar (Lote 3).
   });
 
   it("Ctrl+Alt+1/2/3 usa o código da tecla (layouts em que Alt muda o caractere)", () => {

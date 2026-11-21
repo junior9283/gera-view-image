@@ -1,5 +1,5 @@
 // Registro central de comandos: menus, atalhos e barra de ferramentas executam só por aqui.
-// Um comando sem `registerCommand` aparece desabilitado (itens de tarefas futuras).
+// Um comando sem `registerCommand` aparece desabilitado (itens de tarefas futuras, ver `planned.ts`).
 import { notifyError } from "../chrome/notify";
 
 export const ANNOTATE_KINDS = [
@@ -13,22 +13,32 @@ export const COMMAND_IDS = [
   "file.rename", "file.moveTo", "file.showInFolder", "file.revertLastSaved", "file.revertOriginal", "file.export",
   "file.exportSelected", "file.captureSelection", "file.captureWindow", "file.captureScreen", "file.print",
   "file.openWith", "file.quit",
+  // Arquivo, lotes de paridade (ver `planned.ts`)
+  "file.closeAll", "file.closeWindow", "file.saveAs", "file.moveToTrash", "file.tags", "file.lock",
+  "file.browseVersions", "file.exportPdf", "file.shareEmail", "file.shareDevice", "file.importScanner",
   // Editar
   "edit.undo", "edit.redo", "edit.cut", "edit.copy", "edit.paste", "edit.delete", "edit.selectAll",
   "edit.deselect", "edit.invertSelection", "edit.preferences",
+  "edit.find", "edit.findNext", "edit.findPrev", "edit.startSpeaking", "edit.stopSpeaking",
   // Visualizar
   "view.hideSidebar", "view.thumbnails", "view.contactSheet", "view.actualSize", "view.fit", "view.zoomIn",
   "view.zoomOut", "view.zoomToSelection", "view.markupBar", "view.slideshow", "view.fullscreen",
+  "view.sortByName", "view.sortByDate", "view.sortByKind", "view.sortBySize", "view.toolbar",
+  "view.customizeToolbar", "view.imageBackground", "view.tabBar", "view.allTabs",
   // Ir
-  "go.prev", "go.next", "go.first", "go.last",
+  "go.prev", "go.next", "go.first", "go.last", "go.back", "go.forward",
   // Ferramentas
   "tools.rotateLeft", "tools.rotateRight", "tools.flipH", "tools.flipV", "tools.crop", "tools.adjustColor",
   "tools.resize", "tools.instantAlpha", "tools.inspector",
   ...ANNOTATE_KINDS.map((k) => `tools.annotate.${k}` as const),
+  "tools.assignProfile", "tools.removeBackground", "tools.copySubject", "tools.magnifier", "tools.showColors",
+  "tools.showFonts", "tools.markupInspector", "tools.imageDescription", "tools.liveText", "tools.copyAllText",
+  "tools.translateText", "tools.searchText", "tools.searchImageWeb",
   // Janela
   "window.minimize", "window.maximize",
+  "window.prevTab", "window.nextTab", "window.moveTabToNewWindow", "window.mergeAllWindows", "window.bringAllToFront",
   // Ajuda
-  "help.shortcuts", "help.checkUpdates", "help.about",
+  "help.search", "help.shortcuts", "help.checkUpdates", "help.about",
 ] as const;
 
 export type CommandId = (typeof COMMAND_IDS)[number];

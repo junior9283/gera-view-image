@@ -6,6 +6,7 @@ import { enableNativeDecorations, useApplyNativeDecorations, useCompositingProbe
 import { useWindowTheme } from "./windowTheme";
 import "./chrome.css";
 import { subscribe } from "../lib/events";
+import { Slot, type TitleProps } from "../lib/slots";
 
 interface Props {
   /** Nome do arquivo, mostrado ao centro. */
@@ -73,6 +74,7 @@ export function TitleBar({ title, leading, children, nativeDecorations: override
       {leading && <div className="titlebar-leading">{leading}</div>}
       <div className="titlebar-title" data-tauri-drag-region>
         {nativeDecorations ? null : title}
+        <Slot<TitleProps> name="title-accessory" props={{ title }} />
       </div>
       {children && <div className="titlebar-slot">{children}</div>}
       {buttons("right")}

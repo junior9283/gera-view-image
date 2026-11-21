@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  CaptureMode, ColorAdjust, DocId, DocInfo, DragSource, ExportOptions, Histogram, Mask, Metadata, Op, Rect, RevertTarget,
-  SaveOutcome, ViewBuffer,
+  AppEntry, CaptureMode, ColorAdjust, ColorProfile, DetectedCode, DocId, DocInfo, DragSource, ExportOptions, FileStat,
+  FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, Rect, RevertTarget, SaveOutcome, TextLine,
+  ViewBuffer, WindowEntry,
 } from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
@@ -105,3 +106,58 @@ export const newFromClipboard = (name: string) => invoke<DocInfo>("new_from_clip
 /** `null` = o usuário cancelou a captura. */
 export const captureScreen = (mode: CaptureMode, name: string) =>
   invoke<DocInfo | null>("capture_screen", { mode, name });
+
+// ---------- Lotes de paridade (stubs do Lote 0: rejeitam com `unsupported` até o lote implementar) ----------
+
+// Lote 1: cor
+export const displayProfile = () => invoke<string | null>("display_profile");
+export const listProfiles = () => invoke<ColorProfile[]>("list_profiles");
+export const assignProfile = (id: DocId, profile: string) => invoke<DocInfo>("assign_profile", { id, profile });
+
+// Lote 2: PNG da área de transferência, para colar como camada
+export const clipboardImage = async () => new Uint8Array(await invoke<ArrayBuffer>("clipboard_image"));
+
+// Lote 3: Texto ao Vivo e fala
+export const recognizeText = (id: DocId, frame: number) => invoke<TextLine[]>("recognize_text", { id, frame });
+export const detectCodes = (id: DocId, frame: number) => invoke<DetectedCode[]>("detect_codes", { id, frame });
+export const speak = (text: string) => invoke<void>("speak", { text });
+export const stopSpeaking = () => invoke<void>("stop_speaking");
+
+// Lote 4: sujeito
+export const segmentSubject = (id: DocId) => invoke<Mask>("segment_subject", { id });
+
+// Lote 5: Finder
+export const fileTags = (id: DocId) => invoke<string[]>("file_tags", { id });
+export const setFileTags = (id: DocId, tags: string[]) => invoke<void>("set_file_tags", { id, tags });
+export const setLocked = (id: DocId, locked: boolean) => invoke<DocInfo>("set_locked", { id, locked });
+export const moveToTrash = (id: DocId) => invoke<void>("move_to_trash", { id });
+export const listVersions = (id: DocId) => invoke<FileVersion[]>("list_versions", { id });
+export const restoreVersion = (id: DocId, version: string) => invoke<DocInfo>("restore_version", { id, version });
+export const saveAs = (id: DocId, dest: string, opts: ExportOptions) => invoke<DocInfo>("save_as", { id, dest, opts });
+
+// Lote 6: Compartilhar
+export const shareEmail = (ids: DocId[]) => invoke<void>("share_email", { ids });
+export const shareDevice = (ids: DocId[]) => invoke<void>("share_device", { ids });
+export const openWithApps = (id: DocId) => invoke<AppEntry[]>("open_with_apps", { id });
+export const openWithApp = (id: DocId, app: string) => invoke<void>("open_with_app", { id, app });
+
+// Lote 7: Ordenar Por
+export const fileStats = (ids: DocId[]) => invoke<FileStat[]>("file_stats", { ids });
+
+// Lote 9: metadados editáveis
+export const editMetadata = (id: DocId, edits: MetadataEdits) => invoke<void>("edit_metadata", { id, edits });
+
+// Lote 10: fontes do sistema
+export const systemFonts = () => invoke<string[]>("system_fonts");
+
+// Lote 11: PDF e impressão nativa
+export const exportPdf = (ids: DocId[], dest: string) => invoke<void>("export_pdf", { ids, dest });
+export const printNative = (ids: DocId[], opts: PrintOptions) => invoke<void>("print_native", { ids, opts });
+
+// Lote 12: janelas e scanner
+export const newWindow = (ids: DocId[]) => invoke<string>("new_window", { ids });
+export const listWindows = () => invoke<WindowEntry[]>("list_windows");
+export const focusWindow = (label: string) => invoke<void>("focus_window", { label });
+export const mergeWindows = (into: string) => invoke<void>("merge_windows", { into });
+/** `null` = o usuário cancelou. */
+export const scanImage = (name: string) => invoke<DocInfo | null>("scan_image", { name });
