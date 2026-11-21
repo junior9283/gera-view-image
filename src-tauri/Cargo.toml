@@ -62,6 +62,9 @@ crc32fast = "1"
 md5 = "0.8"
 # JPEG 2000 (abrir e gravar): porta em Rust puro do OpenJPEG (BSD-2), sem libopenjp2.
 openjp2 = { version = "0.7.2", default-features = false, features = ["image", "rayon"] }
+xattr = "1"
+libc = "0.2"
+trash = "5"
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tga", "tiff", "webp"] }

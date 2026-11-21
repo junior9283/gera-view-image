@@ -590,5 +590,44 @@
   },
   "helpSearch": {
     "noResults": "No menu items found"
+  },
+  "finder": {
+    "popover": {
+      "open": "Show name, tags and location",
+      "label": "File info",
+      "name": "Name",
+      "tags": "Tags",
+      "tagsPlaceholder": "Add tag",
+      "removeTag": "Remove {{tag}}",
+      "where": "Where",
+      "move": "Move To…",
+      "reveal": "Show in Folder",
+      "locked": "Locked",
+      "lockedHint": "No write permission: Save goes to Export."
+    },
+    "lock": {
+      "locked": "{{name}} locked",
+      "unlocked": "{{name}} unlocked"
+    },
+    "trash": {
+      "confirmUnsaved": "{{name}} has unsaved changes. Move it to the Trash and discard them?",
+      "ok": "Move to Trash",
+      "cancel": "Cancel",
+      "done": "{{name}} was moved to the Trash"
+    },
+    "saveAs": {
+      "images": "Images",
+      "badFormat": "Use an extension that Save can write: .jpg, .png, .tiff, .webp, .avif or .bmp."
+    },
+    "versions": {
+      "title": "Versions of {{name}}",
+      "list": "Saved versions",
+      "current": "Current",
+      "empty": "No versions saved yet. Each Save keeps the previous version of the file.",
+      "restore": "Restore",
+      "close": "Done",
+      "restored": "Version restored. Save to write it to the file.",
+      "confirmUnsaved": "{{name}} has unsaved changes. Restore the version and discard them?"
+    }
   }
 }

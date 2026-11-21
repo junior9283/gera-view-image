@@ -140,7 +140,7 @@ impl Document {
     }
 
     /// Passa a apontar para `path` (após renomear, mover ou exportar um documento sem caminho).
-    fn relocate(&mut self, path: &Path) {
+    pub(super) fn relocate(&mut self, path: &Path) {
         self.info.path = path.to_string_lossy().into_owned();
         self.info.name = file_name(path);
         self.disk = DiskStamp::of(path);
@@ -284,7 +284,8 @@ impl DocStore {
             Some(d) => encode::encode(d, &opts, &meta)?,
             None => encode::encode(&*px, &opts, &meta)?,
         };
-        encode::write_file_atomic(Path::new(&path), &bytes)?;
+        // Lote 5: guarda a versão atual e mantém as etiquetas (xattr `user.*`).
+        super::finder::overwrite(Path::new(&path), &bytes)?;
         let (_, info) = self.with_doc_mut(id, |d| {
             d.disk = DiskStamp::of(Path::new(&path));
             d.saved_len = if d.generation == generation && d.ops.len() >= n {
@@ -328,7 +329,7 @@ impl DocStore {
             Some(d) => encode::encode(d, opts, &meta)?,
             None => encode::encode(&*px, opts, &meta)?,
         };
-        encode::write_file_atomic(&dest_path, &bytes)?;
+        super::finder::overwrite(&dest_path, &bytes)?;
         let adopt = path.is_empty()
             && opts.resize.is_none()
             && ExportFormat::for_save(opts.format.source_format()).is_some();
@@ -448,7 +449,7 @@ impl DocStore {
         self.with_doc_mut(id, |d| d.relocate(&to)).map(|(_, i)| i)
     }
 
-    fn file_path(&self, id: DocId) -> AppResult<PathBuf> {
+    pub(super) fn file_path(&self, id: DocId) -> AppResult<PathBuf> {
         let path = self.info(id)?.path;
         if path.is_empty() {
             return Err(AppError::NotFound("documento sem arquivo".into()));

@@ -30,8 +30,15 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Visualizar › Ocultar Barra de Ferramentas (Ctrl+Shift+T).
 - Arquivo › Compartilhar ▸ e o botão Compartilhar: E-mail… abre o cliente de e-mail com a imagem anexada (portal `org.freedesktop.portal.Email`; sem portal, `xdg-email --attach`). KDE Connect… aparece quando o `kdeconnect-cli` está instalado: com um aparelho, envia direto; com vários, pergunta qual. O botão também tem Copiar, Exportar e Abrir com ▸, que lista os apps que abrem o tipo do arquivo (padrão do sistema primeiro) e mantém "Outro…" com o seletor do sistema.
 - Ajuda › Pesquisar (Ctrl+?): o menu Ajuda abre com um campo de busca que acha qualquer item de menu pelo nome, sem diferenciar acentos, e mostra onde ele fica. Enter executa o primeiro resultado.
+- Popover do título: o botão ao lado do nome do arquivo mostra e edita o nome, as etiquetas, o local (Mover Para…, Mostrar na pasta) e o Bloqueado.
+- Arquivo › Etiquetas…: as etiquetas ficam no atributo estendido `user.xdg.tags` (UTF-8, separadas por vírgula), o mesmo do Dolphin/Baloo, e aparecem lá. O Nautilus não mostra etiquetas. Sistema de arquivos sem atributos de usuário (FAT, alguns de rede) avisa em vez de gravar.
+- Arquivo › Bloquear: tira a permissão de escrita do arquivo (`chmod a-w`), e o Salvar passa a ir para Exportar; desbloquear devolve a escrita ao dono.
+- Arquivo › Mover para o Lixo (Ctrl+Backspace): usa o portal `org.freedesktop.portal.Trash` e, sem portal, a especificação freedesktop Trash (crate `trash`). Nunca apaga o arquivo: se não houver Lixo, mostra o erro e o arquivo fica onde está. Com alterações não salvas, pergunta antes. Um link simbólico vai para o Lixo como link, e o alvo fica.
+- Arquivo › Salvar Como… (Ctrl+Shift+Alt+S): grava em outro arquivo (JPEG, PNG, TIFF, WebP, AVIF ou BMP, pela extensão), que passa a ser o documento.
+- Reverter Para › Procurar Todas as Versões…: cada Salvar guarda antes a versão anterior do arquivo numa pasta privada do app (`~/.local/share/gera-view-image/versions`, 0700, arquivos 0600), até 500 MB no total (`versionsMaxMb`; as mais antigas saem primeiro). O navegador mostra a versão atual ao lado da escolhida, e Restaurar troca o conteúdo do documento sem gravar: o arquivo só muda no próximo Salvar. As versões são do caminho do arquivo e não acompanham Renomear/Mover.
 
 ### Corrigido
+- Salvar (e Exportar por cima de um arquivo) não apaga mais os atributos estendidos `user.*` do arquivo, como etiquetas, comentário e nota do Dolphin. A gravação atômica cria um arquivo novo, e agora eles são copiados para ele.
 - Imprimir e Duplicar com anotações não salvas não achatam mais o documento aberto: a imagem achatada vai para uma cópia, e as anotações continuam editáveis.
 - Esc fecha Ajustar Tamanho mesmo com o foco fora do diálogo.
 - Diálogos prendem o foco do teclado (Tab e Shift+Tab), começam no primeiro controle e devolvem o foco ao fechar.
