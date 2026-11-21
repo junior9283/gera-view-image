@@ -13,6 +13,17 @@ const TAG_INTEROP_IFD: u16 = 0xA005;
 const IFD0_DESCRIPTIVE: [u16; 7] = [270, 271, 272, 305, 306, 315, 33432];
 /// Teto de um valor de tag (proteção contra contagens absurdas).
 const MAX_VALUE: usize = 64 << 20;
+/// Tetos da leitura inteira de um TIFF (todos os IFDs somados): um arquivo forjado com
+/// milhares de entradas repetidas ou sub-IFDs em ciclo não trava nem estoura a memória.
+const MAX_ENTRIES: usize = 4096;
+const MAX_TOTAL_BYTES: usize = 64 << 20;
+
+/// Orçamento de uma leitura: entradas e bytes copiados restantes e IFDs já visitados.
+struct Budget {
+    entries: usize,
+    bytes: usize,
+    seen: std::collections::HashSet<usize>,
+}
 
 /// Entrada de IFD com o valor já em little-endian.
 #[derive(Debug, Clone, PartialEq)]
@@ -105,11 +116,28 @@ impl<'a> Reader<'a> {
             .find(|&e| self.u16(e) == Some(tag))
     }
 
-    /// Entradas do IFD em `off`, com os sub-IFDs conhecidos lidos até `depth` 2.
-    fn entries(&self, off: usize, depth: u8) -> Option<Vec<Entry>> {
+    /// Entradas do IFD em `off`, com os sub-IFDs conhecidos lidos até a profundidade 2
+    /// (`depth` = 2 não lê sub-IFDs), dentro de um orçamento próprio.
+    fn read_ifd(&self, off: usize, depth: u8) -> Option<Vec<Entry>> {
+        let mut budget = Budget {
+            entries: MAX_ENTRIES,
+            bytes: MAX_TOTAL_BYTES,
+            seen: Default::default(),
+        };
+        self.entries(off, depth, &mut budget)
+    }
+
+    fn entries(&self, off: usize, depth: u8, budget: &mut Budget) -> Option<Vec<Entry>> {
+        if !budget.seen.insert(off) {
+            return None; // ciclo ou IFD repetido
+        }
         let n = self.u16(off)? as usize;
         let mut out = Vec::with_capacity(n.min(256));
         for k in 0..n.min(1024) {
+            if budget.entries == 0 {
+                break;
+            }
+            budget.entries -= 1;
             let e = off + 2 + 12 * k;
             let (Some(tag), Some(ty), Some(count)) = (self.u16(e), self.u16(e + 2), self.u32(e + 4))
             else {
@@ -118,7 +146,10 @@ impl<'a> Reader<'a> {
             let Some((size, swap)) = unit(ty) else {
                 continue;
             };
-            let Some(len) = (count as usize).checked_mul(size).filter(|&l| l <= MAX_VALUE) else {
+            let Some(len) = (count as usize)
+                .checked_mul(size)
+                .filter(|&l| l <= MAX_VALUE && l <= budget.bytes)
+            else {
                 continue;
             };
             let start = if len <= 4 {
@@ -132,6 +163,7 @@ impl<'a> Reader<'a> {
             let Some(raw) = self.b.get(start..start + len) else {
                 continue;
             };
+            budget.bytes -= len;
             let mut data = raw.to_vec();
             if !self.le && !opaque(tag) {
                 swap_units(&mut data, swap);
@@ -141,7 +173,10 @@ impl<'a> Reader<'a> {
                 && count == 1
                 && depth < 2
             {
-                match self.u32(e + 8).and_then(|o| self.entries(o as usize, depth + 1)) {
+                match self
+                    .u32(e + 8)
+                    .and_then(|o| self.entries(o as usize, depth + 1, budget))
+                {
                     Some(s) => Some(s),
                     None => continue, // ponteiro quebrado: a entrada some
                 }
@@ -214,7 +249,7 @@ fn write_ifd(out: &mut Vec<u8>, entries: &[Entry], le: bool) -> Option<u32> {
 
 /// Entradas de um EXIF que valem para a imagem gravada: as descritivas e os sub-IFDs EXIF/GPS.
 fn exif_entries(r: &Reader) -> Vec<Entry> {
-    let Some(all) = r.ifd0().and_then(|o| r.entries(o, 0)) else {
+    let Some(all) = r.ifd0().and_then(|o| r.read_ifd(o, 0)) else {
         return Vec::new();
     };
     all.into_iter()
@@ -241,7 +276,7 @@ pub fn tiff_exif_block(file: &[u8]) -> Option<Vec<u8>> {
 /// Valor cru de uma tag do IFD0 de um TIFF (`TAG_XMP`, `TAG_IPTC`, `TAG_ICC`).
 pub fn tiff_tag(file: &[u8], tag: u16) -> Option<Vec<u8>> {
     let r = Reader::new(file)?;
-    r.entries(r.ifd0()?, 2)?
+    r.read_ifd(r.ifd0()?, 2)?
         .into_iter()
         .find(|e| e.tag == tag)
         .map(|e| e.data)
@@ -262,7 +297,7 @@ pub struct TiffMeta<'a> {
 /// (o antigo vira espaço morto, de algumas centenas de bytes). `None` se o TIFF for ilegível.
 pub fn tiff_with_meta(tiff: &[u8], m: &TiffMeta) -> Option<Vec<u8>> {
     let r = Reader::new(tiff)?;
-    let mut entries = r.entries(r.ifd0()?, 0)?;
+    let mut entries = r.read_ifd(r.ifd0()?, 0)?;
     let mut extra = m
         .exif
         .and_then(Reader::new)
@@ -330,14 +365,20 @@ pub fn exif_set_pixel_dims(tiff: &[u8], (w, h): (u32, u32)) -> Vec<u8> {
             }
             Some(3 | 4) => {
                 // Não cabe em SHORT: a entrada passa a LONG (o valor continua dentro dela).
-                let mut ty = Vec::new();
-                put16(&mut ty, 4, r.le);
-                t[e + 2..e + 4].copy_from_slice(&ty);
                 put32(&mut value, v, r.le);
             }
             _ => continue,
         }
-        t[e + 8..e + 12].copy_from_slice(&value);
+        // Entrada cortada no fim do bloco: a tag fica como está.
+        let Some(entry) = t.get_mut(e..e + 12) else {
+            continue;
+        };
+        if v > u16::MAX as u32 {
+            let mut ty = Vec::new();
+            put16(&mut ty, 4, r.le);
+            entry[2..4].copy_from_slice(&ty);
+        }
+        entry[8..].copy_from_slice(&value);
     }
     t
 }
@@ -475,7 +516,12 @@ fn extended_guid(x: &str) -> Option<(String, std::ops::Range<usize>)> {
     } else {
         v + 33 // GUID + aspas de fechamento
     };
-    Some((guid.to_string(), start..end.min(x.len())))
+    // Malformado (sem aspas depois do GUID, fim fora do texto ou no meio de um caractere).
+    let quoted = element || matches!(x.as_bytes().get(v + 32), Some(b'"' | b'\''));
+    if !quoted || end > x.len() || !x.is_char_boundary(end) {
+        return None;
+    }
+    Some((guid.to_string(), start..end))
 }
 
 /// XMP do JPEG com o estendido reunido: as descrições do pacote estendido entram no padrão,
@@ -484,6 +530,11 @@ pub fn jpeg_merge_xmp(std: String, ext_payloads: &[&[u8]]) -> String {
     let Some((guid, mark)) = extended_guid(&std) else {
         return std;
     };
+    // O tamanho declarado só vale se os dados recebidos puderem preenchê-lo.
+    let available: usize = ext_payloads
+        .iter()
+        .map(|p| p.len().saturating_sub(XMP_EXT_NS.len() + EXT_HEADER))
+        .sum();
     let mut full: Option<Vec<u8>> = None;
     let mut filled = 0usize;
     for p in ext_payloads {
@@ -497,6 +548,9 @@ pub fn jpeg_merge_xmp(std: String, ext_payloads: &[&[u8]]) -> String {
             .min(MAX_VALUE);
         let off = u32::from_be_bytes(rest[36..40].try_into().expect("4 bytes")) as usize;
         let data = &rest[EXT_HEADER..];
+        if total > available {
+            return std;
+        }
         let buf = full.get_or_insert_with(|| vec![0; total]);
         if let Some(dst) = off
             .checked_add(data.len())
@@ -519,15 +573,15 @@ pub fn jpeg_merge_xmp(std: String, ext_payloads: &[&[u8]]) -> String {
     let (Some(body), Some(end)) = (body, std.rfind("</rdf:RDF>")) else {
         return std;
     };
-    if end <= mark.start {
-        return std; // marca fora do RDF: não é um pacote que saibamos juntar
-    }
-    let mut merged = String::with_capacity(std.len() + body.len());
-    merged.push_str(&std[..mark.start]);
-    merged.push_str(&std[mark.end..end]);
-    merged.push_str(body);
-    merged.push_str(&std[end..]);
-    merged
+    // Marca fora do RDF ou fatias inválidas: não é um pacote que saibamos juntar.
+    let (Some(head), Some(mid), Some(tail)) = (
+        std.get(..mark.start),
+        std.get(mark.end..end).filter(|_| mark.end <= end),
+        std.get(end..),
+    ) else {
+        return std;
+    };
+    [head, mid, body, tail].concat()
 }
 
 #[cfg(test)]
@@ -559,7 +613,7 @@ mod tests {
     fn ifd_big_endian_relido_e_regravado_nos_dois_enderecamentos() {
         let t = tiff_be();
         let r = Reader::new(&t).unwrap();
-        let es = r.entries(8, 0).unwrap();
+        let es = r.read_ifd(8, 0).unwrap();
         assert_eq!(es[0].data, b"Canon\0");
         assert_eq!(es[1].data, 6u16.to_le_bytes());
         assert_eq!(es[2].data, [72u32.to_le_bytes(), 1u32.to_le_bytes()].concat());
@@ -569,7 +623,7 @@ mod tests {
             let p = if le { off.to_le_bytes() } else { off.to_be_bytes() };
             out[4..8].copy_from_slice(&p);
             let r2 = Reader::new(&out).unwrap();
-            assert_eq!(r2.entries(r2.ifd0().unwrap(), 0).unwrap(), es);
+            assert_eq!(r2.read_ifd(r2.ifd0().unwrap(), 0).unwrap(), es);
         }
     }
 
@@ -577,10 +631,121 @@ mod tests {
     fn ifd_corrompido_nao_panica() {
         let mut t = tiff_be();
         t[8..10].copy_from_slice(&900u16.to_be_bytes()); // mais entradas que bytes
-        assert!(Reader::new(&t).unwrap().entries(8, 0).is_some());
+        assert!(Reader::new(&t).unwrap().read_ifd(8, 0).is_some());
         assert_eq!(tiff_with_meta(b"II*\0\xff\xff\xff\xff", &TiffMeta::default()), None);
         assert_eq!(tiff_exif_block(b"lixo"), None);
         assert_eq!(exif_set_pixel_dims(b"II*\0\x08", (1, 1)), b"II*\0\x08");
+    }
+
+    /// IFD0 com um ponteiro EXIF para um sub-IFD de uma entrada `0xA002` cortada logo
+    /// depois da contagem (o valor, em `e+8..e+12`, não existe).
+    fn exif_truncado() -> Vec<u8> {
+        let mut t = b"II*\0\x08\0\0\0".to_vec();
+        t.extend(1u16.to_le_bytes());
+        t.extend(TAG_EXIF_IFD.to_le_bytes());
+        t.extend(4u16.to_le_bytes());
+        t.extend(1u32.to_le_bytes());
+        t.extend(26u32.to_le_bytes());
+        t.extend(0u32.to_le_bytes());
+        t.extend(1u16.to_le_bytes());
+        t.extend(0xA002u16.to_le_bytes());
+        t.extend(3u16.to_le_bytes());
+        t.extend(1u32.to_le_bytes());
+        t
+    }
+
+    #[test]
+    fn exif_truncado_no_meio_do_pixel_x_nao_panica() {
+        let t = exif_truncado();
+        assert_eq!(exif_set_pixel_dims(&t, (5, 5)), t);
+        assert_eq!(exif_set_pixel_dims(&t, (70_000, 5)), t, "SHORT que viraria LONG");
+        assert!(tiff_exif_block(&t).is_some() || tiff_exif_block(&t).is_none());
+    }
+
+    /// Payload de extensão com o pacote `<rdf:RDF>X</rdf:RDF>` inteiro.
+    fn ext_payload(guid: &str) -> Vec<u8> {
+        let data = b"<rdf:RDF><rdf:Description/></rdf:RDF>";
+        let mut p = XMP_EXT_NS.to_vec();
+        p.extend(guid.as_bytes());
+        p.extend((data.len() as u32).to_be_bytes());
+        p.extend(0u32.to_be_bytes());
+        p.extend(data);
+        p
+    }
+
+    #[test]
+    fn xmp_estendido_malformado_nao_panica() {
+        let g = "0123456789ABCDEF0123456789ABCDEF";
+        let ext = ext_payload(g);
+        for std in [
+            // `</rdf:RDF>` colado no GUID: a marca terminaria depois do fim do RDF.
+            format!("<x><rdf:RDF><rdf:Description a:HasExtendedXMP=\"{g}</rdf:RDF></x>"),
+            // `v+33` cai no meio de um caractere de 2 bytes.
+            format!("<x><rdf:RDF><rdf:Description a:HasExtendedXMP=\"{g}é\"/></rdf:RDF></x>"),
+            format!("<x><rdf:RDF><rdf:Description a:HasExtendedXMP=\"{g}"),
+        ] {
+            let out = jpeg_merge_xmp(std.clone(), &[&ext]);
+            assert!(out == std || out.contains("<rdf:Description/>"), "{out}");
+        }
+    }
+
+    #[test]
+    fn total_do_estendido_nao_aloca_alem_dos_dados() {
+        let g = "0123456789ABCDEF0123456789ABCDEF";
+        let mut p = XMP_EXT_NS.to_vec();
+        p.extend(g.as_bytes());
+        p.extend(u32::MAX.to_be_bytes());
+        p.extend(0u32.to_be_bytes());
+        p.extend(b"x");
+        let std = format!("<x><rdf:RDF><rdf:Description a:HasExtendedXMP=\"{g}\"/></rdf:RDF></x>");
+        assert_eq!(jpeg_merge_xmp(std.clone(), &[&p]), std);
+    }
+
+    /// IFD LE em `at` com `n` entradas iguais.
+    fn ifd_repetido(n: u16, tag: u16, ty: u16, count: u32, value: u32) -> Vec<u8> {
+        let mut t = n.to_le_bytes().to_vec();
+        for _ in 0..n {
+            t.extend(tag.to_le_bytes());
+            t.extend(ty.to_le_bytes());
+            t.extend(count.to_le_bytes());
+            t.extend(value.to_le_bytes());
+        }
+        t.extend(0u32.to_le_bytes());
+        t
+    }
+
+    #[test]
+    fn sub_ifds_repetidos_e_em_ciclo_ficam_no_orcamento() {
+        // IFD0 e o sub-IFD com 1024 ponteiros EXIF para o mesmo sub-IFD (ciclo incluído).
+        let sub_at = 8 + 2 + 12 * 1024 + 4;
+        let mut t = b"II*\0\x08\0\0\0".to_vec();
+        t.extend(ifd_repetido(1024, TAG_EXIF_IFD, 4, 1, sub_at as u32));
+        t.extend(ifd_repetido(1024, TAG_EXIF_IFD, 4, 1, sub_at as u32));
+        let started = std::time::Instant::now();
+        let r = Reader::new(&t).unwrap();
+        let es = r.read_ifd(8, 0).unwrap();
+        let total = |es: &[Entry]| -> usize {
+            fn walk(es: &[Entry]) -> usize {
+                es.len() + es.iter().filter_map(|e| e.sub.as_deref()).map(walk).sum::<usize>()
+            }
+            walk(es)
+        };
+        assert!(total(&es) <= MAX_ENTRIES, "{} entradas", total(&es));
+        assert!(started.elapsed().as_secs() < 2, "{:?}", started.elapsed());
+        assert!(tiff_with_meta(&t, &TiffMeta::default()).is_some());
+    }
+
+    #[test]
+    fn bytes_copiados_ficam_no_orcamento() {
+        // 1024 entradas UNDEFINED de 1 MB apontando para o mesmo trecho: 1 GB sem teto.
+        let mb = 1 << 20;
+        let mut t = b"II*\0\x08\0\0\0".to_vec();
+        let data_at = 8 + 2 + 12 * 1024 + 4;
+        t.extend(ifd_repetido(1024, 0x9286, 7, mb, data_at as u32));
+        t.resize(data_at + mb as usize, 0);
+        let es = Reader::new(&t).unwrap().read_ifd(8, 0).unwrap();
+        let bytes: usize = es.iter().map(|e| e.data.len()).sum();
+        assert!(bytes <= MAX_TOTAL_BYTES, "{bytes} bytes");
     }
 
     #[test]

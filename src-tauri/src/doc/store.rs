@@ -16,7 +16,6 @@ use crate::{
     image::{
         decode::{self, Decoded},
         ops,
-        raster::Rgba16Image,
         thumb,
     },
 };
@@ -83,7 +82,7 @@ type InflightKey = (DocId, usize, u32, u64);
 type Inflight = Arc<OnceLock<Arc<RgbaImage>>>;
 
 /// Estado do documento que um render reflete: `(ops.len(), generation)`.
-type RenderState = (usize, u64);
+pub(super) type RenderState = (usize, u64);
 /// Base da prévia de ajuste: `(doc, estado, max_w, max_h)`.
 type PreviewKey = (DocId, RenderState, u32, u32);
 
@@ -112,9 +111,18 @@ pub struct Document {
     pub(super) opened_disk: Option<DiskStamp>,
     /// Decodificação da abertura, guardada quando "Reverter para o Último Salvo" troca `source`.
     pub(super) original: Option<Arc<Decoded>>,
-    /// Versão de 16 bits de `source` (PNG/TIFF), lida do disco no primeiro Salvar enquanto o
-    /// arquivo ainda é o de `source`. `None` dentro: o arquivo não tem 16 bits (ou não bate).
-    pub(super) deep: Option<(Weak<Decoded>, Option<Arc<Rgba16Image>>)>,
+    /// O disco tem a versão de 16 bits de `source` com `ops[..n]` (último Salvar em 16 bits):
+    /// o próximo Salvar relê esse arquivo e refaz só o resto, sem guardar RGBA16 na memória.
+    pub(super) deep: Option<DeepBase>,
+}
+
+/// Ver [`Document::deep`].
+#[derive(Debug, Clone)]
+pub(super) struct DeepBase {
+    pub source: Weak<Decoded>,
+    pub generation: u64,
+    pub n: usize,
+    pub disk: Option<DiskStamp>,
 }
 
 /// Identidade do arquivo em disco para detectar alteração externa.
@@ -580,7 +588,7 @@ impl DocStore {
 
     /// Pixels atuais, dimensões lógicas (resolução cheia), a escala lógica→pixels
     /// (< 1 só durante a prévia) e o estado do documento que eles refletem.
-    fn pixels(
+    pub(super) fn pixels(
         &self,
         id: DocId,
         frame: u32,

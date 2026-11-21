@@ -527,6 +527,46 @@ fn xmp_maior_que_64k_no_jpeg_nao_some() {
 }
 
 #[test]
+fn exif_truncado_no_meio_do_pixel_x_nao_derruba_o_salvar() {
+    // IFD0 -> sub-IFD EXIF cuja entrada PixelXDimension termina antes do valor.
+    let mut exif = b"II*\0\x08\0\0\0".to_vec();
+    exif.extend(1u16.to_le_bytes());
+    exif.extend(0x8769u16.to_le_bytes());
+    exif.extend(4u16.to_le_bytes());
+    exif.extend(1u32.to_le_bytes());
+    exif.extend(26u32.to_le_bytes());
+    exif.extend(0u32.to_le_bytes());
+    exif.extend(1u16.to_le_bytes());
+    exif.extend(0xA002u16.to_le_bytes());
+    exif.extend(3u16.to_le_bytes());
+    exif.extend(1u32.to_le_bytes());
+    let jpg = make_fixtures::jpeg_bytes(&gradiente(20, 10), 90);
+    let payload = [b"Exif\0\0".as_slice(), &exif].concat();
+    let mut out = jpg[..2].to_vec();
+    out.extend_from_slice(&[0xFF, 0xE1]);
+    out.extend_from_slice(&((payload.len() + 2) as u16).to_be_bytes());
+    out.extend(payload);
+    out.extend_from_slice(&jpg[2..]);
+    let path = tmp("exif-truncado").join("t.jpg");
+    fs::write(&path, out).unwrap();
+    let store = DocStore::new();
+    let id = abre(&store, &path);
+    store
+        .apply_op(
+            id,
+            Op::Crop(CropSpec::from(Rect {
+                x: 0,
+                y: 0,
+                w: 10,
+                h: 5,
+            })),
+        )
+        .unwrap();
+    salva(&store, id, None);
+    assert_eq!(decode(&path).unwrap().frames[0].dimensions(), (10, 5));
+}
+
+#[test]
 fn pixel_dimension_do_exif_segue_recorte_e_redimensionar() {
     let dir = tmp("pixel-dims");
     let path = jpeg_completo(&dir);

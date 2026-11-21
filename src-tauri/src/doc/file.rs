@@ -4,7 +4,7 @@
 //! carimbo da abertura (ou do último salvar) e falha com `changed_on_disk`.
 use super::{
     model::{DocId, DocInfo, Op},
-    store::{DiskStamp, DocStore, Document, Pixels, not_found},
+    store::{DeepBase, DiskStamp, DocStore, Document, Pixels, RenderState, not_found},
 };
 use crate::{
     error::{AppError, AppResult},
@@ -176,14 +176,15 @@ impl DocStore {
             .collect()
     }
 
-    /// Pixels finais (quadro 0) e os metadados a levar. `file` = bytes atuais do arquivo (IPTC/XMP).
+    /// Pixels finais (quadro 0), os metadados a levar, os bytes atuais do arquivo (IPTC/XMP)
+    /// e o estado `(ops.len(), geração)` que os pixels refletem.
     fn render_for_write(
         &self,
         id: DocId,
         keywords: Option<Vec<String>>,
         read_file: bool,
-    ) -> AppResult<(Pixels, MetaCarry, Option<Vec<u8>>)> {
-        let px = self.render_full(id, 0)?;
+    ) -> AppResult<(Pixels, MetaCarry, Option<Vec<u8>>, RenderState)> {
+        let (px, _, _, state) = self.pixels(id, 0, false)?;
         let (path, source, dpi) =
             self.with_doc(id, |d| (d.info.path.clone(), d.source.clone(), d.dpi()))?;
         let file = (read_file && !path.is_empty())
@@ -201,44 +202,49 @@ impl DocStore {
             iptc_keywords: keywords,
             dpi,
         };
-        Ok((px, meta, file))
+        Ok((px, meta, file, state))
     }
 
     /// Pixels finais em 16 bits, se o documento veio de um PNG/TIFF de 16 bits: as operações
-    /// são refeitas sobre a versão de 16 bits da origem. `file` = bytes atuais do arquivo, que
-    /// só servem enquanto ainda forem os da origem (antes do primeiro Salvar).
-    fn render_deep(&self, id: DocId, file: Option<&[u8]>, px: &RgbaImage) -> Option<Rgba16Image> {
-        let (source, ops, cached) = self
+    /// `ops[..n]` (o estado `state` dos pixels de 8 bits `px`) são refeitas em 16 bits sobre o
+    /// arquivo atual `file`. Ele vale como base se ainda for a origem (confere com os pixels de
+    /// 8 bits) ou se for o último Salvar em 16 bits (`Document::deep`): aí só o resto é refeito.
+    fn render_deep(
+        &self,
+        id: DocId,
+        file: Option<&[u8]>,
+        px: &RgbaImage,
+        (n, generation): RenderState,
+    ) -> Option<Rgba16Image> {
+        let (source, ops, saved) = self
             .with_doc(id, |d| {
-                let cached = d
+                let saved = d
                     .deep
                     .as_ref()
-                    .filter(|(w, _)| std::ptr::eq(w.as_ptr(), Arc::as_ptr(&d.source)))
-                    .map(|(_, img)| img.clone());
-                (d.source.clone(), d.ops.clone(), cached)
+                    .filter(|b| {
+                        std::ptr::eq(b.source.as_ptr(), Arc::as_ptr(&d.source))
+                            && b.generation == generation
+                            && b.n <= n
+                            && b.disk.is_some()
+                            && b.disk == d.disk
+                    })
+                    .map(|b| b.n);
+                let ops = (d.generation == generation)
+                    .then(|| d.ops.get(..n).map(<[Op]>::to_vec))
+                    .flatten();
+                (d.source.clone(), ops, saved)
             })
             .ok()?;
-        let base = match cached {
-            Some(img) => img,
-            None => {
-                let img = file
-                    .and_then(|b| raster::decode16(b, source.format))
-                    .filter(|d| source.frames.first().is_some_and(|f| raster::matches8(d, f)))
-                    .map(Arc::new);
-                if let Some(d) = self.lock().get_mut(&id)
-                    && Arc::ptr_eq(&d.source, &source)
-                {
-                    d.deep = Some((Arc::downgrade(&source), img.clone()));
-                }
-                img
-            }
-        }?;
-        let out = ops
+        let ops = ops?;
+        let base = raster::decode16(file?, source.format)?;
+        let start = match saved {
+            Some(k) => k,
+            None if source.frames.first().is_some_and(|f| raster::matches8(&base, f)) => 0,
+            None => return None,
+        };
+        let out = ops[start..]
             .iter()
-            .fold(None::<Rgba16Image>, |img, op| {
-                Some(raster::apply16(img.as_ref().unwrap_or(&*base), op))
-            })
-            .unwrap_or_else(|| (*base).clone());
+            .fold(base, |img, op| raster::apply16(&img, op));
         (out.dimensions() == px.dimensions()).then_some(out)
     }
 
@@ -246,25 +252,19 @@ impl DocStore {
     /// `keywords`: palavras-chave editadas no inspetor (substituem as do arquivo).
     pub fn save(&self, id: DocId, keywords: Option<Vec<String>>) -> AppResult<SaveOutcome> {
         self.wait_ready(id)?;
-        let (path, format, writable, n, generation) = self.with_doc(id, |d| {
-            (
-                d.info.path.clone(),
-                d.info.format,
-                d.info.writable,
-                d.ops.len(),
-                d.generation,
-            )
-        })?;
+        let (path, format, writable) =
+            self.with_doc(id, |d| (d.info.path.clone(), d.info.format, d.info.writable))?;
         let Some(fmt) = ExportFormat::for_save(format).filter(|_| writable) else {
             return Ok(SaveOutcome::NeedsExport);
         };
         if let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, file) = self.render_for_write(id, keywords, true)?;
+        let (px, meta, file, state) = self.render_for_write(id, keywords, true)?;
+        let (n, generation) = state;
         // PNG/TIFF de 16 bits continuam com 16 bits.
         let deep = matches!(fmt, ExportFormat::Png | ExportFormat::Tiff)
-            .then(|| self.render_deep(id, file.as_deref(), &px))
+            .then(|| self.render_deep(id, file.as_deref(), &px, state))
             .flatten();
         let quality = match fmt {
             ExportFormat::Jpeg => file.as_deref().and_then(encode::jpeg_quality),
@@ -292,6 +292,12 @@ impl DocStore {
             } else {
                 usize::MAX
             };
+            d.deep = deep.is_some().then(|| DeepBase {
+                source: Arc::downgrade(&d.source),
+                generation,
+                n,
+                disk: d.disk,
+            });
         })?;
         Ok(SaveOutcome::Saved(info))
     }
@@ -312,11 +318,11 @@ impl DocStore {
         if same_file && let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, file) = self.render_for_write(id, keywords, true)?;
+        let (px, meta, file, state) = self.render_for_write(id, keywords, true)?;
         // Exportar em 16 bits de uma origem de 16 bits usa os 16 bits de verdade.
         let deep = opts
             .depth16
-            .then(|| self.render_deep(id, file.as_deref(), &px))
+            .then(|| self.render_deep(id, file.as_deref(), &px, state))
             .flatten();
         let bytes = match &deep {
             Some(d) => encode::encode(d, opts, &meta)?,
@@ -347,7 +353,7 @@ impl DocStore {
 
     /// Tamanho estimado do arquivo com `opts` (codifica de verdade; imagens grandes por amostra).
     pub fn estimate_size(&self, id: DocId, opts: &ExportOptions) -> AppResult<u64> {
-        let (px, meta, _) = self.render_for_write(id, None, false)?;
+        let (px, meta, ..) = self.render_for_write(id, None, false)?;
         let (w, h) = opts.resize.unwrap_or(px.dimensions());
         let area = w as u64 * h as u64;
         if area <= ESTIMATE_MAX_PIXELS {
