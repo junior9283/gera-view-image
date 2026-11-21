@@ -542,5 +542,14 @@
       "print": "Imprimir…",
       "close": "Fechar"
     }
+  },
+  "subject": {
+    "none": "Nenhum objeto encontrado na imagem",
+    "busy": "Procurando o objeto…",
+    "downloading": "Baixando o modelo de recorte e procurando o objeto…",
+    "cancel": "Cancelar",
+    "askTitle": "Baixar o modelo de recorte?",
+    "askBody": "Remover Fundo e Copiar Objeto usam um modelo de IA (U²-Netp, licença Apache-2.0) que roda neste computador. Ele tem 4,4 MB e é baixado uma única vez do GitHub. Nenhuma imagem sai do computador.",
+    "download": "Baixar"
   }
 }

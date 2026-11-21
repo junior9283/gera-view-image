@@ -542,5 +542,14 @@
       "print": "Print…",
       "close": "Close"
     }
+  },
+  "subject": {
+    "none": "No subject found in the image",
+    "busy": "Looking for the subject…",
+    "downloading": "Downloading the cutout model and looking for the subject…",
+    "cancel": "Cancel",
+    "askTitle": "Download the cutout model?",
+    "askBody": "Remove Background and Copy Subject use an AI model (U²-Netp, Apache-2.0 license) that runs on this computer. It is 4.4 MB and is downloaded once from GitHub. No image leaves your computer.",
+    "download": "Download"
   }
 }
