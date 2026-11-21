@@ -58,3 +58,12 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
   temporários de `<cache>/drag/<pid>` ficam (a próxima abertura os apaga). Roteiro: uma janela Python/GTK3 com
   `drag_dest_add_uri_targets` que imprime as URIs, o app com duas imagens, `xdotool mousedown 1` na miniatura,
   `mousemove` em passos até a janela alvo e `mouseup 1`. O jsdom não cobre isso.
+
+## Remover Fundo (segmentação)
+
+- **O CI não baixa o U²-Netp.** Os testes de `image::segment` montam um ONNX mínimo (um `ReduceMean`, via
+  `prost`) com a mesma entrada `[1, 3, 320, 320]`, e o download é testado contra um servidor HTTP local em
+  `127.0.0.1`. O modelo real só roda no teste ignorado: baixe `u2netp.onnx` (URL e SHA-256 em
+  `image/segment.rs`) e rode `GVI_U2NETP=/caminho/u2netp.onnx cargo test u2netp_real -- --ignored`.
+- **O cancelamento é global** (`segment::cancel_all`): testes que cancelam usam `Job::on(&contador_próprio)`,
+  senão derrubam o trabalho de outro teste rodando em paralelo.
