@@ -441,7 +441,28 @@
     "share": "Share",
     "markup": "Show markup toolbar",
     "rotate": "Rotate left (with Alt: right)",
-    "inspector": "Show inspector"
+    "inspector": "Show inspector",
+    "items": {
+      "sidebar": "Sidebar",
+      "zoom": "Zoom",
+      "share": "Share",
+      "markup": "Markup",
+      "rotate": "Rotate",
+      "inspector": "Inspector",
+      "crop": "Crop",
+      "adjustColor": "Adjust Color",
+      "resize": "Adjust Size",
+      "instantAlpha": "Instant Alpha",
+      "flipH": "Flip Horizontal",
+      "flipV": "Flip Vertical",
+      "actualSize": "Actual Size",
+      "fit": "Zoom to Fit",
+      "slideshow": "Slideshow",
+      "export": "Export",
+      "print": "Print"
+    },
+    "openWith": "Open With",
+    "openWithOther": "Other…"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
@@ -542,5 +563,28 @@
       "print": "Print…",
       "close": "Close"
     }
+  },
+  "customize": {
+    "title": "Customize Toolbar",
+    "bar": "Toolbar",
+    "barHint": "Drag to move, or drag out to remove. Keyboard: Delete removes, Ctrl+←/→ moves.",
+    "palette": "Available items",
+    "paletteHint": "Drag your favorite items into the toolbar…",
+    "defaultHint": "…or drag the default set into the toolbar.",
+    "restore": "Restore the default set",
+    "show": "Show:",
+    "modeIcon": "Icon Only",
+    "modeIconText": "Icon and Text",
+    "modeText": "Text Only",
+    "done": "Done"
+  },
+  "share": {
+    "sent": "Sent to {{name}}.",
+    "noDevice": "No KDE Connect device available.",
+    "pickDevice": "Send to which device?",
+    "cancel": "Cancel"
+  },
+  "helpSearch": {
+    "noResults": "No menu items found"
   }
 }
