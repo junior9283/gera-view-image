@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useSyncExternalStore } from "react";
+import { useId, useRef, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
+import { useModal } from "../lib/modal";
 import { answerUnsaved, currentUnsaved, subscribeUnsaved } from "./unsaved";
 import "./file.css";
 
@@ -8,18 +9,17 @@ export function UnsavedDialog() {
   const { t } = useTranslation();
   const req = useSyncExternalStore(subscribeUnsaved, currentUnsaved);
   const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
   const saveBtn = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (req) saveBtn.current?.focus();
-  }, [req]);
+  // O botão padrão (Salvar) recebe o foco, como no Pré-Visualização.
+  useModal(dialog, { active: !!req, initialFocus: saveBtn, onClose: () => answerUnsaved("cancel") });
   if (!req) return null;
   const names = req.docs.map((d) => d.name);
   return (
     <div className="file-backdrop" role="presentation">
       <div
-        className="file-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId}
+        ref={dialog} className="file-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId}
         data-testid="unsaved-dialog"
-        onKeyDown={(e) => e.key === "Escape" && answerUnsaved("cancel")}
       >
         <h3 id={titleId}>
           {names.length === 1 ? t("file.unsaved.titleOne", { name: names[0] }) : t("file.unsaved.titleMany", { count: names.length })}
