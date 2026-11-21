@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import * as ipc from "../ipc/commands";
 import type { Mask, Rect, SourceFormat } from "../ipc/types";
@@ -55,6 +55,23 @@ interface AlphaDrag {
 
 const isBox = (m: Mask | null): m is Extract<Mask, { type: "rect" | "ellipse" }> =>
   m?.type === "rect" || m?.type === "ellipse";
+
+/** Etiqueta L×A ao lado do canto inferior direito da seleção, sem sair da área visível. */
+function sizeLabelStyle(r: Rect, view: ViewTransform, area: { w: number; h: number }): CSSProperties {
+  const [x, y] = toScreen(view, r.x + r.w, r.y + r.h);
+  return {
+    position: "absolute",
+    left: Math.max(0, Math.min(x + 8, area.w - 96)),
+    top: Math.max(0, Math.min(y + 8, area.h - 24)),
+    padding: "2px 6px",
+    borderRadius: 4,
+    background: "rgba(0,0,0,0.75)",
+    color: "#fff",
+    font: "11px/1.4 Inter, system-ui, sans-serif",
+    whiteSpace: "nowrap",
+    pointerEvents: "none",
+  };
+}
 
 /** Camada de seleção: formigas marchando, alças, laço, laço magnético e Alfa Instantâneo.
  *  Autocontida: sobreponha à área da imagem do Viewport (pai com `position: relative`). */
@@ -360,6 +377,11 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       />
+      {isBox(draft) && (
+        <div data-testid="selection-size" className="select-size" style={sizeLabelStyle(draft.data, view, size)}>
+          {t("select.size", { w: draft.data.w, h: draft.data.h })}
+        </div>
+      )}
       {alpha && (
         <div role="status" className="select-notice" style={{ position: "absolute", left: 12, bottom: 12, padding: "6px 10px", borderRadius: 6, background: "rgba(0,0,0,0.75)", color: "#fff", fontSize: 12 }}>
           {noAlpha ? t("select.noAlphaNotice") : t("select.instantAlphaHint")}
