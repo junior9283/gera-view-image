@@ -252,6 +252,12 @@ fn decode_format(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
             _ => None,
         };
     }
+    match format {
+        // O EXIF do TIFF está no próprio IFD0 (e nos sub-IFDs EXIF/GPS).
+        Tiff if d.exif.is_none() => d.exif = super::container::tiff_exif_block(bytes),
+        Bmp if d.icc.is_none() => d.icc = super::container::bmp_icc(bytes),
+        _ => {}
+    }
     Ok(d)
 }
 

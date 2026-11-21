@@ -1789,6 +1789,7 @@ dependencies = [
  "kamadak-exif",
  "libheif-rs",
  "libheif-sys",
+ "md5",
  "notify",
  "psd",
  "rawler",
