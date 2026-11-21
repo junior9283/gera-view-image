@@ -5,7 +5,19 @@ import { useSyncExternalStore, type ComponentType } from "react";
  * nomeado sem editar o arquivo que o hospeda (ex.: a Marcação registra a sua
  * camada no Viewport e a sua barra abaixo da barra de ferramentas).
  */
-export type SlotName = "viewport-overlay" | "below-toolbar";
+export type SlotName =
+  | "viewport-overlay"
+  | "below-toolbar"
+  /** Ao lado do nome do arquivo na barra de título (Lote 5: popover do título). Props: `TitleProps`. */
+  | "title-accessory"
+  /** Entre a barra de título e o corpo da janela (Lote 12: barra de abas). Sem props. */
+  | "above-content";
+
+/** Props entregues aos componentes do slot `title-accessory`. */
+export interface TitleProps {
+  /** Nome mostrado no título (o do documento ativo, ou o do app). */
+  title: string;
+}
 
 /** Props entregues aos componentes do slot `viewport-overlay`. */
 export interface OverlayProps {

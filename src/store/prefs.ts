@@ -14,9 +14,29 @@ export interface Prefs {
   language: "system" | "pt-BR" | "en";
   /** Arquivos recentes, o mais novo primeiro (máx. 20). */
   recent: string[];
+  // Campos dos lotes de paridade (criados pelo Lote 0; cada lote só lê e grava o seu).
+  /** Lote 1: converte o perfil ICC da imagem para o do monitor na exibição. */
+  colorManagement: boolean;
+  /** Lote 3: reconhece texto (Texto ao Vivo) e mostra o ícone no canto. */
+  liveText: boolean;
+  /** Lote 5: espaço máximo das versões guardadas a cada Salvar, em MB. */
+  versionsMaxMb: number;
+  /** Lote 6: barra de ferramentas oculta, itens na ordem (`null` = padrão) e modo de exibição. */
+  toolbarHidden: boolean;
+  toolbarItems: string[] | null;
+  toolbarMode: "icon" | "iconText" | "text";
+  /** Lote 7: ordem da barra lateral ("manual" = a do arraste). */
+  sortBy: "manual" | "name" | "date" | "kind" | "size";
+  /** Lote 8: xadrez/fundo atrás de imagens com transparência. */
+  showImageBackground: boolean;
+  /** Lote 10: cores recentes do painel Cores (#rrggbb ou #rrggbbaa), a mais nova primeiro. */
+  recentColors: string[];
+  /** Lote 12: barra de abas visível. */
+  tabBar: boolean;
 }
 
 export const MAX_RECENT = 20;
+export const MAX_RECENT_COLORS = 16;
 const FILE = "prefs.json";
 
 export const DEFAULT_PREFS: Prefs = {
@@ -31,11 +51,22 @@ export const DEFAULT_PREFS: Prefs = {
   nativeDecorations: false,
   language: "system",
   recent: [],
+  colorManagement: true,
+  liveText: true,
+  versionsMaxMb: 500,
+  toolbarHidden: false,
+  toolbarItems: null,
+  toolbarMode: "icon",
+  sortBy: "manual",
+  showImageBackground: true,
+  recentColors: [],
+  tabBar: false,
 };
 
 const oneOf = <T extends string>(...vals: T[]) => (v: unknown): v is T => vals.includes(v as T);
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";
 const isStrOrNull = (v: unknown): v is string | null => v === null || typeof v === "string";
+const isStrList = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string");
 
 /** Validador por chave: valor inválido é descartado e o padrão permanece. */
 const VALID: { [K in keyof Prefs]: (v: unknown) => v is Prefs[K] } = {
@@ -49,7 +80,18 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => v is Prefs[K] } = {
   skippedVersion: isStrOrNull,
   nativeDecorations: isBool,
   language: oneOf("system", "pt-BR", "en"),
-  recent: (v): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string"),
+  recent: isStrList,
+  colorManagement: isBool,
+  liveText: isBool,
+  versionsMaxMb: (v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 100_000,
+  toolbarHidden: isBool,
+  toolbarItems: (v): v is string[] | null => v === null || isStrList(v),
+  toolbarMode: oneOf("icon", "iconText", "text"),
+  sortBy: oneOf("manual", "name", "date", "kind", "size"),
+  showImageBackground: isBool,
+  recentColors: (v): v is string[] =>
+    Array.isArray(v) && v.length <= MAX_RECENT_COLORS && v.every((s) => typeof s === "string" && /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)),
+  tabBar: isBool,
 };
 
 const KEYS = Object.keys(DEFAULT_PREFS) as (keyof Prefs)[];

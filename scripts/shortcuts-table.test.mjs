@@ -30,6 +30,16 @@ test("monta linhas só dos comandos com atalho, com aliases e símbolos", () => 
   assert.match(t, /\| Ferramentas \| Anotar ▸ Seta \| `Ctrl\+Shift\+A` \|/);
 });
 
+test("atalho com crase vira código com crase dupla", () => {
+  const t = buildTable('export const KEYMAP: Record<CommandId, string> = {\n  "go.next": "`",\n};\n\nexport const ALIASES = {\n};\n', labels);
+  assert.match(t, /\| Ir \| Próximo \| `` ` `` \|/);
+});
+
+test("barra vertical no atalho é escapada (não vira coluna)", () => {
+  const t = buildTable('export const KEYMAP: Record<CommandId, string> = {\n  "go.next": "Ctrl+|",\n};\n\nexport const ALIASES = {\n};\n', labels);
+  assert.match(t, /\| Ir \| Próximo \| `Ctrl\+\\\|` \|/);
+});
+
 test("substitui só o trecho entre os marcadores", () => {
   const readme = `# x\n${BEGIN}\nvelho\n${END}\nfim\n`;
   assert.equal(updatedReadme(readme, "novo"), `# x\n${BEGIN}\nnovo\n${END}\nfim\n`);

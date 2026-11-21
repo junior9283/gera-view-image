@@ -1,4 +1,4 @@
-// Liga o menu Arquivo (e Colar) ao registro de comandos, a faixa de alteração externa ao slot
+// Liga o menu Arquivo ao registro de comandos, a faixa de alteração externa ao slot
 // `below-toolbar`, o fechar da janela ao diálogo de não salvo e os abertos aos Recentes.
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -27,7 +27,6 @@ type Entry = [CommandId, () => unknown, (() => boolean)?];
 
 const ENTRIES: Entry[] = [
   ["file.newFromClipboard", file.newFromClipboard],
-  ["edit.paste", file.newFromClipboard],
   ["file.openRecent", () => file.openFileDialog({ kind: "recent" }), () => getPrefs().recent.length > 0],
   ["file.save", () => {
     const d = file.current();

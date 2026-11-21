@@ -24,7 +24,12 @@ function parseBlock(src, name) {
 }
 
 const SYMBOLS = { ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓", Escape: "Esc", Delete: "Del" };
-const fmt = (s) => "`" + s.replace(/[^+]+$/, (k) => SYMBOLS[k] ?? k) + "`";
+/** Código em Markdown; com crase no atalho (Mostrar Lupa), usa crase dupla e espaços. A barra
+ *  vertical é escapada para não abrir outra coluna da tabela. */
+const fmt = (s) => {
+  const k = s.replace(/[^+]+$/, (k) => SYMBOLS[k] ?? k).replace(/\|/g, "\\|");
+  return k.includes("`") ? "`` " + k + " ``" : "`" + k + "`";
+};
 
 export function buildTable(keymapSrc, labels) {
   const keymap = parseBlock(keymapSrc, "KEYMAP");

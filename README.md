@@ -82,8 +82,9 @@ com a opção de recarregar.
 ## Atalhos de teclado
 
 Os atalhos seguem os do Pré-Visualização com Cmd trocado por Ctrl. Diferenças: **Mostrar Barra de Marcação
-é Ctrl+Shift+M** (no macOS é Cmd+Shift+A, mas Ctrl+Shift+A conflita com convenções do Linux) e **Tela Cheia
-é F11**. **Alt** (ou F10) abre a barra de menus. A tabela abaixo é gerada de `src/shortcuts/keymap.ts`.
+é Ctrl+Shift+M** (no macOS é Cmd+Shift+A, mas Ctrl+Shift+A conflita com convenções do Linux), **Ocultar
+Barra de Ferramentas é Ctrl+Shift+T** (Ctrl+Alt+T abre o terminal no GNOME e no KDE) e **Tela Cheia é F11**.
+Itens de funções ainda em desenvolvimento aparecem desabilitados nos menus, e o atalho deles não faz nada. **Alt** (ou F10) abre a barra de menus. A tabela abaixo é gerada de `src/shortcuts/keymap.ts`.
 
 <!-- atalhos:inicio (gerado por scripts/shortcuts-table.mjs) -->
 | Menu | Comando | Atalho |
@@ -94,6 +95,11 @@ Os atalhos seguem os do Pré-Visualização com Cmd trocado por Ctrl. Diferença
 | Arquivo | Salvar | `Ctrl+S` |
 | Arquivo | Duplicar | `Ctrl+Shift+S` |
 | Arquivo | Imprimir | `Ctrl+P` |
+| Arquivo | Sair | `Ctrl+Q` |
+| Arquivo | Fechar Todas | `Ctrl+Alt+W` |
+| Arquivo | Fechar Janela | `Ctrl+Shift+W` |
+| Arquivo | Salvar Como | `Ctrl+Shift+Alt+S` |
+| Arquivo | Mover para o Lixo | `Ctrl+Backspace` |
 | Editar | Desfazer | `Ctrl+Z` |
 | Editar | Refazer | `Ctrl+Shift+Z` |
 | Editar | Recortar | `Ctrl+X` |
@@ -104,6 +110,9 @@ Os atalhos seguem os do Pré-Visualização com Cmd trocado por Ctrl. Diferença
 | Editar | Desmarcar Tudo | `Esc` |
 | Editar | Inverter Seleção | `Ctrl+Shift+I` |
 | Editar | Preferências | `Ctrl+,` |
+| Editar | Localizar | `Ctrl+F` |
+| Editar | Localizar Próxima | `Ctrl+G` |
+| Editar | Localizar Anterior | `Ctrl+Shift+G` |
 | Visualizar | Ocultar Barra Lateral | `Ctrl+Alt+1` |
 | Visualizar | Miniaturas | `Ctrl+Alt+2` |
 | Visualizar | Folha de Contatos | `Ctrl+Alt+3` |
@@ -115,16 +124,27 @@ Os atalhos seguem os do Pré-Visualização com Cmd trocado por Ctrl. Diferença
 | Visualizar | Mostrar Barra de Marcação | `Ctrl+Shift+M` |
 | Visualizar | Apresentação | `Ctrl+Shift+F` |
 | Visualizar | Tela Cheia | `F11` ou `Ctrl+Meta+F` |
-| Ir | Anterior | `←` ou `PageUp` |
-| Ir | Próximo | `→` ou `PageDown` |
+| Visualizar | Ocultar Barra de Ferramentas | `Ctrl+Shift+T` |
+| Visualizar | Mostrar Todas as Abas | `Ctrl+\|` |
+| Ir | Anterior | `←` ou `PageUp` ou `↑` |
+| Ir | Próximo | `→` ou `PageDown` ou `↓` |
 | Ir | Primeiro | `Home` |
 | Ir | Último | `End` |
+| Ir | Voltar | `Ctrl+[` |
+| Ir | Avançar | `Ctrl+]` |
 | Ferramentas | Girar à Esquerda | `Ctrl+L` |
 | Ferramentas | Girar à Direita | `Ctrl+R` |
 | Ferramentas | Recortar | `Ctrl+K` |
 | Ferramentas | Ajustar Cor | `Ctrl+Alt+C` |
 | Ferramentas | Mostrar Inspetor | `Ctrl+I` |
+| Ferramentas | Remover Fundo | `Ctrl+Shift+K` |
+| Ferramentas | Mostrar Lupa | `` ` `` |
+| Ferramentas | Mostrar Cores | `Ctrl+Shift+C` |
+| Ferramentas | Mostrar Fontes | `Ctrl+T` |
 | Janela | Minimizar | `Ctrl+M` |
+| Janela | Mostrar Aba Anterior | `Ctrl+Shift+Tab` |
+| Janela | Mostrar Próxima Aba | `Ctrl+Tab` |
+| Ajuda | Pesquisar | `Ctrl+?` |
 <!-- atalhos:fim -->
 
 ## Formatos
