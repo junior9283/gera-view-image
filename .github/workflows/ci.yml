@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # ci/**: branches de depuração do próprio CI (ex.: ci/e2e-fix).
+    branches: [main, "ci/**"]
   pull_request:
 
 permissions:
