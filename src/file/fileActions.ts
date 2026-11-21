@@ -88,7 +88,7 @@ const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "tiff", "png", "we
  * Depois de gravar no próprio arquivo: palavras-chave pendentes saem da fila só se o formato as
  * grava; senão continuam pendentes e o usuário é avisado (`format` nulo = metadados removidos).
  */
-function settleKeywords(id: DocId, format: string | null): void {
+export function settleKeywords(id: DocId, format: string | null): void {
   if (!getPendingKeywords(id)) return;
   if (format && KEYWORD_FORMATS.has(format)) clearKeywords(id);
   else notify(t("file.keywordsNotSaved"));

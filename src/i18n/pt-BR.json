@@ -542,5 +542,43 @@
       "print": "Imprimir…",
       "close": "Fechar"
     }
+  },
+  "finder": {
+    "popover": {
+      "open": "Mostrar nome, etiquetas e local",
+      "label": "Informações do arquivo",
+      "name": "Nome",
+      "tags": "Etiquetas",
+      "tagsPlaceholder": "Adicionar etiqueta",
+      "removeTag": "Remover {{tag}}",
+      "where": "Local",
+      "move": "Mover Para…",
+      "reveal": "Mostrar na pasta",
+      "locked": "Bloqueado",
+      "lockedHint": "Sem permissão de escrita: Salvar vai para Exportar."
+    },
+    "lock": {
+      "locked": "{{name}} bloqueado",
+      "unlocked": "{{name}} desbloqueado"
+    },
+    "trash": {
+      "confirmUnsaved": "{{name}} tem alterações não salvas. Mover para o Lixo e descartá-las?",
+      "ok": "Mover para o Lixo",
+      "cancel": "Cancelar",
+      "done": "{{name}} foi para o Lixo"
+    },
+    "saveAs": {
+      "images": "Imagens",
+      "badFormat": "Use uma extensão que o Salvar grava: .jpg, .png, .tiff, .webp, .avif ou .bmp."
+    },
+    "versions": {
+      "title": "Versões de {{name}}",
+      "list": "Versões guardadas",
+      "current": "Atual",
+      "empty": "Nenhuma versão guardada ainda. Cada Salvar guarda a versão anterior do arquivo.",
+      "restore": "Restaurar",
+      "close": "Concluído",
+      "restored": "Versão restaurada. Salve para gravá-la no arquivo."
+    }
   }
 }

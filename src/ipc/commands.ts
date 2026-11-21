@@ -125,12 +125,19 @@ export const segmentSubject = (id: DocId) => invoke<Mask>("segment_subject", { i
 
 // Lote 5: Finder
 export const fileTags = (id: DocId) => invoke<string[]>("file_tags", { id });
-export const setFileTags = (id: DocId, tags: string[]) => invoke<void>("set_file_tags", { id, tags });
+/** Devolve a lista gravada (sem vazias nem repetidas). */
+export const setFileTags = (id: DocId, tags: string[]) => invoke<string[]>("set_file_tags", { id, tags });
 export const setLocked = (id: DocId, locked: boolean) => invoke<DocInfo>("set_locked", { id, locked });
 export const moveToTrash = (id: DocId) => invoke<void>("move_to_trash", { id });
 export const listVersions = (id: DocId) => invoke<FileVersion[]>("list_versions", { id });
 export const restoreVersion = (id: DocId, version: string) => invoke<DocInfo>("restore_version", { id, version });
-export const saveAs = (id: DocId, dest: string, opts: ExportOptions) => invoke<DocInfo>("save_as", { id, dest, opts });
+export const saveAs = (id: DocId, dest: string, opts: ExportOptions, keywords: string[] | null = null) =>
+  invoke<DocInfo>("save_as", { id, dest, opts, keywords });
+export const fileLocked = (id: DocId) => invoke<boolean>("file_locked", { id });
+export const versionPreview = async (id: DocId, version: string, size: number) =>
+  decodeViewBuffer(await invoke<ArrayBuffer>("version_preview", { id, version, size }));
+/** `prefs.versionsMaxMb` (0 desliga as versões novas). */
+export const setVersionsLimit = (mb: number) => invoke<void>("set_versions_limit", { mb });
 
 // Lote 6: Compartilhar
 export const shareEmail = (ids: DocId[]) => invoke<void>("share_email", { ids });
