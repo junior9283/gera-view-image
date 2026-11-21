@@ -129,6 +129,14 @@ impl DiskStamp {
     }
 }
 
+impl DocInfo {
+    fn set_playback(&mut self, source: &Decoded) {
+        let p = source.playback();
+        self.delays_ms = p.delays_ms;
+        self.plays = p.plays;
+    }
+}
+
 impl Document {
     pub(super) fn new(
         id: DocId,
@@ -141,7 +149,7 @@ impl Document {
         let p = Path::new(path);
         let disk = DiskStamp::of(p);
         let writable = Self::can_save(path, source.format, source.frames.len());
-        let info = DocInfo {
+        let mut info = DocInfo {
             id,
             path: path.to_string(),
             name: p
@@ -152,6 +160,8 @@ impl Document {
             width: full_size.0,
             height: full_size.1,
             frames: source.frames.len() as u32,
+            delays_ms: vec![],
+            plays: 0,
             writable,
             dirty: false,
             can_undo: false,
@@ -159,6 +169,7 @@ impl Document {
             rev: 0,
             error: None,
         };
+        info.set_playback(&source);
         Document {
             info,
             source,
@@ -189,6 +200,7 @@ impl Document {
         let empty = Decoded {
             frames: vec![],
             delays_ms: vec![],
+            plays: 0,
             format,
             icc: None,
             exif: None,
@@ -221,6 +233,7 @@ impl Document {
         i.width = w;
         i.height = h;
         i.frames = self.source.frames.len() as u32;
+        i.set_playback(&self.source);
         i.dirty = self.ops.len() != self.saved_len;
         i.can_undo = !self.ops.is_empty();
         i.can_redo = !self.redo.is_empty();

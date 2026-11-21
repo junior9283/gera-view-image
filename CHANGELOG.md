@@ -5,6 +5,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Corrigido
+- GIF e WebP animados tocam com a duração de cada quadro do arquivo (atraso de até 10 ms vira 100 ms, como nos navegadores) e respeitam a contagem de repetições declarada (GIF: NETSCAPE2.0; WebP: ANIM). Sem contagem declarada, a animação continua em laço. O `DocInfo` ganhou `delaysMs` e `plays` (mudança aditiva).
+- Tamanho Real (100 %) mostra 1 pixel da imagem por pixel físico, compensando a escala da tela (`devicePixelRatio`), e se reajusta quando ela muda (outro monitor, escala do sistema). O indicador continua em 100 %; degraus, limites e Ajustar à Janela (que nunca passa do Tamanho Real) usam o zoom mostrado.
+
 ## [0.2.1] - 2026-11-21
 
 ### Corrigido
@@ -28,10 +32,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 ### Limitações conhecidas (o que falta para a 1.0)
 - HEIC e JPEG 2000 ainda não podem ser gravados: o codificador HEVC (x265) não pode ir no binário e não há crate JPEG 2000 sem a libopenjp2. HEIC é aberto normalmente (precisa da `libde265`, no Fedora pelo RPM Fusion); Salvar leva a Exportar.
 - Arrastar uma miniatura para fora da janela (para outro app) ainda não existe; a barra lateral só reordena.
-- GIF animado toca com 100 ms fixos por quadro (a duração de cada quadro do arquivo é ignorada).
 - Salvar em TIFF, BMP e AVIF não leva todos os metadados (EXIF/IPTC/ICC conforme o formato); imagens de 16 bits são salvas em 8 bits; JPEG CMYK é regravado em RGB.
 - Imprimir e Duplicar com anotações não salvas achatam as anotações no documento aberto.
-- Tamanho Real usa 1 pixel da imagem por pixel CSS (sem compensar a escala da tela).
 - Atalhos de letra não funcionam em layouts de teclado não latinos (ex.: cirílico).
 - Foco do teclado não fica preso dentro de alguns diálogos (acessibilidade).
 
