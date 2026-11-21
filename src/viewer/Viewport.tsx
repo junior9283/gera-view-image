@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { renderView } from "../ipc/commands";
 import type { DocInfo, Rect } from "../ipc/types";
@@ -77,6 +77,19 @@ const satisfies = (b: Buf, doc: DocInfo, frame: number, need: Need) =>
   contains(b.region, need.rect) &&
   b.canvas.width / b.region.w >= need.density * 0.98;
 
+/** `devicePixelRatio` atual, atualizado quando a resolução da tela muda. */
+function usePixelRatio(): number {
+  const [ratio, setRatio] = useState(dpr);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia(`(resolution: ${ratio}dppx)`);
+    const onChange = () => setRatio(dpr());
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, [ratio]);
+  return ratio;
+}
+
 export function Viewport() {
   const { t } = useTranslation();
   const doc = useDocs((s) => s.docs.find((d) => d.id === s.activeId) ?? null);
@@ -86,6 +99,7 @@ export function Viewport() {
   const page = useUi((s) => s.page);
   const background = usePrefs((p) => (p.background === "custom" ? p.customBg : BACKGROUNDS[p.background]));
   const animFrame = useAnimatedFrame(doc, page === null);
+  const pixelRatio = usePixelRatio();
   const frame = page ?? animFrame;
 
   const box = useRef<HTMLDivElement>(null);
@@ -149,9 +163,13 @@ export function Viewport() {
     paint.current();
   });
 
-  // Indicador de zoom: aparece a cada mudança de escala e some sozinho.
+  // A escala da tela mudou (outro monitor, zoom do sistema): refaz a view e o buffer.
+  useEffect(() => syncView(false), [pixelRatio]);
+
+  // Indicador de zoom: aparece a cada mudança de escala e some sozinho. Mostra px físicos por px
+  // da imagem (100 % = Tamanho Real).
   const badge = useRef<HTMLDivElement>(null);
-  const scale = view ? +view.scale.toFixed(4) : null;
+  const scale = view ? +(view.scale * pixelRatio).toFixed(4) : null;
   useEffect(() => {
     const el = badge.current;
     if (!el || scale === null) return;
@@ -188,7 +206,7 @@ export function Viewport() {
       }
     }, have ? 40 : 0);
     return () => clearTimeout(timer);
-  }, [doc, frame, view, viewSize]);
+  }, [doc, frame, view, viewSize, pixelRatio]);
 
   // Roda, pinça e arraste (listeners nativos: a roda precisa de passive: false). O botão esquerdo só
   // faz pan na ferramenta "mover" (nenhuma ferramenta de seleção) ou com Espaço pressionado; com uma

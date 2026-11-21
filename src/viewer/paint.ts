@@ -32,21 +32,41 @@ export function checkerPattern(ctx: CanvasRenderingContext2D, size: number): Can
   return pattern;
 }
 
-/** O formato não traz a duração dos quadros; 100 ms é o padrão usual dos navegadores. */
-const GIF_FRAME_MS = 100;
+/** Atraso de quem ainda não manda `delaysMs` (contrato antigo); o núcleo já normaliza os demais. */
+const DEFAULT_FRAME_MS = 100;
 
-export const isAnimated = (d: DocInfo | null | undefined): boolean => !!d && d.format === "gif" && d.frames > 1 && !d.error;
+export const isAnimated = (d: DocInfo | null | undefined): boolean =>
+  !!d && (d.format === "gif" || d.format === "webp") && d.frames > 1 && !d.error;
 
-/** Quadro atual de um GIF animado (0 para o resto). Reinicia ao trocar de documento. */
+/**
+ * Quadro atual de uma animação (0 para o resto), com o atraso de cada quadro do arquivo e as
+ * repetições declaradas (`plays`; 0 = para sempre). Reinicia ao trocar de documento.
+ */
 export function useAnimatedFrame(doc: DocInfo | null | undefined, playing = true): number {
   const animated = playing && isAnimated(doc);
   const frames = doc?.frames ?? 1;
   const id = doc?.id;
+  // Chave estável: o `DocInfo` chega novo a cada revisão e não deve reiniciar a animação.
+  const delayKey = doc?.delaysMs?.join(",") ?? "";
+  const plays = doc?.plays ?? 0;
   const [state, setState] = useState({ id, frame: 0 });
   useEffect(() => {
     if (!animated) return;
-    const t = setInterval(() => setState((s) => ({ id, frame: s.id === id ? (s.frame + 1) % frames : 1 % frames })), GIF_FRAME_MS);
-    return () => clearInterval(t);
-  }, [animated, frames, id]);
+    const delays = delayKey ? delayKey.split(",").map(Number) : [];
+    let frame = 0;
+    let loop = 1;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timer = setTimeout(() => {
+        if (frame + 1 < frames) frame++;
+        else if (plays === 0 || loop < plays) [frame, loop] = [0, loop + 1];
+        else return; // acabaram as repetições: fica no último quadro
+        setState({ id, frame });
+        schedule();
+      }, delays[frame] ?? DEFAULT_FRAME_MS);
+    };
+    schedule(); // troca de documento: o retorno abaixo já mostra o quadro 0 até o 1º tique
+    return () => clearTimeout(timer);
+  }, [animated, frames, id, delayKey, plays]);
   return animated && state.id === id ? state.frame % frames : 0;
 }

@@ -45,6 +45,10 @@ pub struct DocInfo {
     pub width: u32,
     pub height: u32,
     pub frames: u32,
+    /// Atraso de cada quadro em ms (já com a regra dos navegadores); vazio sem animação.
+    pub delays_ms: Vec<u32>,
+    /// Vezes que a animação toca no total; 0 = para sempre.
+    pub plays: u32,
     pub writable: bool,
     pub dirty: bool,
     pub can_undo: bool,
