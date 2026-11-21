@@ -98,6 +98,7 @@ export function Viewport() {
   const viewSize = useUi((s) => s.viewSize);
   const page = useUi((s) => s.page);
   const background = usePrefs((p) => (p.background === "custom" ? p.customBg : BACKGROUNDS[p.background]));
+  const showBg = usePrefs((p) => p.showImageBackground);
   const animFrame = useAnimatedFrame(doc, page === null);
   const pixelRatio = usePixelRatio();
   const frame = page ?? animFrame;
@@ -109,11 +110,11 @@ export function Viewport() {
   const shown = useRef<Buf | null>(null);
   const seq = useRef(0);
   /** Estado mais recente para o `paint` e as respostas assíncronas (atualizado antes de pintar). */
-  const cur = useRef({ doc, view, viewSize, frame });
+  const cur = useRef({ doc, view, viewSize, frame, showBg });
 
   const paint = useRef(() => {
     const cv = canvas.current;
-    const { doc, view, viewSize, frame } = cur.current;
+    const { doc, view, viewSize, frame, showBg } = cur.current;
     const ctx = cv?.getContext("2d");
     if (!cv || !ctx) return;
     const k = dpr();
@@ -136,8 +137,11 @@ export function Viewport() {
       dest = img; // dimensões mudaram (ex.: girar): o buffer antigo inteiro ocupa a imagem nova até chegar o certo
     } else return;
     ctx.setTransform(k, 0, 0, k, 0, 0);
-    ctx.fillStyle = checkerPattern(ctx, 8) ?? "#fff";
-    ctx.fillRect(dest.x, dest.y, dest.w, dest.h);
+    // Visualizar › Mostrar Fundo da Imagem (Lote 8): xadrez atrás da transparência.
+    if (showBg) {
+      ctx.fillStyle = checkerPattern(ctx, 8) ?? "#fff";
+      ctx.fillRect(dest.x, dest.y, dest.w, dest.h);
+    }
     // Ampliação forte: pixels nítidos; o resto suavizado.
     ctx.imageSmoothingEnabled = (dest.w * k) / b.canvas.width < 2;
     ctx.drawImage(b.canvas, dest.x, dest.y, dest.w, dest.h);
@@ -159,7 +163,7 @@ export function Viewport() {
   useEffect(() => syncView(false), [doc?.width, doc?.height, doc?.error]);
 
   useLayoutEffect(() => {
-    cur.current = { doc, view, viewSize, frame };
+    cur.current = { doc, view, viewSize, frame, showBg };
     paint.current();
   });
 
