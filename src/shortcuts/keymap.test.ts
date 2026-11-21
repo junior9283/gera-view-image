@@ -15,6 +15,26 @@ describe("matchShortcut", () => {
     expect(matchShortcut(key("z", { ctrlKey: true }, "KeyZ"))).toBe("edit.undo");
   });
 
+  it("layouts não latinos (cirílico, grego, hebraico) caem no código físico da tecla", () => {
+    expect(matchShortcut(key("л", { ctrlKey: true }, "KeyK"))).toBe("tools.crop");
+    expect(matchShortcut(key("Я", { ctrlKey: true, shiftKey: true }, "KeyZ"))).toBe("edit.redo");
+    expect(matchShortcut(key("ς", { ctrlKey: true }, "KeyW"))).toBe("file.close");
+    expect(matchShortcut(key("ז", { ctrlKey: true }, "KeyZ"))).toBe("edit.undo");
+    expect(matchShortcut(key("כ", { ctrlKey: true }, "KeyF"))).toBeNull();
+    expect(comboOf(key("п", { ctrlKey: true }, "KeyG"))).toBe("Ctrl+G");
+  });
+
+  it("layouts latinos (ABNT2, AZERTY) continuam pela tecla lógica", () => {
+    // AZERTY: a tecla física Q produz "a".
+    expect(matchShortcut(key("a", { ctrlKey: true }, "KeyQ"))).toBe("edit.selectAll");
+    // AZERTY: a tecla física W produz "z".
+    expect(matchShortcut(key("z", { ctrlKey: true }, "KeyW"))).toBe("edit.undo");
+    // ABNT2: "ç" é letra latina e não vira o código físico (Semicolon).
+    expect(comboOf(key("ç", { ctrlKey: true }, "Semicolon"))).toBe("Ctrl+Ç");
+    // Símbolos ficam como estão.
+    expect(matchShortcut(key(",", { ctrlKey: true }, "Comma"))).toBe("edit.preferences");
+  });
+
   it("não há dois comandos com o mesmo atalho (incluindo os alternativos)", () => {
     const all = [
       ...Object.entries(KEYMAP).map(([id, s]) => [id, s] as const),

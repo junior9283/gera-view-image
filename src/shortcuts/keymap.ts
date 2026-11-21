@@ -87,12 +87,19 @@ export const ALIASES: Partial<Record<CommandId, string[]>> = {
 
 const MODIFIERS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "OS"]);
 
+/** Letra de outro alfabeto (cirílico, grego, hebraico…): o atalho vem da posição física. */
+const NON_LATIN_LETTER = /^(?=\p{L})\P{Script=Latin}$/u;
+
 /** Nome da tecla: letras em maiúsculas. Com Ctrl/Alt (Alt muda o caractere em alguns layouts; o
  *  numérico sem NumLock manda "Insert"), o dígito vem do código físico. Sem modificador, o numérico
- *  sem NumLock fica com a tecla lógica (setas, Home, PageUp…). Shift+8 continua sendo "*". */
+ *  sem NumLock fica com a tecla lógica (setas, Home, PageUp…). Shift+8 continua sendo "*".
+ *  Em layouts não latinos, a letra vem do código físico (KeyA → A); nos latinos (ABNT2, AZERTY)
+ *  vale a tecla lógica. */
 function keyName(e: KeyboardEvent): string {
   const digit = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
   if (digit && (e.altKey || (e.ctrlKey && e.key.length > 1))) return digit[1];
+  const letter = /^Key([A-Z])$/.exec(e.code);
+  if (letter && NON_LATIN_LETTER.test(e.key)) return letter[1];
   return e.key.length === 1 ? e.key.toUpperCase() : e.key;
 }
 

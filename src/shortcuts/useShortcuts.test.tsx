@@ -27,6 +27,15 @@ describe("useShortcuts", () => {
     expect(e.defaultPrevented).toBe(true);
   });
 
+  it("com layout cirílico, Ctrl+л (tecla física K) recorta", () => {
+    const run = vi.fn();
+    registerCommand("tools.crop", run);
+    render(<Host />);
+    const e = press("л", { ctrlKey: true, code: "KeyK" });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
   it("não executa comando desabilitado nem dentro de input de texto", () => {
     const crop = vi.fn();
     const all = vi.fn();
