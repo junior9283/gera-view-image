@@ -184,6 +184,48 @@ describe("Sidebar", () => {
     expect(useDocs.getState().activeId).toBe(3);
     expect(useUi.getState().page).toBe(1);
   });
+
+  const item = (name: string) => screen.getByText(name).closest("button")!;
+  const moveTo = (clientX: number, clientY: number) =>
+    act(() => void window.dispatchEvent(new MouseEvent("pointermove", { clientX, clientY })));
+  const startDragCalls = () => invoke.mock.calls.filter(([c]) => c === "start_drag");
+
+  it("arrastar dentro da janela continua reordenando, sem arraste nativo", () => {
+    useDocs.getState().add([info(1), info(2), info(3)]);
+    render(<Sidebar />);
+    fireEvent.pointerDown(item("1.png"), { button: 0, clientX: 50, clientY: 10 });
+    moveTo(50, 300);
+    act(() => void window.dispatchEvent(new MouseEvent("pointerup", { clientX: 50, clientY: 300 })));
+    expect(useDocs.getState().docs.map((d) => d.id)).toEqual([2, 3, 1]);
+    expect(startDragCalls()).toHaveLength(0);
+  });
+
+  it("sair da janela arrasta a seleção (Ctrl) para fora; o temporário só para quem tem alteração", () => {
+    useDocs.getState().add([info(1), info(2, { dirty: true }), info(3)]);
+    render(<Sidebar />);
+    fireEvent.click(item("2.png"), { ctrlKey: true });
+    expect(item("1.png").getAttribute("aria-pressed")).toBe("true");
+    expect(item("3.png").getAttribute("aria-pressed")).toBe("false");
+    fireEvent.pointerDown(item("2.png"), { button: 0, clientX: 50, clientY: 10 });
+    moveTo(-3, 10);
+    expect(startDragCalls()).toEqual([["start_drag", { items: [{ id: 1, export: false }, { id: 2, export: true }] }]]);
+    // O arraste interno acabou: soltar depois não reordena.
+    act(() => void window.dispatchEvent(new MouseEvent("pointerup", { clientX: -3, clientY: 10 })));
+    expect(useDocs.getState().docs.map((d) => d.id)).toEqual([1, 2, 3]);
+  });
+
+  it("miniatura fora da seleção vai sozinha; Shift seleciona o intervalo", () => {
+    useDocs.getState().add([info(1), info(2), info(3), info(4, { path: "" })]);
+    render(<Sidebar />);
+    fireEvent.click(item("3.png"), { shiftKey: true });
+    expect(useDocs.getState().activeId).toBe(3);
+    fireEvent.pointerDown(item("4.png"), { button: 0, clientX: 50, clientY: 10 });
+    moveTo(50, window.innerHeight + 5);
+    expect(startDragCalls()).toEqual([["start_drag", { items: [{ id: 4, export: true }] }]]);
+    fireEvent.pointerDown(item("2.png"), { button: 0, clientX: 50, clientY: 10 });
+    moveTo(window.innerWidth, 10);
+    expect(startDragCalls()[1]).toEqual(["start_drag", { items: [1, 2, 3].map((id) => ({ id, export: false })) }]);
+  });
 });
 
 describe("ContactSheet", () => {

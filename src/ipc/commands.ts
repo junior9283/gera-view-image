@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  CaptureMode, ColorAdjust, DocId, DocInfo, ExportOptions, Histogram, Mask, Metadata, Op, Rect, RevertTarget,
+  CaptureMode, ColorAdjust, DocId, DocInfo, DragSource, ExportOptions, Histogram, Mask, Metadata, Op, Rect, RevertTarget,
   SaveOutcome, ViewBuffer,
 } from "./types";
 
@@ -91,6 +91,9 @@ export const ignoreDiskChange = (id: DocId) => invoke<void>("ignore_disk_change"
 export const openWith = (id: DocId) => invoke<void>("open_with", { id });
 
 export const reveal = (id: DocId) => invoke<void>("reveal", { id });
+
+/** Arraste nativo para fora da janela; resolve quando ele termina. */
+export const startDrag = (items: DragSource[]) => invoke<void>("start_drag", { items });
 
 export const printDocument = (id: DocId, title: string) => invoke<void>("print_document", { id, title });
 

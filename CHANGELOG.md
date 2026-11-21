@@ -5,6 +5,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Adicionado
+- Arrastar miniaturas da barra lateral para fora da janela (gerenciador de arquivos, navegador, outro app) entrega o arquivo, em X11 e Wayland. Com várias miniaturas selecionadas (Ctrl+clique alterna, Shift+clique seleciona o intervalo), arrasta todas. Imagem com alterações não salvas ou sem arquivo (ex.: colada da área de transferência) vai como PNG temporário numa pasta privada do app, apagada ao sair. Anotações ainda não achatadas não entram nesse PNG. Dentro da janela, o arraste continua reordenando.
+
 ## [0.2.1] - 2026-11-21
 
 ### Corrigido
@@ -27,7 +30,6 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Limitações conhecidas (o que falta para a 1.0)
 - HEIC e JPEG 2000 ainda não podem ser gravados: o codificador HEVC (x265) não pode ir no binário e não há crate JPEG 2000 sem a libopenjp2. HEIC é aberto normalmente (precisa da `libde265`, no Fedora pelo RPM Fusion); Salvar leva a Exportar.
-- Arrastar uma miniatura para fora da janela (para outro app) ainda não existe; a barra lateral só reordena.
 - GIF animado toca com 100 ms fixos por quadro (a duração de cada quadro do arquivo é ignorada).
 - Salvar em TIFF, BMP e AVIF não leva todos os metadados (EXIF/IPTC/ICC conforme o formato); imagens de 16 bits são salvas em 8 bits; JPEG CMYK é regravado em RGB.
 - Imprimir e Duplicar com anotações não salvas achatam as anotações no documento aberto.
