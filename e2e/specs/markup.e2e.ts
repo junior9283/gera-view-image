@@ -105,7 +105,22 @@ describe("marcação", () => {
       x,
       y,
     );
-    // Cor padrão do traço: #ff3b30.
+    // Cor padrão do traço: #ff3b30. Se não for, diz onde a seta ficou (já falhou uma vez no CI sem explicar).
+    if (rgba[1] !== 0x3b) {
+      const onde = await browser.executeAsync((done: (v: unknown) => void) => {
+        const id = window.__gviMarkup.activeId();
+        const box = (q: string) => JSON.stringify(document.querySelector(q)?.getBoundingClientRect());
+        window.__TAURI_INTERNALS__
+          .invoke("render_view", { id, frame: 0, maxW: 1, maxH: 1024, region: { x: 1024, y: 0, w: 1, h: 1024 } })
+          .then((buf) => {
+            const px = new Uint8Array(buf).slice(8);
+            const linhas = Array.from({ length: px.length / 4 }, (_, i) => i).filter((i) => px[i * 4] > 200 && px[i * 4 + 1] < 140);
+            done({ linhas, camada: box('[data-testid="markup-layer"]'), barra: box('[data-testid="markup-bar"]') });
+          })
+          .catch((e) => done(String(e)));
+      });
+      console.error("seta fora do lugar:", JSON.stringify({ x, y, escala: s, escalaAgora: await scale(), rgba, onde }));
+    }
     expect(rgba).toEqual([0xff, 0x3b, 0x30, 255]);
   });
 });
