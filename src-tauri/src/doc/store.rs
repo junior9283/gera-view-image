@@ -115,6 +115,8 @@ pub struct Document {
     /// O disco tem a versão de 16 bits de `source` com `ops[..n]` (último Salvar em 16 bits):
     /// o próximo Salvar relê esse arquivo e refaz só o resto, sem guardar RGBA16 na memória.
     pub(super) deep: Option<DeepBase>,
+    /// Prova de Cor com Perfil (só na tela; ver `doc/proof.rs`).
+    pub(super) proof: Option<crate::image::proof::Proof>,
 }
 
 /// Ver [`Document::deep`].
@@ -198,6 +200,7 @@ impl Document {
             opened_disk: disk,
             original: None,
             deep: None,
+            proof: None,
         }
     }
 
@@ -868,7 +871,7 @@ impl DocStore {
     }
 
     /// `render_view` e o estado do documento que o buffer reflete.
-    fn render_view_state(
+    pub(super) fn render_view_state(
         &self,
         id: DocId,
         frame: u32,
