@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { registerDirtySource } from "../file/dirty";
 import type { DocId } from "../ipc/types";
+import { clearTextEdits } from "./textEdits";
 
 /**
  * Palavras-chave editadas no inspetor, por documento, só em memória.
@@ -50,6 +51,7 @@ export function removeKeyword(id: DocId, word: string) {
 
 /** Descarta a edição (ex.: depois que a Task 11 gravou o arquivo). */
 export function clearKeywords(id: DocId) {
+  clearTextEdits(id); // título, descrição, autor e texto alternativo seguem o mesmo ciclo
   const had = lists.delete(id);
   originals.delete(id);
   if (had) emit();

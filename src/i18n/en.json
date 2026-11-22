@@ -192,7 +192,36 @@
       "iptc": "IPTC",
       "gps": "GPS",
       "keywords": "Keywords",
-      "annotations": "Annotations"
+      "annotations": "Annotations",
+      "tiff": "TIFF",
+      "jfif": "JFIF",
+      "png": "PNG",
+      "gif": "GIF",
+      "heif": "HEIF",
+      "lens": "Lens",
+      "description": "Description",
+      "crop": "Crop"
+    },
+    "text": {
+      "title": "Title",
+      "description": "Description",
+      "author": "Author",
+      "altText": "Image Description (alt text)",
+      "hint": "Changes are written to the file when you save (XMP and IPTC). In formats that do not store XMP/IPTC they stay pending."
+    },
+    "crop": {
+      "none": "No selection. Select an area on the image to see and edit its position and size.",
+      "readOnly": "Freeform selection: shows only its bounding box.",
+      "x": "Position X",
+      "y": "Position Y",
+      "w": "Width",
+      "h": "Height",
+      "unit": "Unit",
+      "unit_px": "px",
+      "unit_pt": "pt",
+      "unit_mm": "mm",
+      "unit_cm": "cm",
+      "unit_in": "in"
     },
     "general": {
       "dimensions": "Dimensions",
@@ -581,7 +610,12 @@
     "pasted": "Pasted",
     "capture": "Screenshot",
     "saved": "Saved: {{name}}",
-    "keywordsNotSaved": "Keywords were not saved: this format does not store IPTC/XMP. Export as JPEG, TIFF, PNG or WebP.",
+    "metaNote": {
+      "xmpRebuilt": "The file's XMP could not be edited safely and was rebuilt: it holds only title, description, author and alt text, and the rest of the XMP (such as rating) was not kept.",
+      "exifDropped": "The old text could not be removed from the EXIF safely, so the whole EXIF (date, camera, location) was not written.",
+      "textNotSaved": "This format does not store title, description, author or alt text: the new text was not written. Export as JPEG, TIFF, PNG or WebP."
+    },
+    "keywordsNotSaved": "Keywords, title, description and author were not saved: this format does not store IPTC/XMP. Export as JPEG, TIFF, PNG or WebP.",
     "exported": "Exported: {{name}}",
     "otherPages": "Only page {{page}} was written. The annotations on the other pages stay in the document, unsaved.",
     "exportedMany": "{{count}} images exported",

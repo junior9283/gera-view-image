@@ -1,12 +1,16 @@
-//! Lote 9 (Inspetor completo): editar título, descrição, autor e texto alternativo.
-//! Stub do Lote 0: devolve `AppError::Unsupported` até o lote implementar.
-#![allow(unused_variables)]
-use super::not_yet;
-use crate::{doc::model::DocId, error::AppResult};
+//! Lote 9 (Inspetor completo): título, descrição, autor e texto alternativo editados no
+//! Inspetor. As edições ficam em memória por documento e entram no arquivo no próximo
+//! Salvar/Exportar (XMP e IPTC), junto de EXIF, ICC e do resto do XMP/IPTC originais.
+use crate::{
+    doc::{model::DocId, store::DocStore},
+    error::AppResult,
+};
 use serde::Deserialize;
+use tauri::State;
 
-/// Campos editados no Inspetor (`None` = manter o do arquivo); gravados no próximo Salvar.
-#[derive(Debug, Clone, Default, Deserialize)]
+/// Campos editados no Inspetor (`None` = manter o do arquivo; `Some("")` = apagar); gravados no
+/// próximo Salvar.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataEdits {
     pub title: Option<String>,
@@ -17,6 +21,18 @@ pub struct MetadataEdits {
 }
 
 #[tauri::command]
-pub fn edit_metadata(id: DocId, edits: MetadataEdits) -> AppResult<()> {
-    not_yet("edit_metadata")
+pub fn edit_metadata(
+    store: State<'_, DocStore>,
+    id: DocId,
+    edits: MetadataEdits,
+) -> AppResult<()> {
+    store.with_doc(id, |_| ())?; // documento inexistente = erro, não lixo no mapa
+    store.set_meta_edits(id, &edits);
+    Ok(())
+}
+
+/// Avisos da última gravação (`xmpRebuilt`, `exifDropped`, `textNotSaved`); o front os traduz e mostra.
+#[tauri::command]
+pub fn take_meta_notes(store: State<'_, DocStore>, id: DocId) -> Vec<&'static str> {
+    store.take_meta_notes(id)
 }

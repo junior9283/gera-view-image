@@ -12,6 +12,7 @@ use super::{
     model::{DocId, DocInfo, Op, Rect, SourceFormat},
 };
 use crate::{
+    commands::describe::MetadataEdits,
     error::{AppError, AppResult},
     image::{
         decode::{self, Decoded},
@@ -305,6 +306,22 @@ struct Inner {
     pipeline_runs: AtomicUsize,
     /// Cache de 1 entrada da base reduzida da prévia de ajuste (`preview_base`).
     preview: Mutex<Option<(PreviewKey, Arc<Vec<u8>>)>>,
+    /// Título, descrição, autor e texto alternativo do Inspetor (Lote 9), por documento.
+    meta_text: Mutex<HashMap<DocId, TextMeta>>,
+}
+
+/// Estado dos textos editados de um documento.
+#[derive(Default)]
+struct TextMeta {
+    /// Edições ainda não gravadas no arquivo do documento.
+    pending: Option<MetadataEdits>,
+    /// Campos (valor vazio) já gravados no arquivo do documento: o EXIF de origem continua com o
+    /// texto antigo, então toda gravação e a leitura dos metadados o limpam de novo.
+    cleared: MetadataEdits,
+    /// `cleared` da origem da abertura, enquanto a origem atual é outra (disco ou versão).
+    original_cleared: MetadataEdits,
+    /// Avisos da última gravação (códigos de `metaedit::notes`), à espera do front.
+    notes: Vec<&'static str>,
 }
 
 /// Documentos abertos (`Mutex<HashMap<DocId, Document>>`), compartilhável entre threads.
@@ -386,7 +403,94 @@ impl DocStore {
                 inflight: Mutex::new(HashMap::new()),
                 pipeline_runs: AtomicUsize::new(0),
                 preview: Mutex::new(None),
+                meta_text: Mutex::new(HashMap::new()),
             }),
+        }
+    }
+
+    fn meta_text<R>(&self, f: impl FnOnce(&mut HashMap<DocId, TextMeta>) -> R) -> R {
+        f(&mut self.inner.meta_text.lock().unwrap_or_else(|p| p.into_inner()))
+    }
+
+    /// Guarda (ou, vazio, esquece) as edições de texto do documento para o próximo Salvar/Exportar.
+    /// O front reenvia o conjunto inteiro antes de cada gravação.
+    pub fn set_meta_edits(&self, id: DocId, edits: &MetadataEdits) {
+        let e = edits.cleaned();
+        self.meta_text(|m| {
+            let t = m.entry(id).or_default();
+            t.pending = (!e.is_empty()).then_some(e);
+        });
+    }
+
+    /// Edições de texto a gravar para `id`, se houver.
+    pub fn meta_edits(&self, id: DocId) -> Option<MetadataEdits> {
+        self.meta_text(|m| m.get(&id).and_then(|t| t.pending.clone()))
+    }
+
+    /// Campos que já foram gravados no arquivo do documento (valor vazio): o EXIF não pode ter o antigo.
+    pub fn meta_cleared(&self, id: DocId) -> MetadataEdits {
+        self.meta_text(|m| m.get(&id).map(|t| t.cleared.clone()).unwrap_or_default())
+    }
+
+    /// O documento acabou de ser gravado no próprio arquivo. Em formato que guarda o texto, as
+    /// edições passam a estar no arquivo; nos outros só o que apaga, e tudo continua pendente.
+    pub fn meta_written(&self, id: DocId, carries_text: bool) {
+        self.meta_text(|m| {
+            if let Some(t) = m.get_mut(&id)
+                && let Some(p) = t.pending.clone()
+            {
+                let done = if carries_text { p } else { p.only_clearing() };
+                t.cleared = done.as_cleared().over(&t.cleared);
+                if carries_text {
+                    t.pending = None;
+                }
+            }
+        });
+    }
+
+    /// Guarda os avisos de uma gravação (sem repetir) para o front pegar com `take_meta_notes`.
+    pub fn add_meta_notes(&self, id: DocId, notes: &[&'static str]) {
+        if notes.is_empty() {
+            return;
+        }
+        self.meta_text(|m| {
+            let t = m.entry(id).or_default();
+            for n in notes {
+                if !t.notes.contains(n) {
+                    t.notes.push(n);
+                }
+            }
+        });
+    }
+
+    /// Entrega e esquece os avisos pendentes do documento.
+    pub fn take_meta_notes(&self, id: DocId) -> Vec<&'static str> {
+        self.meta_text(|m| m.get_mut(&id).map(|t| std::mem::take(&mut t.notes)).unwrap_or_default())
+    }
+
+    /// A origem dos pixels mudou: descarta as edições ainda não gravadas e os avisos. Os marcadores
+    /// pertencem à origem da abertura: saem quando ela é trocada (disco, versão) e voltam com ela.
+    pub(super) fn meta_source_changed(&self, id: DocId, to_original: bool) {
+        self.meta_text(|m| {
+            if let Some(t) = m.get_mut(&id) {
+                t.pending = None;
+                t.notes.clear();
+                let all = std::mem::take(&mut t.cleared).over(&std::mem::take(&mut t.original_cleared));
+                *(if to_original { &mut t.cleared } else { &mut t.original_cleared }) = all;
+            }
+        });
+    }
+
+    /// Esquece os textos do documento (fechar).
+    pub fn forget_meta(&self, id: DocId) {
+        self.meta_text(|m| m.remove(&id));
+    }
+
+    /// O documento `to` nasce de `from` (Duplicar): leva o que `from` já gravou no EXIF.
+    pub(super) fn inherit_meta(&self, from: DocId, to: DocId) {
+        let cleared = self.meta_cleared(from);
+        if !cleared.is_empty() {
+            self.meta_text(|m| m.entry(to).or_default().cleared = cleared);
         }
     }
 
@@ -527,6 +631,7 @@ impl DocStore {
 
     pub fn close(&self, id: DocId) -> AppResult<()> {
         let removed = self.lock().remove(&id);
+        self.forget_meta(id);
         self.inner.ready.notify_all();
         self.invalidate(id);
         removed.map(|_| ()).ok_or_else(|| not_found(id))

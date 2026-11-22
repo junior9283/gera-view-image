@@ -2,10 +2,11 @@
 //! HEIC e JPEG 2000 ficam em `encode_heic.rs` e `encode_jp2.rs`.
 use super::{
     container::{self, TiffMeta},
-    encode_heic, encode_jp2, encode_psd, icc, pdf,
+    encode_heic, encode_jp2, encode_psd, icc, metaedit, pdf,
     raster::Raster,
 };
 use crate::{
+    commands::describe::MetadataEdits,
     doc::model::SourceFormat,
     error::{AppError, AppResult},
 };
@@ -83,6 +84,14 @@ impl ExportFormat {
     fn dpi_in_exif(self) -> bool {
         use ExportFormat::*;
         matches!(self, Webp | Avif | Heic)
+    }
+
+    /// O formato guarda XMP e IPTC, onde vão o título, a descrição, o autor e o texto alternativo.
+    pub fn carries_text(self) -> bool {
+        matches!(
+            self,
+            ExportFormat::Jpeg | ExportFormat::Png | ExportFormat::Tiff | ExportFormat::Webp | ExportFormat::Psd
+        )
     }
 
     /// Formato em que Salvar grava o arquivo de origem (`None` = só Exportar).
@@ -207,6 +216,11 @@ pub struct MetaCarry {
     pub xmp: Option<String>,
     /// Palavras-chave editadas: substituem IPTC 2:25 e XMP `dc:subject`.
     pub iptc_keywords: Option<Vec<String>>,
+    /// Título, descrição, autor e texto alternativo editados no inspetor (Lote 9): vão para XMP e IPTC.
+    pub text_edits: Option<MetadataEdits>,
+    /// Campos de texto já gravados antes neste documento (marcados com valor vazio): o EXIF de origem
+    /// não muda depois de um Salvar, então o texto antigo sai dele de novo a cada gravação.
+    pub exif_cleared: Option<MetadataEdits>,
     pub dpi: Option<(f32, f32)>,
 }
 
@@ -281,8 +295,11 @@ pub fn encode<'a>(
         }
     } else {
         MetaCarry {
-            exif: meta.exif.as_deref().map(|e| {
-                container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions())
+            // `None` também quando o EXIF não pôde ser limpo com segurança: sem EXIF, nunca com o texto antigo.
+            exif: meta.exif.as_deref().and_then(|e| {
+                let e = container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions());
+                let clear = metaedit::exif_clear_set(meta.text_edits.as_ref(), meta.exif_cleared.as_ref(), fmt.carries_text());
+                if clear.is_empty() { Some(e) } else { metaedit::exif_without_text(&e, &clear) }
             }),
             icc: out_icc,
             dpi,
@@ -300,14 +317,7 @@ pub fn encode<'a>(
     meta.exif = meta.exif.filter(fits);
     let with_alpha = opts.alpha && fmt.keeps_alpha() && img.has_alpha();
     let pixels = img.into_pixels(with_alpha, opts.deep());
-    let xmp = match &meta.iptc_keywords {
-        Some(k) => Some(xmp_with_keywords(meta.xmp.as_deref(), k)),
-        None => meta.xmp.clone(),
-    };
-    let iptc = match &meta.iptc_keywords {
-        Some(k) => Some(iim_with_keywords(meta.iptc.as_deref(), k)),
-        None => meta.iptc.clone(),
-    };
+    let (xmp, iptc) = edited_blocks(&meta);
 
     let mut out = Vec::new();
     match fmt {
@@ -618,6 +628,23 @@ pub fn exif_reset_orientation(tiff: &[u8]) -> Vec<u8> {
 
 // ---------- IPTC / XMP ----------
 
+/// XMP e IPTC a gravar: os do original com as palavras-chave e os textos editados aplicados.
+fn edited_blocks(meta: &MetaCarry) -> (Option<String>, Option<Vec<u8>>) {
+    let (mut xmp, mut iptc) = (meta.xmp.clone(), meta.iptc.clone());
+    // Textos primeiro: se o pacote XMP original não puder ser editado, o novo ainda recebe as palavras-chave.
+    if let Some(e) = meta.text_edits.as_ref().filter(|e| !e.is_empty()) {
+        xmp = Some(metaedit::xmp_edited(xmp.as_deref(), e, || {
+            super::metadata::known_texts(meta.iptc.as_deref(), meta.exif.as_deref())
+        }));
+        iptc = Some(metaedit::iim_with_edits(iptc.as_deref(), e));
+    }
+    if let Some(k) = &meta.iptc_keywords {
+        xmp = Some(xmp_with_keywords(xmp.as_deref(), k));
+        iptc = Some(iim_with_keywords(iptc.as_deref(), k));
+    }
+    (xmp, iptc)
+}
+
 /// IIM com os registros 2:25 trocados por `keywords` (e 1:90 = UTF-8).
 pub fn iim_with_keywords(orig: Option<&[u8]>, keywords: &[String]) -> Vec<u8> {
     let rec = |r: u8, n: u8, v: &[u8]| {
@@ -646,7 +673,7 @@ pub fn iim_with_keywords(orig: Option<&[u8]>, keywords: &[String]) -> Vec<u8> {
     out
 }
 
-fn xml_escape(s: &str) -> String {
+pub(crate) fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

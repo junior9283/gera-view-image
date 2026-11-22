@@ -4,6 +4,8 @@ import { create } from "zustand";
 import { notify } from "../chrome/notify";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
+import { reportMetaNotes } from "../inspector/notes";
+import { hasPendingTextEdits } from "../inspector/textEdits";
 import * as ipc from "../ipc/commands";
 import { annotationLayers } from "../markup/flatten";
 import { forgetHistory } from "../markup/history";
@@ -99,6 +101,7 @@ export async function exportDoc(id: DocId, dest: string, opts: ExportOptions, ta
   }
   update(info);
   if (info.path === dest) settleKeywords(id, opts.stripMetadata ? null : opts.format);
+  else void reportMetaNotes(id);
   warnLeftOut(info, page, dest);
   return info;
 }
@@ -107,14 +110,15 @@ export async function exportDoc(id: DocId, dest: string, opts: ExportOptions, ta
  * Formatos em que o Salvar/Exportar grava as palavras-chave: IPTC 2:25 (JPEG, TIFF) e/ou XMP
  * `dc:subject` (JPEG, TIFF, PNG, WebP). AVIF (o codificador só grava EXIF), BMP e OpenEXR as perdem.
  */
-const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "tiff", "png", "webp"]);
+const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "tiff", "png", "webp", "psd"]);
 
 /**
  * Depois de gravar no próprio arquivo: palavras-chave pendentes saem da fila só se o formato as
  * grava; senão continuam pendentes e o usuário é avisado (`format` nulo = metadados removidos).
  */
 export function settleKeywords(id: DocId, format: string | null): void {
-  if (!getPendingKeywords(id)) return;
+  void reportMetaNotes(id);
+  if (!getPendingKeywords(id) && !hasPendingTextEdits(id)) return;
   if (format && KEYWORD_FORMATS.has(format)) clearKeywords(id);
   else notify(t("file.keywordsNotSaved"));
 }

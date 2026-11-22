@@ -136,6 +136,8 @@ fn jpeg_completo(dir: &Path) -> PathBuf {
         iptc: Some(iim("Praia", &["mar", "sol"])),
         xmp: Some(xmp_com("Título XMP", "")),
         iptc_keywords: None,
+        text_edits: None,
+        exif_cleared: None,
         dpi: None,
     };
     let rgba = DynamicImage::ImageRgb8(gradiente(40, 20)).into_rgba8();

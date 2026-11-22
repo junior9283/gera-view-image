@@ -192,7 +192,36 @@
       "iptc": "IPTC",
       "gps": "GPS",
       "keywords": "Palavras-chave",
-      "annotations": "Anotações"
+      "annotations": "Anotações",
+      "tiff": "TIFF",
+      "jfif": "JFIF",
+      "png": "PNG",
+      "gif": "GIF",
+      "heif": "HEIF",
+      "lens": "Lente",
+      "description": "Descrição",
+      "crop": "Recorte"
+    },
+    "text": {
+      "title": "Título",
+      "description": "Descrição",
+      "author": "Autor",
+      "altText": "Descrição da Imagem (texto alternativo)",
+      "hint": "As alterações são gravadas no arquivo ao salvar (XMP e IPTC). Em formatos que não guardam XMP/IPTC, elas ficam pendentes."
+    },
+    "crop": {
+      "none": "Sem seleção. Selecione uma área na imagem para ver e editar posição e tamanho.",
+      "readOnly": "Seleção de forma livre: mostra só a caixa que a envolve.",
+      "x": "Posição X",
+      "y": "Posição Y",
+      "w": "Largura",
+      "h": "Altura",
+      "unit": "Unidade",
+      "unit_px": "px",
+      "unit_pt": "pt",
+      "unit_mm": "mm",
+      "unit_cm": "cm",
+      "unit_in": "pol"
     },
     "general": {
       "dimensions": "Dimensões",
@@ -581,7 +610,12 @@
     "pasted": "Colada",
     "capture": "Captura de tela",
     "saved": "Salvo: {{name}}",
-    "keywordsNotSaved": "As palavras-chave não foram gravadas: este formato não guarda IPTC/XMP. Exporte em JPEG, TIFF, PNG ou WebP.",
+    "metaNote": {
+      "xmpRebuilt": "O XMP do arquivo não pôde ser editado com segurança e foi refeito: ele guarda só título, descrição, autor e texto alternativo, e o restante do XMP (como classificação) não foi mantido.",
+      "exifDropped": "Não foi possível limpar o texto antigo do EXIF com segurança, então o EXIF inteiro (data, câmera, localização) não foi gravado.",
+      "textNotSaved": "Este formato não guarda título, descrição, autor nem texto alternativo: o texto novo não foi gravado. Exporte em JPEG, TIFF, PNG ou WebP."
+    },
+    "keywordsNotSaved": "As palavras-chave, o título, a descrição e o autor não foram gravados: este formato não guarda IPTC/XMP. Exporte em JPEG, TIFF, PNG ou WebP.",
     "exported": "Exportado: {{name}}",
     "otherPages": "Só a página {{page}} foi gravada. As anotações das outras páginas continuam no documento, não salvas.",
     "exportedMany": "{{count}} imagens exportadas",

@@ -1,7 +1,12 @@
 //! Metadados para o inspetor: geral, EXIF (rótulos legíveis), IPTC (APP13), GPS e palavras-chave.
 //! Tudo é tolerante: bloco corrompido vira lista vazia, nunca erro nem pânico.
-use super::decode::Decoded;
-use crate::error::AppResult;
+use super::{
+    decode::Decoded,
+    formatinfo::{self, Section},
+    makernote::{self, Maker},
+    metaedit::{self, Texts, xml_unescape},
+};
+use crate::{commands::describe::MetadataEdits, error::AppResult};
 use ::image::{ImageDecoder, ImageFormat, ImageReader};
 use exif::{Context, In, Reader, Tag, Value};
 use rayon::prelude::*;
@@ -45,6 +50,11 @@ pub struct Blocks {
     pub iptc: Vec<(String, String)>,
     pub gps: Option<Gps>,
     pub keywords: Vec<String>,
+    /// Aba do fabricante (MakerNote) e dados da lente.
+    pub maker: Option<Maker>,
+    pub lens: Vec<(String, String)>,
+    /// Título, descrição, autor e texto alternativo como estão no arquivo.
+    pub texts: Texts,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -55,10 +65,25 @@ pub struct Metadata {
     pub iptc: Vec<(String, String)>,
     pub gps: Option<Gps>,
     pub keywords: Vec<String>,
+    /// Abas por formato: `tiff`, `jfif`, `png`, `gif` ou `heif` (só as que o arquivo tem).
+    pub sections: Vec<Section>,
+    pub maker: Option<Maker>,
+    pub lens: Vec<(String, String)>,
+    pub texts: Texts,
 }
 
 /// Lê os metadados de `path`. `decoded` traz EXIF, ICC e DPI já extraídos na abertura.
 pub fn read_metadata(path: &Path, decoded: &Decoded) -> AppResult<Metadata> {
+    read_metadata_with(path, decoded, &MetadataEdits::default())
+}
+
+/// Como `read_metadata`, sem os textos do EXIF que `cleared` marca (já gravados no arquivo, mas
+/// ainda presentes no EXIF guardado na abertura). EXIF que não dá para limpar não é mostrado.
+pub fn read_metadata_with(path: &Path, decoded: &Decoded, cleared: &MetadataEdits) -> AppResult<Metadata> {
+    let exif = decoded.exif.as_deref().and_then(|e| {
+        if cleared.is_empty() { Some(e.to_vec()) } else { metaedit::exif_without_text(e, cleared) }
+    });
+    let exif = exif.as_deref();
     let bytes = std::fs::read(path)?;
     let fs_meta = std::fs::metadata(path)?;
     let (width, height) = decoded
@@ -81,14 +106,29 @@ pub fn read_metadata(path: &Path, decoded: &Decoded) -> AppResult<Metadata> {
             .map(iso_utc)
             .unwrap_or_else(|_| iso_utc(UNIX_EPOCH)),
     };
-    let b = parse_blocks(&bytes, decoded.exif.as_deref());
+    let b = parse_blocks(&bytes, exif);
     Ok(Metadata {
         general,
         exif: b.exif,
         iptc: b.iptc,
         gps: b.gps,
         keywords: b.keywords,
+        sections: formatinfo::sections(&bytes, exif),
+        maker: b.maker,
+        lens: b.lens,
+        texts: b.texts,
     })
+}
+
+/// Textos (título, descrição, autor, texto alternativo) que o IPTC e o EXIF dizem, sem o XMP: o que
+/// um pacote XMP novo deve levar dos campos que o usuário não editou.
+pub fn known_texts(iim: Option<&[u8]>, exif_tiff: Option<&[u8]>) -> [Option<String>; 4] {
+    let mut iptc = Vec::new();
+    if let Some(d) = iim {
+        parse_iim(d, &mut iptc, &mut Vec::new());
+    }
+    let t = metaedit::texts_of(None, &iptc, &parse_blocks(&[], exif_tiff).exif);
+    [t.title, t.description, t.author, t.alt_text]
 }
 
 /// Extrai EXIF (bloco TIFF cru), GPS, IPTC e palavras-chave (IPTC + XMP `dc:subject`).
@@ -99,10 +139,19 @@ pub fn parse_blocks(file: &[u8], exif_tiff: Option<&[u8]>) -> Blocks {
             if f.tag.0 == Context::Gps || f.tag == Tag::MakerNote {
                 continue;
             }
-            let value = f.display_value().with_unit(&exif).to_string();
-            out.exif.push((f.tag.to_string(), unquote(&value)));
+            let value = match &f.value {
+                // O crate mostra o ASCII com todo byte fora do básico escapado (`Jos\xc3\xa9`).
+                Value::Ascii(v) => {
+                    let parts: Vec<String> = v.iter().map(|b| metaedit::text_bytes(b).trim().to_string()).filter(|s| !s.is_empty()).collect();
+                    parts.join(", ")
+                }
+                _ => unquote(&f.display_value().with_unit(&exif).to_string()),
+            };
+            out.exif.push((f.tag.to_string(), value));
         }
         out.gps = gps_of(&exif);
+        out.maker = makernote::maker_of(&exif);
+        out.lens = makernote::lens_rows(&exif, out.maker.as_ref());
     }
     let (iim, xmp) = file_iim_xmp(file);
     let mut keywords = Vec::new();
@@ -115,6 +164,7 @@ pub fn parse_blocks(file: &[u8], exif_tiff: Option<&[u8]>) -> Blocks {
         }
     }
     out.keywords = keywords;
+    out.texts = metaedit::texts_of(xmp.as_deref(), &out.iptc, &out.exif);
     out
 }
 
@@ -162,7 +212,7 @@ fn gps_of(exif: &exif::Exif) -> Option<Gps> {
 }
 
 /// Segmentos APP de um JPEG: `(marcador, payload)`, parando no início dos dados (SOS).
-fn jpeg_segments(b: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {
+pub(super) fn jpeg_segments(b: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {
     let mut pos = 2usize;
     std::iter::from_fn(move || {
         loop {
@@ -283,7 +333,7 @@ fn parse_iim(mut d: &[u8], fields: &mut Vec<(String, String)>, keywords: &mut Ve
         if rec != 2 {
             continue;
         }
-        let text = String::from_utf8_lossy(v).trim().to_string();
+        let text = metaedit::text_bytes(v).trim().to_string();
         if num == 25 {
             if !text.is_empty() && !keywords.contains(&text) {
                 keywords.push(text);
@@ -294,15 +344,19 @@ fn parse_iim(mut d: &[u8], fields: &mut Vec<(String, String)>, keywords: &mut Ve
     }
 }
 
+/// Teto de palavras-chave lidas de um XMP (o `contains` de cada uma é linear).
+const MAX_KEYWORDS: usize = 2000;
+
 /// Itens de `<dc:subject>` de um pacote XMP.
 fn xmp_keywords(xmp: &str) -> Vec<String> {
+    let xmp = metaedit::cap_str(xmp, metaedit::MAX_XMP_KEYWORDS);
     let mut out = vec![];
     let Some(a) = xmp.find("<dc:subject>") else {
         return out;
     };
     let body = &xmp[a..];
     let body = &body[..body.find("</dc:subject>").unwrap_or(body.len())];
-    for part in body.split("<rdf:li").skip(1) {
+    for part in body.split("<rdf:li").skip(1).take(MAX_KEYWORDS) {
         let (Some(s), Some(e)) = (part.find('>'), part.find("</rdf:li>")) else {
             continue;
         };
@@ -314,14 +368,6 @@ fn xmp_keywords(xmp: &str) -> Vec<String> {
         }
     }
     out
-}
-
-fn xml_unescape(s: &str) -> String {
-    s.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&amp;", "&")
 }
 
 /// Nome do perfil ICC: tag `desc` (v2 `desc`, v4 `mluc`).
@@ -413,6 +459,22 @@ fn iso_utc(t: SystemTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn textos_com_acento_do_exif_e_do_iptc_saem_decodificados() {
+        let asc = |b: &[u8]| (0x013Bu16, 2u16, b.len() as u32 + 1, [b, &[0]].concat());
+        let autor = |b: &[u8]| {
+            let tiff = crate::image::test_util::tiff_le(&[asc(b)]);
+            known_texts(None, Some(&tiff))[2].clone()
+        };
+        assert_eq!(autor("José Simões".as_bytes()).as_deref(), Some("José Simões"));
+        assert_eq!(autor(b"Jos\xe9 Sim\xf5es").as_deref(), Some("José Simões"), "Latin-1");
+        assert_eq!(autor(b"Ana \"Nina\" \\ Cia").as_deref(), Some("Ana \"Nina\" \\ Cia"));
+        assert_eq!(autor(b"Ana\0Bia").as_deref(), Some("Ana, Bia"));
+        let mut iim = vec![0x1C, 2, 120, 0, 10];
+        iim.extend_from_slice(b"Legenda \xe7\xe3");
+        assert_eq!(known_texts(Some(&iim), None)[1].as_deref(), Some("Legenda çã"));
+    }
 
     #[test]
     fn data_iso() {

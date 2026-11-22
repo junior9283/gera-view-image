@@ -1902,6 +1902,7 @@ dependencies = [
  "prost",
  "psd",
  "qrcode",
+ "quick-xml 0.42.0",
  "rawler",
  "rayon",
  "reqwest",

@@ -2,31 +2,56 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { metadata } from "../ipc/commands";
-import type { DocId, Metadata } from "../ipc/types";
+import type { DocId, DocInfo, Metadata, MetaSectionId } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { useAnnotations, getAnnotationSource } from "./annotations";
 import { formatBytes, formatCoord, formatDate, mapUrl } from "./format";
 import { addKeyword, removeKeyword, seedKeywords, useKeywords } from "./keywords";
-import { TOGGLE_INSPECTOR_EVENT } from "./toggle";
+import { seedTexts } from "./textEdits";
+import { CropTab } from "./tabs/CropTab";
+import { DescriptionTab } from "./tabs/DescriptionTab";
+import { OPEN_INSPECTOR_TAB_EVENT, TOGGLE_INSPECTOR_EVENT } from "./toggle";
 import "./inspector.css";
 import { useWindowEvent } from "../lib/events";
 
-const TABS = ["general", "exif", "iptc", "gps", "keywords", "annotations"] as const;
-type Tab = (typeof TABS)[number];
+type Tab =
+  | "general" | "exif" | "maker" | "lens" | "iptc" | "gps" | "description" | "crop" | "keywords" | "annotations"
+  | MetaSectionId;
+
+/** Abas do arquivo: as fixas e, conforme os metadados, as do formato, do fabricante e da lente. */
+function tabsFor(meta: Metadata | null): Tab[] {
+  return [
+    "general",
+    "exif",
+    ...(meta?.sections.map((s) => s.id) ?? []),
+    ...(meta?.maker ? (["maker"] as const) : []),
+    ...(meta?.lens.length ? (["lens"] as const) : []),
+    "iptc",
+    "gps",
+    "description",
+    "crop",
+    "keywords",
+    "annotations",
+  ];
+}
 
 type Load = { state: "loading" } | { state: "error" } | { state: "ok"; meta: Metadata };
 
 /** Painel flutuante de informações; abre e fecha com `toggleInspector()`. */
 export function InspectorHost() {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>("general");
   useWindowEvent(TOGGLE_INSPECTOR_EVENT, () => setOpen((o) => !o));
-  return open ? <Inspector onClose={() => setOpen(false)} /> : null;
+  useWindowEvent(OPEN_INSPECTOR_TAB_EVENT, (e) => {
+    setTab((e as CustomEvent<Tab>).detail);
+    setOpen(true);
+  });
+  return open ? <Inspector tab={tab} onTab={setTab} onClose={() => setOpen(false)} /> : null;
 }
 
-function Inspector({ onClose }: { onClose: () => void }) {
+function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) => void; onClose: () => void }) {
   const { t } = useTranslation();
   const doc = useDocs((s) => s.docs.find((d) => d.id === s.activeId));
-  const [tab, setTab] = useState<Tab>("general");
   const [loaded, setLoaded] = useState<{ key: string; result: Load } | null>(null);
   const id = doc?.id;
   const rev = doc?.rev;
@@ -43,6 +68,7 @@ function Inspector({ onClose }: { onClose: () => void }) {
       .then((meta) => {
         if (stale) return;
         seedKeywords(id, meta.keywords);
+        seedTexts(id, meta.texts);
         done({ state: "ok", meta });
       })
       .catch(() => done({ state: "error" }));
@@ -50,6 +76,10 @@ function Inspector({ onClose }: { onClose: () => void }) {
       stale = true;
     };
   }, [id, key, failed]);
+
+  const tabs = tabsFor(load.state === "ok" ? load.meta : null);
+  // Aba que este arquivo não tem (ex.: PNG depois de trocar de documento): volta para Geral.
+  const tab = tabs.includes(wanted) || load.state !== "ok" ? wanted : "general";
 
   return (
     <aside className="inspector" role="complementary" aria-label={t("inspector.title")}>
@@ -60,17 +90,17 @@ function Inspector({ onClose }: { onClose: () => void }) {
         </button>
       </header>
       <div className="inspector-tabs" role="tablist">
-        {TABS.map((k) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
-            {t(`inspector.tab.${k}`)}
+        {tabs.map((k) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => onTab(k)}>
+            {k === "maker" && load.state === "ok" ? load.meta.maker?.name : t(`inspector.tab.${k}`)}
           </button>
         ))}
       </div>
       <div className="inspector-body" role="tabpanel">
-        {id === undefined || failed ? (
+        {!doc || failed ? (
           <p className="inspector-empty">{t("inspector.empty")}</p>
         ) : tab === "annotations" ? (
-          <AnnotationsTab id={id} />
+          <AnnotationsTab id={doc.id} />
         ) : load.state === "loading" ? (
           <p className="inspector-empty">{t("inspector.loading")}</p>
         ) : load.state === "error" ? (
@@ -78,27 +108,37 @@ function Inspector({ onClose }: { onClose: () => void }) {
             {t("inspector.error")}
           </p>
         ) : (
-          <TabContent tab={tab} id={id} meta={load.meta} />
+          <TabContent tab={tab} doc={doc} meta={load.meta} />
         )}
       </div>
     </aside>
   );
 }
 
-function TabContent({ tab, id, meta }: { tab: Tab; id: DocId; meta: Metadata }) {
+function TabContent({ tab, doc, meta }: { tab: Tab; doc: DocInfo; meta: Metadata }) {
   switch (tab) {
     case "general":
       return <GeneralTab meta={meta} />;
     case "exif":
       return <Fields rows={meta.exif} />;
+    case "maker":
+      return <Fields rows={meta.maker?.rows ?? []} />;
+    case "lens":
+      return <Fields rows={meta.lens} />;
     case "iptc":
       return <Fields rows={meta.iptc} />;
     case "gps":
       return <GpsTab meta={meta} />;
+    case "description":
+      return <DescriptionTab id={doc.id} />;
+    case "crop":
+      return <CropTab doc={doc} dpi={meta.general.dpi?.[0] ?? null} />;
     case "keywords":
-      return <KeywordsTab id={id} />;
+      return <KeywordsTab id={doc.id} />;
+    case "annotations":
+      return null; // tratada fora (não depende da leitura dos metadados)
     default:
-      return null;
+      return <Fields rows={meta.sections.find((s) => s.id === tab)?.rows ?? []} />;
   }
 }
 
