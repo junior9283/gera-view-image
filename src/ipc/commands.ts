@@ -65,9 +65,9 @@ const onFrame = (frame: number) => (frame ? { frame } : {});
 export const copyRegion = (id: DocId, mask: Mask | null, frame = 0) =>
   invoke<void>("copy_region", { id, mask, ...onFrame(frame) });
 
-/** Prévia de um ajuste de cor em resolução reduzida; não altera o documento. */
-export const previewAdjust = async (id: DocId, adjust: ColorAdjust, maxW: number, maxH: number) =>
-  decodeViewBuffer(await invoke<ArrayBuffer>("preview_adjust", { id, adjust, maxW, maxH }));
+/** Prévia de um ajuste de cor no trecho `region` da página `frame`; não altera o documento. */
+export const previewAdjust = async (id: DocId, adjust: ColorAdjust, maxW: number, maxH: number, frame = 0, region: Rect | null = null) =>
+  decodeViewBuffer(await invoke<ArrayBuffer>("preview_adjust", { id, adjust, maxW, maxH, region, ...onFrame(frame) }));
 
 export const histogram = (id: DocId) => invoke<Histogram>("histogram", { id });
 
@@ -109,6 +109,11 @@ export const reveal = (id: DocId) => invoke<void>("reveal", { id });
 
 /** Arraste nativo para fora da janela; resolve quando ele termina. */
 export const startDrag = (items: DragSource[]) => invoke<void>("start_drag", { items });
+
+/** Copia como arquivos (e, com um só, também a imagem da página `frame`). */
+export const copyFiles = (items: DragSource[], frame = 0) => invoke<void>("copy_files", { items, ...onFrame(frame) });
+/** Arquivos na área de transferência. */
+export const clipboardFiles = () => invoke<string[]>("clipboard_files");
 
 
 export const newFromClipboard = (name: string) => invoke<DocInfo>("new_from_clipboard", { name });

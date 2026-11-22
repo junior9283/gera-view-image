@@ -84,7 +84,7 @@ pub fn pid_alive(pid: u32) -> bool {
 
 /// Caminho de cada item: o arquivo do documento, ou o PNG temporário quando pedido, quando o
 /// documento não tem arquivo ou quando o arquivo sumiu do disco.
-fn resolve(store: &DocStore, base: &Path, items: &[DragSource]) -> AppResult<Vec<PathBuf>> {
+pub(super) fn resolve(store: &DocStore, base: &Path, items: &[DragSource]) -> AppResult<Vec<PathBuf>> {
     items
         .iter()
         .map(|it| {
@@ -95,6 +95,18 @@ fn resolve(store: &DocStore, base: &Path, items: &[DragSource]) -> AppResult<Vec
             }
             let png = render_png(store, it.id)?;
             Ok(write_temp(base, it.id, &info.name, &png)?)
+        })
+        .collect()
+}
+
+/// URIs `file://` dos caminhos (acentos e espaços escapados).
+pub(super) fn file_uris(paths: &[PathBuf]) -> AppResult<Vec<String>> {
+    paths
+        .iter()
+        .map(|p| {
+            gtk::glib::filename_to_uri(p, None)
+                .map(|u| u.to_string())
+                .map_err(|e| AppError::Io(e.to_string()))
         })
         .collect()
 }
@@ -120,14 +132,7 @@ pub async fn start_drag(
         Ok((paths, icon))
     })
     .await?;
-    let uris = paths
-        .iter()
-        .map(|p| {
-            gtk::glib::filename_to_uri(p, None)
-                .map(|u| u.to_string())
-                .map_err(|e| AppError::Io(e.to_string()))
-        })
-        .collect::<AppResult<Vec<_>>>()?;
+    let uris = file_uris(&paths)?;
 
     let (tx, mut rx) = tauri::async_runtime::channel::<AppResult<()>>(1);
     let win = window.clone();
