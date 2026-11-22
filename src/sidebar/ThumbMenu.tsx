@@ -9,8 +9,11 @@ import { reveal } from "../ipc/commands";
 import type { DocId, DocInfo, Op } from "../ipc/types";
 import { printDocs } from "../print/print";
 import { runCommand } from "../shortcuts/commands";
+import { useDocs } from "../store/docs";
 import { activate, closeDocs } from "../viewer/actions";
 import { applyToTargets } from "./batch";
+import { copyThumbs } from "./files";
+import { trashDocs } from "./trash";
 
 export interface MenuTarget {
   x: number;
@@ -19,12 +22,14 @@ export interface MenuTarget {
   pressed: DocInfo;
   /** Seleção em que as ações agem (inclui `pressed`). */
   ids: DocId[];
+  /** Abrir (na folha de contatos, mostra a imagem no visor). */
+  onOpen?: (id: DocId) => void;
 }
 
 type T = (key: string, opts?: Record<string, unknown>) => string;
 
-/** Itens do menu: o que só faz sentido para uma imagem (Abrir, Mostrar na Pasta, Lixo) fica desabilitado em lote. */
-export function thumbMenuItems({ pressed, ids }: MenuTarget, t: T): ListItem[] {
+/** Itens do menu: o que só faz sentido para uma imagem (Abrir, Mostrar na Pasta) fica desabilitado em lote. */
+export function thumbMenuItems({ pressed, ids, onOpen }: MenuTarget, t: T): ListItem[] {
   const many = ids.length > 1;
   const sep: ListItem = { separator: true };
   const item = (key: string, run: () => unknown, disabled = false, opts?: Record<string, unknown>): ActionItem => ({
@@ -35,8 +40,10 @@ export function thumbMenuItems({ pressed, ids }: MenuTarget, t: T): ListItem[] {
   const op = (key: string, o: Op) => item(key, () => applyToTargets(ids, () => o));
   const single = !many && !!pressed.path;
   const n = { count: ids.length };
+  const onDisk = useDocs.getState().docs.filter((d) => ids.includes(d.id) && d.path).length;
   return [
-    item("open", () => activate(pressed.id), many),
+    item("open", () => (onOpen ?? activate)(pressed.id), many),
+    item(many ? "copyMany" : "copy", () => copyThumbs(ids), false, n),
     sep,
     op("rotateLeft", { type: "rotate", data: { quarterTurns: -1 } }),
     op("rotateRight", { type: "rotate", data: { quarterTurns: 1 } }),
@@ -55,7 +62,7 @@ export function thumbMenuItems({ pressed, ids }: MenuTarget, t: T): ListItem[] {
     item(many ? "printMany" : "print", () => printDocs(ids), false, n),
     sep,
     item("reveal", () => reveal(pressed.id), !single),
-    item("trash", () => runCommand("file.moveToTrash"), !single),
+    item(onDisk > 1 ? "trashMany" : "trash", () => trashDocs(ids), !onDisk, { count: onDisk }),
     item(many ? "closeMany" : "close", () => closeDocs(ids), false, n),
   ];
 }

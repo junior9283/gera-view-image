@@ -3,6 +3,8 @@
 // do Lote 2 (docs/arquitetura/extensao.md).
 import { registerSlot, type OverlayProps } from "../lib/slots";
 import { registerCommand } from "../shortcuts/commands";
+import { pasteThumbs } from "../sidebar/files";
+import { sheetOpen } from "../sidebar/selection";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { registerDropTarget } from "../viewer/fileDrop";
@@ -31,7 +33,8 @@ registerSlot("viewport-overlay", "selection", SelectionOverlay);
 registerSlot("viewport-overlay", "context-menu", ImageContextMenu);
 
 // Colar: camada flutuante na imagem aberta (sem imagem aberta, Novo da Área de Transferência).
-registerCommand("edit.paste", pasteAsLayer);
+// Na folha de contatos não há imagem à vista: abre o que foi copiado.
+registerCommand("edit.paste", () => (sheetOpen() ? pasteThumbs() : pasteAsLayer()));
 
 // Soltar um arquivo de imagem sobre a imagem aberta: camada no ponto do drop.
 registerDropTarget((paths, { x, y }) => {

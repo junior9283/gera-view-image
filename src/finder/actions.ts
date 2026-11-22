@@ -12,10 +12,12 @@ import type { DocId, DocInfo, ExportFormat } from "../ipc/types";
 import { forgetHistory } from "../markup/history";
 import { shownPage } from "../markup/pages";
 import { useMarkup } from "../markup/store";
+import { selectedDocs } from "../sidebar/selection";
+import { trashDocs } from "../sidebar/trash";
 import { useDocs } from "../store/docs";
 import { addRecent } from "../store/prefs";
 import { activeDoc } from "../viewer/actions";
-import { askDiscard, closePopover, setLockedState } from "./store";
+import { askDiscard, setLockedState } from "./store";
 
 export { addTags, splitTags } from "./tags";
 
@@ -63,16 +65,8 @@ export async function saveAsActive(): Promise<void> {
   warnLeftOut(info, frame, dest);
 }
 
-/** Mover para o Lixo (Ctrl+Backspace). Com alterações, pergunta antes. Nunca apaga. */
-export async function moveActiveToTrash(): Promise<void> {
-  const d = activeFile();
-  if (!d) return;
-  if (hasUnsaved(d) && !(await askDiscard(d.id, d.name, "finder.trash.confirmUnsaved", "finder.trash.ok"))) return;
-  await ipc.moveToTrash(d.id);
-  closePopover();
-  await useDocs.getState().close(d.id);
-  notify(t("finder.trash.done", { name: d.name }));
-}
+/** Mover para o Lixo (Ctrl+Backspace): o ativo ou as miniaturas selecionadas. */
+export const moveActiveToTrash = () => trashDocs(selectedDocs().map((d) => d.id));
 
 /** Lê do disco se o arquivo está bloqueado (e guarda no estado da interface). */
 export async function refreshLocked(id: DocId): Promise<boolean> {

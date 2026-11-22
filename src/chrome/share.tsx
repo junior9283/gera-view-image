@@ -6,10 +6,23 @@ import * as ipc from "../ipc/commands";
 import type { Device, DocId } from "../ipc/types";
 import { useModal } from "../lib/modal";
 import { current } from "../file/fileActions";
+import { nameList } from "../sidebar/batch";
+import { selectedDocs } from "../sidebar/selection";
 import { notify, notifyError } from "./notify";
 import "../prefs/prefs.css";
 
-/** Documento ativo com arquivo em disco (o que se compartilha é o arquivo). */
+/** As imagens selecionadas com arquivo em disco (o que se compartilha é o arquivo). */
+export const sharedDocs = () => selectedDocs().filter((d) => !d.error && d.path);
+
+/** Ids a compartilhar, avisando das selecionadas que ficam de fora por não terem arquivo. */
+function shareIds(): DocId[] {
+  const left = selectedDocs().filter((d) => !d.error && !d.path);
+  const ids = sharedDocs().map((d) => d.id);
+  if (ids.length && left.length) notify(i18n.t("share.leftOut", { names: nameList(left.map((d) => d.name)) }));
+  return ids;
+}
+
+/** Documento ativo com arquivo em disco (Abrir com). */
 export const sharedDoc = () => {
   const d = current();
   return d?.path ? d : null;
@@ -24,8 +37,8 @@ export async function probeDeviceShare(): Promise<boolean> {
 }
 
 export async function shareByEmail(): Promise<void> {
-  const d = sharedDoc();
-  if (d) await ipc.shareEmail([d.id]).catch(notifyError);
+  const ids = shareIds();
+  if (ids.length) await ipc.shareEmail(ids).catch(notifyError);
 }
 
 interface Pick {
@@ -54,13 +67,13 @@ async function sendTo(ids: DocId[], device: Device): Promise<void> {
 
 /** Um aparelho: envia direto; vários: pergunta qual (`DevicePicker`). */
 export async function shareToDevice(): Promise<void> {
-  const d = sharedDoc();
-  if (!d) return;
+  const ids = shareIds();
+  if (!ids.length) return;
   try {
     const devices = await ipc.shareDevices();
     if (!devices.length) notify(i18n.t("share.noDevice"));
-    else if (devices.length === 1) await sendTo([d.id], devices[0]);
-    else setPick({ ids: [d.id], devices });
+    else if (devices.length === 1) await sendTo(ids, devices[0]);
+    else setPick({ ids, devices });
   } catch (e) {
     notifyError(e);
   }

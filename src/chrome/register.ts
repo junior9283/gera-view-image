@@ -4,14 +4,14 @@ import { registerCommand } from "../shortcuts/commands";
 import { getPrefs, setPrefs } from "../store/prefs";
 import { CUSTOMIZE_TOOLBAR_EVENT, CustomizeToolbar } from "./CustomizeToolbar";
 import { HELP_SEARCH_EVENT } from "./MenuBar";
-import { DevicePicker, hasDeviceShare, probeDeviceShare, shareByEmail, sharedDoc, shareToDevice } from "./share";
+import { DevicePicker, hasDeviceShare, probeDeviceShare, shareByEmail, sharedDocs, shareToDevice } from "./share";
 
 const fire = (name: string) => () => window.dispatchEvent(new Event(name));
-const registerDevice = () => registerCommand("file.shareDevice", shareToDevice, () => hasDeviceShare() && !!sharedDoc());
+const registerDevice = () => registerCommand("file.shareDevice", shareToDevice, () => hasDeviceShare() && sharedDocs().length > 0);
 
 registerCommand("view.toolbar", () => setPrefs({ toolbarHidden: !getPrefs().toolbarHidden }));
 registerCommand("view.customizeToolbar", fire(CUSTOMIZE_TOOLBAR_EVENT));
-registerCommand("file.shareEmail", shareByEmail, () => !!sharedDoc());
+registerCommand("file.shareEmail", shareByEmail, () => sharedDocs().length > 0);
 registerDevice();
 registerCommand("help.search", fire(HELP_SEARCH_EVENT));
 registerSlot("below-toolbar", "customize-toolbar", CustomizeToolbar);

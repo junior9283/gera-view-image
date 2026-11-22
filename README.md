@@ -99,7 +99,7 @@ Itens de funções ainda em desenvolvimento aparecem desabilitados nos menus, e 
 | Arquivo | Fechar Todas | `Ctrl+Alt+W` |
 | Arquivo | Fechar Janela | `Ctrl+Shift+W` |
 | Arquivo | Salvar Como | `Ctrl+Shift+Alt+S` |
-| Arquivo | Mover para o Lixo | `Ctrl+Backspace` |
+| Arquivo | Mover para o Lixo | `Ctrl+Backspace` ou `Ctrl+Del` |
 | Editar | Desfazer | `Ctrl+Z` |
 | Editar | Refazer | `Ctrl+Shift+Z` |
 | Editar | Recortar | `Ctrl+X` |

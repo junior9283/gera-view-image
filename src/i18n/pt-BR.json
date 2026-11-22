@@ -95,6 +95,8 @@
     "itemMenu": "Menu da miniatura",
     "menu": {
       "open": "Abrir",
+      "copy": "Copiar",
+      "copyMany": "Copiar {{count}} Imagens",
       "rotateLeft": "Girar à Esquerda",
       "rotateRight": "Girar à Direita",
       "flipH": "Espelhar Horizontalmente",
@@ -107,6 +109,7 @@
       "printMany": "Imprimir {{count}} Imagens…",
       "reveal": "Mostrar na Pasta",
       "trash": "Mover para o Lixo",
+      "trashMany": "Mover {{count}} Imagens para o Lixo",
       "close": "Fechar",
       "closeMany": "Fechar {{count}} Imagens"
     },
@@ -786,6 +789,7 @@
   "share": {
     "sent": "Enviado para {{name}}.",
     "noDevice": "Nenhum aparelho do KDE Connect disponível.",
+    "leftOut": "Sem arquivo em disco, não enviadas: {{names}}.",
     "pickDevice": "Enviar para qual aparelho?",
     "cancel": "Cancelar"
   },
@@ -812,8 +816,10 @@
     },
     "trash": {
       "confirmUnsaved": "{{name}} tem alterações não salvas. Mover para o Lixo e descartá-las?",
+      "confirmUnsavedMany": "Estas imagens têm alterações não salvas: {{name}}. Mover para o Lixo e descartá-las?",
       "ok": "Mover para o Lixo",
       "cancel": "Cancelar",
+      "doneMany": "{{count}} imagens foram para o Lixo",
       "done": "{{name}} foi para o Lixo"
     },
     "saveAs": {
