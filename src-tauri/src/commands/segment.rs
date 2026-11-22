@@ -82,7 +82,7 @@ async fn load_model(path: PathBuf, job: Job) -> AppResult<Arc<Model>> {
     let bytes = match blocking(move || Ok(segment::read_model(&p, MODEL_SHA256))).await? {
         Some(b) => b,
         None => {
-            let b = download(MODEL_URL, MODEL_MAX_BYTES, job).await?;
+            let b = download(&client(true)?, MODEL_URL, MODEL_MAX_BYTES, job).await?;
             job.check()?;
             blocking(move || segment::install_model(&path, &b, MODEL_SHA256).map(|_| b)).await?
         }
@@ -96,16 +96,20 @@ fn net(e: reqwest::Error) -> AppError {
     AppError::Io(format!("download do modelo: {e}"))
 }
 
-/// Baixa `url` inteiro (no máximo `max` bytes), parando se o trabalho for cancelado.
-async fn download(url: &str, max: usize, job: Job) -> AppResult<Vec<u8>> {
+/// Cliente do download do modelo; em produção, só HTTPS (inclusive nos redirecionamentos).
+fn client(https_only: bool) -> AppResult<reqwest::Client> {
     // O reqwest vem sem provedor de criptografia (o mesmo do updater: ring).
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let client = reqwest::Client::builder()
-        .https_only(true)
+    reqwest::Client::builder()
+        .https_only(https_only)
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(300))
         .build()
-        .map_err(net)?;
+        .map_err(net)
+}
+
+/// Baixa `url` inteiro (no máximo `max` bytes), parando se o trabalho for cancelado.
+async fn download(client: &reqwest::Client, url: &str, max: usize, job: Job) -> AppResult<Vec<u8>> {
     let mut resp = client
         .get(url)
         .send()
@@ -154,14 +158,22 @@ mod tests {
     fn baixa_o_modelo_inteiro() {
         let body: Vec<u8> = (0..200_000u32).map(|i| i as u8).collect();
         let url = serve_once(body.clone());
-        let got = tauri::async_runtime::block_on(download(&url, 1 << 20, Job::start())).unwrap();
+        let got = tauri::async_runtime::block_on(download(&client(false).unwrap(), &url, 1 << 20, Job::start())).unwrap();
         assert_eq!(got, body);
+    }
+
+    #[test]
+    fn cliente_de_producao_recusa_http() {
+        let url = serve_once(vec![1; 16]);
+        let client = client(true).unwrap();
+        let e = tauri::async_runtime::block_on(download(&client, &url, 1000, Job::start())).unwrap_err();
+        assert_eq!(e.code(), "io");
     }
 
     #[test]
     fn recusa_download_maior_que_o_teto() {
         let url = serve_once(vec![7; 4096]);
-        let e = tauri::async_runtime::block_on(download(&url, 1000, Job::start())).unwrap_err();
+        let e = tauri::async_runtime::block_on(download(&client(false).unwrap(), &url, 1000, Job::start())).unwrap_err();
         assert_eq!(e.code(), "corrupt");
     }
 
@@ -171,7 +183,7 @@ mod tests {
         static E: AtomicU64 = AtomicU64::new(0);
         let job = Job::on(&E);
         E.fetch_add(1, Ordering::SeqCst);
-        let e = tauri::async_runtime::block_on(download(&url, 1 << 20, job)).unwrap_err();
+        let e = tauri::async_runtime::block_on(download(&client(false).unwrap(), &url, 1 << 20, job)).unwrap_err();
         assert_eq!(e.code(), "io");
     }
 }
