@@ -55,14 +55,13 @@ pub fn profiles() -> Vec<(String, String)> {
 
 /// Carrega o perfil `id` (embutido, do sistema ou arquivo escolhido pelo usuário). Lê o disco.
 pub fn load(id: &str) -> AppResult<Proof> {
-    let builtin = icc::BUILTIN.iter().find(|(b, _)| *b == id);
-    let bytes = match builtin {
-        Some(_) => icc::profile_bytes(id)?,
-        None => Arc::new(icc::read_chosen(Path::new(id), is_proof_profile)?),
-    };
-    let name = match builtin {
-        Some((_, name)) => Some(name.to_string()),
-        None => icc::describe(&bytes),
+    let (bytes, name) = match icc::BUILTIN.iter().find(|(b, _)| *b == id) {
+        Some((_, name)) => (icc::profile_bytes(id)?, Some(name.to_string())),
+        None => {
+            let bytes = Arc::new(icc::read_chosen(Path::new(id), is_proof_profile)?);
+            let name = icc::describe(&bytes);
+            (bytes, name)
+        }
     };
     let name = name.filter(|n| !n.is_empty()).unwrap_or_else(|| {
         Path::new(id).file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned())

@@ -105,9 +105,14 @@ fn check_budget_max(w: u32, h: u32, already: usize, max: usize) -> AppResult<usi
 pub fn estimate_bytes(path: &Path, bytes: &[u8]) -> usize {
     let by_file = bytes.len().saturating_mul(8);
     let format = detect_format(path, bytes);
-    // Luz linear: os pixels passam por f32 antes do RGBA8.
+    // Memória de trabalho por pixel, a mesma que cada decodificador confere.
     let per_pixel = match format {
+        // Luz linear: os pixels passam por f32 antes do RGBA8.
         Some(SourceFormat::Exr | SourceFormat::Hdr) => 20,
+        Some(SourceFormat::Jxl) => jxl::WORK_BYTES_PER_PIXEL,
+        // PQ/HLG: RGBA16 de trabalho (e, no HEIF, o plano de 16 bits) antes do RGBA8.
+        Some(SourceFormat::Png) if matches!(cicp::png_color(bytes), Some(cicp::Color::Hdr(..))) => 12,
+        Some(SourceFormat::Heic | SourceFormat::Avif) if cicp::isobmff_is_hdr(bytes) => 20,
         _ => 4,
     };
     let est = if format == Some(SourceFormat::Raw) {

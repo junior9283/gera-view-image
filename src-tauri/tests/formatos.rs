@@ -629,3 +629,101 @@ fn png_pq_de_16_bits_salva_em_16_bits() {
         }
     }
 }
+
+// ---------- Tetos de memória dos decodificadores (achados da checagem de segurança) ----------
+
+fn grande_demais(r: Result<Decoded, AppError>) {
+    match r {
+        Err(AppError::Unsupported(m)) => assert!(m.contains("grande demais"), "{m}"),
+        Err(e) => panic!("recusado pelo motivo errado: {e:?}"),
+        Ok(_) => panic!("aceito"),
+    }
+}
+
+/// EXR pequeno cujo `dataWindow` declara 16384x8192 com 40 canais f32: 4 bytes/pixel cabem no
+/// teto, os 160 do total não. A janela de exibição fica 2x2, então nada grande é alocado.
+#[test]
+fn exr_conta_todos_os_canais_no_teto() {
+    use exr::prelude::*;
+    let nomes = ["R", "G", "B"].into_iter().map(String::from).chain((0..37).map(|i| format!("x{i:02}")));
+    let canais = AnyChannels::sort(
+        nomes.map(|n| AnyChannel::new(n.as_str(), FlatSamples::F32(vec![0.5; 4]))).collect(),
+    );
+    let layer = Layer::new((2, 2), LayerAttributes::named("a"), Encoding::UNCOMPRESSED, canais);
+    let mut c = Cursor::new(Vec::new());
+    Image::from_layer(layer).write().to_buffered(&mut c).unwrap();
+    let mut b = c.into_inner();
+    let nome = b"dataWindow\0box2i\0";
+    let at = b.windows(nome.len()).position(|w| w == nome).unwrap() + nome.len() + 4;
+    b[at + 8..at + 12].copy_from_slice(&16_383i32.to_le_bytes());
+    b[at + 12..at + 16].copy_from_slice(&8_191i32.to_le_bytes());
+    grande_demais(decode_bytes(Path::new("c.exr"), &b));
+}
+
+/// Bits de um codestream JPEG XL (o menos significativo primeiro).
+struct Bits(Vec<u8>, usize);
+
+impl Bits {
+    fn put(&mut self, v: u32, n: usize) {
+        for i in 0..n {
+            if self.1 % 8 == 0 {
+                self.0.push(0);
+            }
+            *self.0.last_mut().unwrap() |= (((v >> i) & 1) as u8) << (self.1 % 8);
+            self.1 += 1;
+        }
+    }
+}
+
+/// Só a assinatura e o cabeçalho de um JPEG XL `w`x`h` (sem quadros).
+fn jxl_so_cabecalho(w: u32, h: u32) -> Vec<u8> {
+    let mut b = Bits(vec![0xff, 0x0a], 16);
+    b.put(0, 1); // div8
+    b.put(2, 2); // altura: 1 + u(18)
+    b.put(h - 1, 18);
+    b.put(0, 3); // sem proporção fixa
+    b.put(2, 2);
+    b.put(w - 1, 18);
+    b.put(1, 1); // metadados padrão
+    b.0.extend_from_slice(&[0; 16]);
+    b.0
+}
+
+/// 16384x16384: o RGBA8 final (1 GiB) caberia; os planos f32 de trabalho não.
+#[test]
+fn jxl_conta_os_planos_de_trabalho_no_teto() {
+    let b = jxl_so_cabecalho(16_384, 16_384);
+    assert_eq!(formato("a.jxl", &b).as_deref(), Some("jxl"));
+    grande_demais(decode_bytes(Path::new("a.jxl"), &b));
+    assert_eq!(estimate_bytes(Path::new("a.jxl"), &b), MAX_DECODE_BYTES);
+}
+
+/// Caixa `brob` (Brotli) com 1 MiB de Exif em 20 bytes: não é descomprimida.
+#[test]
+fn jxl_ignora_caixas_brob() {
+    const BROB: &str = "0000002062726f62457869669b0d0010f8a7019a5410c68181c0bbf70f508e01";
+    let base = hex(JXL_RGB);
+    let mut b = base[..32].to_vec(); // assinatura e ftyp
+    b.extend_from_slice(&hex(BROB));
+    b.extend_from_slice(&base[32..]);
+    let d = abre("b.jxl", &b);
+    confere_linhas(&d, 1);
+    assert!(d.exif.is_none());
+}
+
+/// PQ/HLG passam por RGBA16 (e, no HEIF, por um plano de 16 bits): a estimativa conta isso.
+#[test]
+fn estimativa_conta_o_trabalho_do_hdr() {
+    let png = png_de([10, 20, 30, 255]);
+    assert_eq!(estimate_bytes(Path::new("a.png"), &png), 16 * 4);
+    let pq = com_chunks(&png, &[chunk(b"cICP", &[9, 16, 0, 1])]);
+    assert_eq!(estimate_bytes(Path::new("a.png"), &pq), 16 * 12);
+    let avif = hex(AVIF_10);
+    assert_eq!(estimate_bytes(Path::new("a.avif"), &avif), 16 * 16 * 4);
+    let at = avif.windows(8).position(|w| w == b"colrnclx").unwrap() + 8;
+    for t in [16u16, 18] {
+        let mut hdr = avif.clone();
+        hdr[at + 2..at + 4].copy_from_slice(&t.to_be_bytes());
+        assert_eq!(estimate_bytes(Path::new("a.avif"), &hdr), 16 * 16 * 20, "transfer {t}");
+    }
+}

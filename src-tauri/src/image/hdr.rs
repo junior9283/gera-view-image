@@ -64,7 +64,7 @@ fn srgb_encode(v: f32) -> f32 {
 }
 
 /// Maior canal de cor dos pixels.
-fn peak_of(px: &[[f32; 4]]) -> f32 {
+fn peak_of<const N: usize>(px: &[[f32; N]]) -> f32 {
     px.par_iter()
         .map(|p| max3([p[0], p[1], p[2]].map(clean)))
         .reduce(|| 0.0, f32::max)
@@ -98,6 +98,39 @@ pub(super) fn check_pixels(w: usize, h: usize, bytes: usize) -> AppResult<()> {
 
 // ---------- OpenEXR ----------
 
+/// Camadas e canais além disso: arquivo malformado ou hostil.
+const MAX_EXR_LAYERS: usize = 64;
+const MAX_EXR_CHANNELS: usize = 1024;
+
+/// Confere os tamanhos que vêm do arquivo antes de alocar: a janela de dados com todos os canais
+/// e o maior bloco (aritmética verificada). Devolve o tamanho do maior bloco descomprimido.
+fn check_exr_headers(headers: &[::exr::meta::header::Header]) -> AppResult<usize> {
+    use ::exr::meta::BlockDescription;
+    if headers.len() > MAX_EXR_LAYERS {
+        return Err(AppError::Unsupported("EXR com camadas demais".into()));
+    }
+    let mut largest = 0usize;
+    for h in headers {
+        if h.channels.list.len() > MAX_EXR_CHANNELS {
+            return Err(AppError::Unsupported("EXR com canais demais".into()));
+        }
+        let bpp: usize = h.channels.list.iter().map(|c| c.sample_type.bytes_per_sample()).sum();
+        check_pixels(h.layer_size.width(), h.layer_size.height(), bpp)?;
+        let px = match h.blocks {
+            BlockDescription::Tiles(t) => t.tile_size.width().checked_mul(t.tile_size.height()),
+            BlockDescription::ScanLines => {
+                h.compression.scan_lines_per_block().checked_mul(h.layer_size.width())
+            }
+        };
+        let block = px
+            .and_then(|n| n.checked_mul(bpp))
+            .filter(|&n| n <= MAX_DECODE_BYTES)
+            .ok_or_else(|| AppError::Unsupported("bloco do EXR grande demais".into()))?;
+        largest = largest.max(block);
+    }
+    Ok(largest)
+}
+
 /// Primeira camada com R, G e B (ou só Y, que vira cinza), recortada na janela de exibição. O alfa
 /// do OpenEXR é pré-multiplicado.
 pub fn decode_exr(bytes: &[u8]) -> AppResult<Decoded> {
@@ -106,13 +139,7 @@ pub fn decode_exr(bytes: &[u8]) -> AppResult<Decoded> {
         prelude::{MetaData, ReadChannels, ReadLayers, ReadSpecificChannel, Text, Vec2, read},
     };
     let meta = MetaData::read_from_buffered(Cursor::new(bytes), false).map_err(AppError::corrupt)?;
-    // Os tamanhos vêm do arquivo: nada é alocado antes de conferi-los (janela de dados e bloco).
-    for h in &meta.headers {
-        check_pixels(h.layer_size.width(), h.layer_size.height(), 4)?;
-        if h.max_block_byte_size() > MAX_DECODE_BYTES {
-            return Err(AppError::Unsupported("bloco do EXR grande demais".into()));
-        }
-    }
+    let block = check_exr_headers(&meta.headers)?;
     let has = |h: &Header, names: &[&str]| {
         !h.deep && names.iter().all(|n| h.channels.find_index_of_channel(&Text::from(*n)).is_some())
     };
@@ -122,7 +149,13 @@ pub fn decode_exr(bytes: &[u8]) -> AppResult<Decoded> {
         .ok_or_else(|| AppError::Unsupported("EXR sem canais R, G e B ou Y".into()))?;
     let window = header.shared_attributes.display_window;
     let (w, h) = (window.size.width(), window.size.height());
-    check_pixels(w, h, size_of::<[f32; 4]>())?;
+    // RGBA f32 de saída e o RGBA8 final, mais os blocos em voo (um por thread do leitor e folga).
+    let need = block.checked_mul(rayon::current_num_threads().saturating_add(2)).and_then(|b| {
+        w.checked_mul(h)?.checked_mul(size_of::<[f32; 4]>() + 4)?.checked_add(b)
+    });
+    if need.is_none_or(|n| n > MAX_DECODE_BYTES) {
+        return Err(AppError::Unsupported(format!("imagem grande demais ({w}x{h})")));
+    }
     let origin = header.own_attributes.layer_position;
     let dx = i64::from(origin.x()) - i64::from(window.position.x());
     let dy = i64::from(origin.y()) - i64::from(window.position.y());
@@ -197,7 +230,7 @@ pub fn decode_radiance(bytes: &[u8]) -> AppResult<Decoded> {
         return Err(short());
     };
     let px = img.as_raw().as_chunks::<3>().0;
-    let peak = px.par_iter().map(|p| max3(p.map(clean))).reduce(|| 0.0, f32::max);
+    let peak = peak_of(px);
     let out = linear_to_rgba8(w, h, peak, |i| [px[i][0], px[i][1], px[i][2], 1.0]);
     Ok(Decoded::single(out, SourceFormat::Hdr))
 }
@@ -264,6 +297,30 @@ pub fn to_sdr(img: &mut Rgba16Image, transfer: Transfer) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ladrilho cuja área estoura `usize`: a crate `exr` multiplicaria sem conferir.
+    #[test]
+    fn bloco_do_exr_com_aritmetica_verificada() {
+        use ::exr::{
+            meta::{
+                BlockDescription,
+                attribute::{ChannelDescription, LevelMode, SampleType, TileDescription},
+                header::Header,
+            },
+            math::RoundingMode,
+            prelude::Vec2,
+        };
+        let ch = vec![ChannelDescription::named("R", SampleType::F32)];
+        let mut h = Header::new("a".into(), (2, 2), ch.clone().into());
+        assert!(check_exr_headers(std::slice::from_ref(&h)).is_ok());
+        h.blocks = BlockDescription::Tiles(TileDescription {
+            tile_size: Vec2(usize::MAX / 2, 4),
+            level_mode: LevelMode::Singular,
+            rounding_mode: RoundingMode::Down,
+        });
+        assert!(check_exr_headers(&[h.clone()]).is_err());
+        assert!(check_exr_headers(&vec![Header::new("b".into(), (2, 2), ch.into()); 65]).is_err());
+    }
 
     #[test]
     fn ombro_e_identidade_ate_o_branco_e_monotono_acima() {

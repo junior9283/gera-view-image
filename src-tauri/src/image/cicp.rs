@@ -157,6 +157,14 @@ pub fn icc_from_primaries(
 
 /// Cor declarada pelos blocos do PNG antes do primeiro `IDAT`; `None` = vale o `iCCP`, que o
 /// decodificador já lê. Blocos de CRC errado são ignorados; de um repetido vale o primeiro.
+/// A primeira caixa `colr` do tipo `nclx` de um HEIF/AVIF declara PQ ou HLG? Só para estimar
+/// memória: quem decide a cor é o decodificador.
+pub fn isobmff_is_hdr(bytes: &[u8]) -> bool {
+    bytes.windows(8).position(|w| w == b"colrnclx").is_some_and(|at| {
+        bytes.get(at + 10..at + 12).is_some_and(|t| matches!(u16::from_be_bytes([t[0], t[1]]), 16 | 18))
+    })
+}
+
 pub fn png_color(bytes: &[u8]) -> Option<Color> {
     let (mut cicp, mut iccp, mut srgb, mut gama, mut chrm) = (None, false, false, None, None);
     let mut rest = bytes.get(8..).unwrap_or_default();

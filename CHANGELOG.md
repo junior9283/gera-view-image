@@ -33,7 +33,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - O OpenEXR exportado com transparência segue a especificação (cor pré-multiplicada pelo alfa). Antes, outros programas mostravam as bordas claras demais.
 
 ### Limitações conhecidas (o que falta para a 1.0)
-- HDR: OpenEXR, Radiance, PQ e HLG são sempre mostrados em SDR, e gravar por cima perde o alcance original. QOI não abre, do JPEG XL só o primeiro quadro, e o JPEG XL em CMYK é recusado.
+- HDR: OpenEXR, Radiance, PQ e HLG são sempre mostrados em SDR, e gravar por cima perde o alcance original. QOI não abre, do JPEG XL só o primeiro quadro, o JPEG XL em CMYK é recusado e metadados comprimidos (caixas `brob`) do JPEG XL são ignorados.
 - Prova de Cor: sem simulação do branco do papel nem da tinta preta, e sem aviso de gama.
 - TIFF de várias páginas é gravado com uma página só (a exibida); a partir da segunda, sempre a partir dos 8 bits por canal.
 
