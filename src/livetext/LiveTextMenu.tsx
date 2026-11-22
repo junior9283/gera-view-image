@@ -1,6 +1,7 @@
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../chrome/notify";
+import { focusByKeys } from "../lib/tablist";
 import { copySelected, lookUp, startSpeaking } from "./actions";
 
 export interface MenuAt {
@@ -40,17 +41,8 @@ export function LiveTextMenu({ at, onClose }: { at: MenuAt; onClose: () => void 
       {label}
     </button>
   );
-  const onKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => {
-    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: -1 }[e.key];
-    if (to === undefined) return;
-    e.preventDefault();
-    e.stopPropagation();
-    items[(to + items.length) % items.length].focus();
-  };
   return (
-    <div ref={ref} className="livetext-menu" role="menu" aria-label={t("livetext.menu.label")} onKeyDown={onKeyDown} data-livetext-stop style={{ left: at.x, top: at.y }}>
+    <div ref={ref} className="livetext-menu" role="menu" aria-label={t("livetext.menu.label")} onKeyDown={(e) => focusByKeys(e, '[role="menuitem"]')} data-livetext-stop style={{ left: at.x, top: at.y }}>
       {item(t("livetext.menu.copy"), copySelected)}
       {item(t("livetext.menu.search"), () => lookUp("search"))}
       {item(t("livetext.menu.translate"), () => lookUp("translate"))}
