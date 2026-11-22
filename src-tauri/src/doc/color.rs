@@ -4,7 +4,8 @@ use super::{
     store::{DocStore, Document},
 };
 use crate::image::{decode::Decoded, icc};
-use std::sync::Arc;
+use ::image::RgbaImage;
+use std::{borrow::Cow, sync::Arc};
 
 /// Perfil ICC que descreve os pixels do documento.
 #[derive(Clone)]
@@ -67,6 +68,12 @@ impl DocStore {
         icc::png_from_display(&png, p.as_ref().map(Profile::bytes)).unwrap_or(png)
     }
 
+    /// Pixels do documento `id` em sRGB (ver [`icc::to_srgb`]).
+    pub fn to_srgb<'a>(&self, id: DocId, img: Cow<'a, RgbaImage>) -> Cow<'a, RgbaImage> {
+        let p = self.with_doc(id, Document::profile).ok().flatten();
+        icc::to_srgb(img, p.as_ref().map(Profile::bytes))
+    }
+
     /// O perfil de exibição mudou: avança `rev` de todos os documentos para refazer as prévias.
     pub fn redisplay_all(&self) {
         let infos: Vec<_> = self
@@ -87,7 +94,7 @@ impl DocStore {
 mod tests {
     use super::*;
     use crate::doc::model::SourceFormat;
-    use ::image::{Rgba, RgbaImage};
+    use ::image::Rgba;
 
     fn store_with(icc: Option<Vec<u8>>) -> (DocStore, DocId) {
         let store = DocStore::new();

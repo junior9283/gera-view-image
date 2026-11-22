@@ -6,6 +6,7 @@
 //! um par equivalente à identidade (ex.: JPEG com o sRGB IEC61966-2.1 embutido) vira `None` e a
 //! conversão é pulada, então o caminho comum não paga nada.
 use super::raster::Raster;
+use ::image::RgbaImage;
 use crate::error::{AppError, AppResult};
 use moxcms::{
     ColorProfile as Icc, DataColorSpace, Layout, Transform8BitExecutor,
@@ -300,6 +301,19 @@ pub fn convert_raster<'a>(img: Raster<'a>, src: &[u8], dst: &[u8]) -> AppResult<
         .ok_or_else(|| AppError::Unsupported("não foi possível converter o perfil de cor".into()))
 }
 
+/// `img` do perfil `doc` (`None` = sRGB) para sRGB, o espaço do que sai do app sem perfil (área
+/// de transferência, arraste, impressão). Sem cópia se já for sRGB; perfil ilegível: como está.
+pub fn to_srgb<'a>(img: Cow<'a, RgbaImage>, doc: Option<&[u8]>) -> Cow<'a, RgbaImage> {
+    match doc.map(|d| conversion(d, srgb_icc())) {
+        Some(Conversion::Run(t)) => {
+            let mut i = img.into_owned();
+            run_in_place(&mut i, t.as_ref());
+            Cow::Owned(i)
+        }
+        _ => img,
+    }
+}
+
 // ---------- Exibição ----------
 
 /// Para onde vão os pixels da tela.
@@ -323,6 +337,11 @@ pub fn configure(enabled: bool, monitor: Option<Vec<u8>>) -> bool {
     let changed = *d != next;
     *d = next;
     changed
+}
+
+/// A correspondência de cor está ligada. Desligada, tudo é mostrado e copiado como sRGB.
+pub fn enabled() -> bool {
+    !display().disabled
 }
 
 /// Nome do perfil de exibição em uso; `None` = sRGB (ou correspondência desligada).

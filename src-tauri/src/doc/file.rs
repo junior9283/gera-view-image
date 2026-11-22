@@ -511,13 +511,14 @@ fn webp_is_lossy(b: &[u8]) -> bool {
     b.windows(4).take(4096).any(|w| w == b"VP8 ")
 }
 
-/// Bytes PNG (rápido) do quadro 0 com as operações: usado pela impressão.
+/// Bytes PNG (rápido) do quadro 0 com as operações, em sRGB: usado pela impressão e pelo arraste.
 pub fn render_png(store: &DocStore, id: DocId) -> AppResult<Vec<u8>> {
     use ::image::{
         ImageEncoder,
         codecs::png::{CompressionType, FilterType, PngEncoder},
     };
     let px = store.render_full(id, 0)?;
+    let px = store.to_srgb(id, std::borrow::Cow::Borrowed(&*px));
     let mut out = Vec::new();
     PngEncoder::new_with_quality(&mut out, CompressionType::Fast, FilterType::Adaptive)
         .write_image(

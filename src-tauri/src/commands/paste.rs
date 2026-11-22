@@ -13,7 +13,7 @@ use ::image::{
     ExtendedColorType, ImageEncoder, RgbaImage,
     codecs::png::{CompressionType, FilterType, PngEncoder},
 };
-use std::path::Path;
+use std::{borrow::Cow, path::Path};
 use tauri::{AppHandle, State, image::Image, ipc::Response};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -36,6 +36,30 @@ fn file_png(path: &Path) -> AppResult<Vec<u8>> {
     png_bytes(first)
 }
 
+/// Camada colada em PNG: a imagem da área de transferência é sRGB e a interface desenha (e
+/// achata) a camada como cor de tela.
+pub fn layer_png(mut img: RgbaImage) -> AppResult<Vec<u8>> {
+    icc::to_display(&mut img, None);
+    png_bytes(&img)
+}
+
+/// O que Copiar põe na área de transferência: a região de `id` em sRGB (o conteúdo vai sem
+/// perfil), com as anotações `png` compostas por cima, igual ao que está na tela.
+pub fn copied_region(
+    store: &DocStore,
+    id: DocId,
+    mask: Option<&Mask>,
+    png: Option<Vec<u8>>,
+) -> AppResult<RgbaImage> {
+    let img = store.render_full(id, 0)?;
+    let png = png.map(|png| store.png_from_display(id, png));
+    let region = flattened_region(&img, mask, png).ok_or(AppError::EmptySelection)?;
+    if !icc::enabled() {
+        return Ok(region);
+    }
+    Ok(store.to_srgb(id, Cow::Owned(region)).into_owned())
+}
+
 /// Região de `img` com as anotações (`png`, no tamanho da imagem) compostas por cima.
 fn flattened_region(img: &RgbaImage, mask: Option<&Mask>, png: Option<Vec<u8>>) -> Option<RgbaImage> {
     let flat = png.map(|png| ops::apply(img, &Op::Composite { png }));
@@ -48,7 +72,7 @@ pub async fn clipboard_image(app: AppHandle) -> AppResult<Response> {
     let img = app.clipboard().read_image().map_err(|_| AppError::ClipboardEmpty)?;
     let rgba = RgbaImage::from_raw(img.width(), img.height(), img.rgba().to_vec())
         .ok_or(AppError::ClipboardEmpty)?;
-    blocking(move || png_bytes(&rgba)).await.map(Response::new)
+    blocking(move || layer_png(rgba)).await.map(Response::new)
 }
 
 /// PNG do arquivo solto sobre a imagem aberta (vira camada colada, como no Pré-Visualização).
@@ -67,12 +91,7 @@ pub async fn copy_image(
     png: Option<Vec<u8>>,
 ) -> AppResult<()> {
     let store = store.inner().clone();
-    let region = blocking(move || {
-        let img = store.render_full(id, 0)?;
-        let png = png.map(|png| store.png_from_display(id, png));
-        flattened_region(&img, mask.as_ref(), png).ok_or(AppError::EmptySelection)
-    })
-    .await?;
+    let region = blocking(move || copied_region(&store, id, mask.as_ref(), png)).await?;
     let (w, h) = region.dimensions();
     app.clipboard()
         .write_image(&Image::new_owned(region.into_raw(), w, h))
@@ -138,6 +157,64 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         let px = decode_png(&got.unwrap()).get_pixel(1, 1).0;
         assert!(px.iter().zip([215, 93, 31, 255]).all(|(a, b)| a.abs_diff(b) <= 2), "{px:?}");
+    }
+
+    fn store_with(icc: Option<&str>) -> (DocStore, DocId) {
+        let store = DocStore::new();
+        let decoded = decode::Decoded {
+            icc: icc.map(|id| icc::profile_bytes(id).unwrap().to_vec()),
+            ..decode::Decoded::single(
+                solid(4, 3, [200, 100, 50, 255]),
+                crate::doc::model::SourceFormat::Png,
+            )
+        };
+        let id = store.insert_decoded("", decoded).id;
+        (store, id)
+    }
+
+    #[track_caller]
+    fn near(got: &[u8], want: [u8; 3], tol: u8) {
+        let ok = got[..3].iter().zip(want).all(|(a, b)| a.abs_diff(b) <= tol);
+        assert!(ok, "obtido {got:?}, esperado {want:?} (±{tol})");
+    }
+
+    #[test]
+    fn copiar_colar_e_achatar_em_p3_preserva_a_cor_vista() {
+        let (store, id) = store_with(Some("display-p3"));
+        let seen = store.render_view(id, 0, 4, 3, None).unwrap()[8..12].to_vec();
+        let copied = copied_region(&store, id, None, None).unwrap();
+        near(&copied.get_pixel(1, 1).0, [215, 93, 31], 2);
+        let png = layer_png(copied).unwrap();
+        store.apply_op(id, Op::Composite { png }).unwrap();
+        near(
+            &store.render_view(id, 0, 4, 3, None).unwrap()[8..12],
+            [seen[0], seen[1], seen[2]],
+            2,
+        );
+        near(&store.render_full(id, 0).unwrap().get_pixel(1, 1).0, [200, 100, 50], 2);
+    }
+
+    #[test]
+    fn copiar_com_anotacao_em_p3_sai_com_a_cor_da_tela() {
+        let (store, id) = store_with(Some("display-p3"));
+        let mut over = solid(4, 3, [0, 0, 0, 0]);
+        over.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
+        let out = copied_region(&store, id, None, Some(png_bytes(&over).unwrap())).unwrap();
+        near(&out.get_pixel(0, 0).0, [255, 0, 0], 1);
+        near(&out.get_pixel(3, 2).0, [215, 93, 31], 2);
+    }
+
+    #[test]
+    fn copiar_documento_srgb_e_identico() {
+        for profile in [None, Some("srgb")] {
+            let (store, id) = store_with(profile);
+            let original = store.render_full(id, 0).unwrap().clone();
+            assert_eq!(copied_region(&store, id, None, None).unwrap(), original);
+            let mask = Mask::Rect(Rect { x: 1, y: 1, w: 2, h: 2 });
+            let part = copied_region(&store, id, Some(&mask), None).unwrap();
+            assert_eq!(part, solid(2, 2, [200, 100, 50, 255]));
+            assert_eq!(decode_png(&layer_png(original.clone()).unwrap()), original);
+        }
     }
 
     #[test]
