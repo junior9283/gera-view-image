@@ -352,6 +352,7 @@ mod tests {
         r.transfer(MAIN_WINDOW, &w, vec![B], "estado".into()).unwrap();
         let out = r.remove(&w);
         assert_eq!(out, Removed { close: vec![DocId(7)], returned_to: vec!["main".into()] });
+        assert_eq!(r.owner(DocId(7)), None, "a posse não sobra para uma janela que não existe");
         assert_eq!(r.owned(MAIN_WINDOW), [A, B]);
         assert_eq!(r.take(MAIN_WINDOW).unwrap()[0].state, "estado");
         assert!(r.remove(&w).close.is_empty(), "destruir de novo não faz nada");
