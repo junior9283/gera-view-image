@@ -7,6 +7,7 @@ import { usePrefs, type Prefs } from "../store/prefs";
 import { useUi } from "../store/ui";
 import { panBy, syncView, toggleFitActual, zoomBy } from "./actions";
 import { DocError } from "./DocError";
+import { useImageAlt } from "./imageAlt";
 import { bufferToCanvas, checkerPattern, dpr, useAnimatedFrame } from "./paint";
 import { useZoomUnit } from "./unit";
 import { visibleRegion, type Size, type ViewState } from "./zoom";
@@ -102,6 +103,7 @@ export function Viewport() {
   const showBg = usePrefs((p) => p.showImageBackground);
   const animFrame = useAnimatedFrame(doc, page === null);
   const pixelRatio = usePixelRatio();
+  const alt = useImageAlt(doc);
   const unit = useZoomUnit(doc?.id, doc?.rev, pixelRatio);
   const frame = page ?? animFrame;
 
@@ -296,8 +298,8 @@ export function Viewport() {
 
 
   return (
-    <div ref={box} className="viewport" data-testid="viewport" aria-label={t("viewer.label")} style={{ background }}>
-      <canvas ref={canvas} className="viewport-canvas" />
+    <div ref={box} className="viewport" data-testid="viewport" role="region" aria-label={t("viewer.label")} style={{ background }}>
+      <canvas ref={canvas} className="viewport-canvas" role={alt ? "img" : undefined} aria-label={alt} aria-hidden={!alt} />
       {overlay && (
         <div className="viewport-overlay">
           <Slot name="viewport-overlay" props={overlay} />

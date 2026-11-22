@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { MenuList } from "./MenuBar";
 import { WindowButtons, type WindowAction } from "./WindowButtons";
 import { enableNativeDecorations, useApplyNativeDecorations, useCompositingProbe, useNativeDecorations } from "./nativeDecorations";
 import { useWindowTheme } from "./windowTheme";
@@ -48,17 +49,24 @@ export function TitleBar({ title, leading, children, nativeDecorations: override
   const maximized = useMaximized();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
+  const origin = useRef<Element | null>(null);
+
   const run = useCallback((a: WindowAction) => {
     const win = getCurrentWindow();
     if (a === "minimize") void win.minimize();
     else if (a === "close") void win.close();
     else void win.toggleMaximize();
-    setMenu(null);
   }, []);
 
   const onContext = (e: MouseEvent) => {
     e.preventDefault();
+    origin.current = document.activeElement;
     setMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const closeMenu = () => {
+    setMenu(null);
+    if (origin.current instanceof HTMLElement) origin.current.focus();
   };
 
   const buttons = (side: "left" | "right") =>
@@ -88,11 +96,22 @@ export function TitleBar({ title, leading, children, nativeDecorations: override
               setMenu(null);
             }}
           />
-          <ul className="wm-menu" style={{ left: menu.x, top: menu.y }} role="menu">
-            <li role="menuitem" onClick={() => run("minimize")}>{t("window.minimize")}</li>
-            <li role="menuitem" onClick={() => run("maximize")}>{t(maximized ? "window.restore" : "window.maximize")}</li>
-            <li role="menuitem" onClick={() => run("close")}>{t("window.close")}</li>
-          </ul>
+          <div className="wm-menu" style={{ left: menu.x, top: menu.y }}>
+            <MenuList
+              label={t("window.menu")}
+              items={[
+                { text: t("window.minimize"), run: () => run("minimize") },
+                { text: t(maximized ? "window.restore" : "window.maximize"), run: () => run("maximize") },
+                { text: t("window.close"), run: () => run("close") },
+              ]}
+              level={0}
+              autoFocus
+              onRun={() => {}}
+              onClose={closeMenu}
+              onCloseAll={closeMenu}
+              onSwitch={() => {}}
+            />
+          </div>
         </>
       )}
     </header>

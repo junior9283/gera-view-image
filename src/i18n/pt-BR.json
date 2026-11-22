@@ -3,7 +3,8 @@
     "minimize": "Minimizar",
     "maximize": "Maximizar",
     "restore": "Restaurar",
-    "close": "Fechar"
+    "close": "Fechar",
+    "menu": "Menu da janela"
   },
   "update": {
     "title": "Nova versão disponível",
@@ -120,7 +121,8 @@
     "empty": "Arraste imagens para esta janela para abri-las",
     "zoomLevel": "Zoom {{pct}}%",
     "zoomPercent": "{{pct}}%",
-    "dropHere": "Solte para abrir"
+    "dropHere": "Solte para abrir",
+    "imageAlt": "{{name}}: {{text}}"
   },
   "sidebar": {
     "label": "Miniaturas",
@@ -918,7 +920,8 @@
       "copy": "Copiar",
       "search": "Pesquisar na Web",
       "translate": "Traduzir",
-      "speak": "Falar"
+      "speak": "Falar",
+      "label": "Texto selecionado"
     },
     "linkEmailTitle": "Escrever um e-mail para este endereço?",
     "linkPhoneTitle": "Ligar para este número?",

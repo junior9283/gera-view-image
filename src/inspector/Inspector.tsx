@@ -5,6 +5,7 @@ import { metadata } from "../ipc/commands";
 import type { DocId, DocInfo, Metadata, MetaSectionId } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { useAnnotations, getAnnotationSource } from "./annotations";
+import { fieldLabel, fieldValue } from "./exifLabels";
 import { formatBytes, formatCoord, formatDate, mapUrl } from "./format";
 import { addKeyword, removeKeyword, seedKeywords, useKeywords } from "./keywords";
 import { seedTexts } from "./textEdits";
@@ -148,14 +149,14 @@ function TabContent({ tab, doc, meta }: { tab: Tab; doc: DocInfo; meta: Metadata
 }
 
 function Fields({ rows }: { rows: [string, string][] }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   if (rows.length === 0) return <p className="inspector-empty">{t("inspector.empty")}</p>;
   return (
     <dl className="inspector-fields">
       {rows.map(([k, v], i) => (
         <div key={`${k}-${i}`}>
-          <dt>{k}</dt>
-          <dd>{v}</dd>
+          <dt>{fieldLabel(k, i18n.language)}</dt>
+          <dd>{fieldValue(k, v, i18n.language)}</dd>
         </div>
       ))}
     </dl>
@@ -239,13 +240,16 @@ function AnnotationsTab({ id }: { id: DocId }) {
   if (items.length === 0) return <p className="inspector-empty">{t("inspector.noAnnotations")}</p>;
   return (
     <ul className="inspector-list">
-      {items.map((a) => (
-        <li key={a.id}>
-          <button onClick={() => getAnnotationSource()?.select(id, a.id)}>
-            <small>{a.kind}</small> {a.label}
-          </button>
-        </li>
-      ))}
+      {items.map((a) => {
+        const kind = t(`markup.kind.${a.kind}`, { defaultValue: a.kind });
+        return (
+          <li key={a.id}>
+            <button onClick={() => getAnnotationSource()?.select(id, a.id)}>
+              {kind !== a.label && <small>{kind}</small>} {a.label}
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }

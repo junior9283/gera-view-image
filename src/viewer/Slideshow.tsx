@@ -34,6 +34,7 @@ export function Slideshow() {
   const outgoing = useOutgoing(doc);
   const [playing, setPlaying] = useState(true);
   const [controls, setControls] = useState(true);
+  const root = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Avanço automático; trocar de imagem (por tecla ou botão) reinicia a contagem.
@@ -42,6 +43,15 @@ export function Slideshow() {
     const timer = setTimeout(() => void next({ wrap: true }), seconds * 1000);
     return () => clearTimeout(timer);
   }, [playing, activeId, seconds]);
+
+  // O foco vem para a apresentação e volta ao sair. Não é `aria-modal`: os atalhos (setas, Esc) valem nela.
+  useEffect(() => {
+    const origin = document.activeElement;
+    root.current?.focus();
+    return () => {
+      if (origin instanceof HTMLElement && origin.isConnected) origin.focus();
+    };
+  }, []);
 
   const wake = () => {
     setControls(true);
@@ -68,7 +78,10 @@ export function Slideshow() {
   const index = docs.findIndex((d) => d.id === activeId);
 
   return (
-    <div className={`slideshow${controls ? "" : " idle"}`} role="dialog" aria-label={t("slideshow.label")} onPointerMove={wake}>
+    <div
+      ref={root} className={`slideshow${controls ? "" : " idle"}`} role="dialog" aria-label={t("slideshow.label")} tabIndex={-1}
+      onPointerMove={wake} onFocus={wake}
+    >
       {layers.map((d) => (
         <FitImage key={d.id} doc={d} className={d === outgoing ? "slide fade-out" : "slide fade-in"} />
       ))}
