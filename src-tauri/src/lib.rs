@@ -5,7 +5,7 @@ pub mod image;
 pub mod platform;
 pub mod theme;
 
-use tauri::{Emitter, Manager, RunEvent};
+use tauri::{Manager, RunEvent};
 
 pub fn run() {
     commands::mark_start();
@@ -41,7 +41,10 @@ pub fn run() {
         .manage(store)
         .manage(startup)
         .manage(commands::file::PrintJob::default())
-        .invoke_handler(tauri::generate_handler![
+        .manage(doc::windows::WindowRegistry::default())
+        .manage(commands::window::Quitting::default())
+        .on_window_event(commands::window::on_event)
+        .invoke_handler(commands::window::guard(tauri::generate_handler![
             commands::docs::open_documents,
             commands::docs::close_document,
             commands::docs::folder_images,
@@ -128,13 +131,26 @@ pub fn run() {
             commands::window::list_windows,
             commands::window::focus_window,
             commands::window::merge_windows,
-            commands::window::scan_image
-        ])
+            commands::window::scan_image,
+            commands::window::move_documents,
+            commands::window::take_documents,
+            commands::window::set_window_title,
+            commands::window::bring_all_to_front,
+            commands::window::focus_open_paths,
+            commands::window::seal_window,
+            commands::window::unseal_window,
+            commands::window::close_window,
+            commands::window::close_other_windows,
+            commands::window::confirm_quit,
+            commands::window::answer_close,
+            commands::window::cancel_quit,
+            commands::window::quit_app
+        ]))
         .setup(|app| {
             let handle = app.handle().clone();
             app.state::<doc::store::DocStore>()
                 .set_listener(move |info| {
-                    let _ = handle.emit("doc-updated", info);
+                    commands::window::emit_to_owner(&handle, info.id, "doc-updated", info);
                 });
             app.manage(commands::theme::Compositing(
                 commands::theme::probe_compositing(app.handle()),
@@ -146,7 +162,9 @@ pub fn run() {
             ));
             // Lote 5: versões guardadas a cada Salvar (~/.local/share/gera-view-image/versions).
             doc::versions::configure(app.path().data_dir()?.join("gera-view-image").join("versions"));
-            commands::camera::install(app.handle());
+            if let Some(window) = app.get_webview_window(doc::windows::MAIN_WINDOW) {
+                commands::camera::install(&window);
+            }
             theme::watch::start(app.handle().clone());
             commands::file::start_watch(
                 app.handle().clone(),

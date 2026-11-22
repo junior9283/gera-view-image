@@ -4,7 +4,7 @@
 //! depois que a interface pede o consentimento (`segment_model_ready` = falso), e conferido
 //! pelo SHA-256 a cada carga. Download, decodificação e inferência rodam fora da thread
 //! principal; `segment_cancel` interrompe o download e descarta o resultado da inferência.
-use super::blocking;
+use super::{Epochs, blocking};
 use crate::{
     doc::{
         model::{DocId, Mask},
@@ -15,10 +15,10 @@ use crate::{
 };
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::Ordering},
     time::Duration,
 };
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 /// Modelo já carregado (vale pela vida do processo).
 static MODEL: Mutex<Option<Arc<Model>>> = Mutex::new(None);
@@ -50,10 +50,11 @@ pub async fn segment_model_ready(app: AppHandle) -> AppResult<bool> {
 #[tauri::command]
 pub async fn segment_subject(
     app: AppHandle,
+    window: WebviewWindow,
     store: State<'_, DocStore>,
     id: DocId,
 ) -> AppResult<Mask> {
-    let job = Job::start();
+    let job = Job::on(EPOCHS.of(window.label()));
     let model = match cached() {
         Some(m) => m,
         None => load_model(model_path(&app)?, job).await?,
@@ -70,10 +71,18 @@ pub async fn segment_subject(
     .await
 }
 
-/// Cancela as segmentações em andamento (download incluído).
+/// Segmentações da janela: `segment_cancel` invalida as que já começaram nela.
+static EPOCHS: Epochs = Epochs::new();
+
+/// Cancela as segmentações em andamento na janela (download incluído).
 #[tauri::command]
-pub fn segment_cancel() {
-    segment::cancel_all();
+pub fn segment_cancel(window: WebviewWindow) {
+    cancel(window.label());
+}
+
+/// Cancela as segmentações da janela (também quando ela fecha).
+pub fn cancel(label: &str) {
+    EPOCHS.of(label).fetch_add(1, Ordering::SeqCst);
 }
 
 /// Lê o modelo do disco ou o baixa (conferindo o hash), e o guarda carregado.
@@ -133,8 +142,12 @@ mod tests {
     use std::{
         io::{Read, Write},
         net::TcpListener,
-        sync::atomic::{AtomicU64, Ordering},
+        sync::atomic::AtomicU64,
     };
+
+    fn job() -> Job {
+        Job::on(Box::leak(Box::default()))
+    }
 
     /// Servidor HTTP de uma resposta só, em 127.0.0.1 (o CI não acessa a rede).
     fn serve_once(body: Vec<u8>) -> String {
@@ -158,7 +171,7 @@ mod tests {
     fn baixa_o_modelo_inteiro() {
         let body: Vec<u8> = (0..200_000u32).map(|i| i as u8).collect();
         let url = serve_once(body.clone());
-        let got = tauri::async_runtime::block_on(download(&client(false).unwrap(), &url, 1 << 20, Job::start())).unwrap();
+        let got = tauri::async_runtime::block_on(download(&client(false).unwrap(), &url, 1 << 20, job())).unwrap();
         assert_eq!(got, body);
     }
 
@@ -166,14 +179,14 @@ mod tests {
     fn cliente_de_producao_recusa_http() {
         let url = serve_once(vec![1; 16]);
         let client = client(true).unwrap();
-        let e = tauri::async_runtime::block_on(download(&client, &url, 1000, Job::start())).unwrap_err();
+        let e = tauri::async_runtime::block_on(download(&client, &url, 1000, job())).unwrap_err();
         assert_eq!(e.code(), "io");
     }
 
     #[test]
     fn recusa_download_maior_que_o_teto() {
         let url = serve_once(vec![7; 4096]);
-        let e = tauri::async_runtime::block_on(download(&client(false).unwrap(), &url, 1000, Job::start())).unwrap_err();
+        let e = tauri::async_runtime::block_on(download(&client(false).unwrap(), &url, 1000, job())).unwrap_err();
         assert_eq!(e.code(), "corrupt");
     }
 

@@ -1,32 +1,41 @@
 //! Abrir, fechar e listar documentos.
-use super::{blocking, log_timing};
+use super::{blocking, log_timing, window};
 use crate::{
     doc::{
         model::{DocId, DocInfo},
         store::DocStore,
+        windows::{MAIN_WINDOW, WindowRegistry},
     },
     error::AppResult,
     image::decode,
 };
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
     thread::JoinHandle,
 };
-use tauri::State;
+use tauri::{State, WebviewWindow};
 
 #[tauri::command]
 pub async fn open_documents(
+    window: WebviewWindow,
     store: State<'_, DocStore>,
     paths: Vec<String>,
 ) -> AppResult<Vec<DocInfo>> {
     let store = store.inner().clone();
-    blocking(move || Ok(store.open_documents(&paths))).await
+    let infos = blocking(move || Ok(store.open_documents(&paths))).await?;
+    window::claimed(&window, infos)
 }
 
 #[tauri::command]
-pub async fn close_document(store: State<'_, DocStore>, id: DocId) -> AppResult<()> {
-    store.close(id)
+pub async fn close_document(
+    store: State<'_, DocStore>,
+    registry: State<'_, WindowRegistry>,
+    id: DocId,
+) -> AppResult<()> {
+    store.close(id)?;
+    registry.forget(id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -38,7 +47,6 @@ pub async fn folder_images(path: String) -> AppResult<Vec<String>> {
 #[derive(Clone, Default)]
 pub struct Startup {
     job: Arc<Mutex<Option<JoinHandle<Vec<DocInfo>>>>>,
-    ids: Arc<OnceLock<Vec<DocId>>>,
 }
 
 impl Startup {
@@ -52,7 +60,6 @@ impl Startup {
         });
         Startup {
             job: Arc::new(Mutex::new(job)),
-            ids: Arc::default(),
         }
     }
 
@@ -75,24 +82,23 @@ impl Startup {
     }
 }
 
-/// `DocInfo` atuais dos documentos de `argv` (espera a abertura terminar).
+/// `DocInfo` atuais dos documentos da janela, em ordem de abertura: os de `argv` na principal
+/// (espera a abertura terminar) e, se a página recarregar, os que ela já tinha.
 #[tauri::command]
 pub async fn startup_documents(
+    window: WebviewWindow,
     store: State<'_, DocStore>,
     startup: State<'_, Startup>,
+    registry: State<'_, WindowRegistry>,
 ) -> AppResult<Vec<DocInfo>> {
-    let (store, startup) = (store.inner().clone(), startup.inner().clone());
-    blocking(move || {
-        let job = startup.job.lock().unwrap_or_else(|e| e.into_inner()).take();
-        if let Some(job) = job {
-            let infos = job.join().unwrap_or_default();
-            let _ = startup.ids.set(infos.iter().map(|i| i.id).collect());
-        }
-        let ids = startup.ids.get().cloned().unwrap_or_default();
-        Ok(ids
-            .into_iter()
-            .filter_map(|id| store.info(id).ok())
-            .collect())
-    })
-    .await
+    if window.label() == MAIN_WINDOW {
+        let startup = startup.inner().clone();
+        let infos = blocking(move || {
+            let job = startup.job.lock().unwrap_or_else(|e| e.into_inner()).take();
+            Ok(job.and_then(|j| j.join().ok()).unwrap_or_default())
+        })
+        .await?;
+        window::claimed(&window, infos)?;
+    }
+    Ok(registry.owned(window.label()).into_iter().filter_map(|id| store.info(id).ok()).collect())
 }

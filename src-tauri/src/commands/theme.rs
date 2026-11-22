@@ -18,7 +18,7 @@ pub struct Compositing(pub bool);
 /// A janela transparente precisa de compositor e visual RGBA. Se não der para saber, assume que sim.
 pub fn probe_compositing(app: &AppHandle) -> bool {
     let Some(screen) = app
-        .get_webview_window("main")
+        .get_webview_window(crate::doc::windows::MAIN_WINDOW)
         .and_then(|w| w.gtk_window().ok())
         .and_then(|w| WidgetExt::screen(&w))
     else {
