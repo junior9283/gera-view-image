@@ -438,6 +438,41 @@ fn reverter_descarta_so_a_pendencia_e_mantem_o_que_ja_foi_gravado() {
     assert!(store.meta_cleared(id).is_empty());
 }
 
+/// AVIF não guarda texto novo, mas apagar já valeu no arquivo: a cópia não pode trazer o antigo.
+#[test]
+fn apagar_e_gravar_em_avif_vira_marcador() {
+    let dir = tmp("insp-avif-marcador");
+    let src = jpeg_com_exif_antigo(&dir);
+    let store = DocStore::new();
+    let id = store.open_documents(&[s(&src)]).remove(0).id;
+    store.wait_ready(id).unwrap();
+    store.set_meta_edits(id, &MetadataEdits { author: Some(String::new()), title: Some("novo".into()), ..Default::default() });
+    store.meta_written(id, false);
+    let c = store.meta_cleared(id);
+    assert_eq!((c.author.as_deref(), c.title), (Some(""), None));
+    assert_eq!(store.meta_edits(id).and_then(|e| e.title).as_deref(), Some("novo"), "o texto novo segue pendente");
+}
+
+/// Restaurar uma versão troca a origem dos pixels, mas Reverter ao Original volta à da abertura:
+/// os marcadores dela têm de voltar junto.
+#[test]
+fn reverter_ao_original_depois_de_trocar_a_origem_nao_traz_o_texto_de_volta() {
+    let dir = tmp("insp-restaurar");
+    let src = jpeg_com_exif_antigo(&dir);
+    let store = DocStore::new();
+    let id = store.open_documents(&[s(&src)]).remove(0).id;
+    store.wait_ready(id).unwrap();
+    store.set_meta_edits(id, &edicao_autor_e_descricao());
+    store.save(id, None).unwrap();
+    store.revert(id, RevertTarget::LastSaved).unwrap();
+    assert!(store.meta_cleared(id).is_empty(), "a origem agora é a do disco, já limpa");
+    store.revert(id, RevertTarget::Original).unwrap();
+    assert!(!store.meta_cleared(id).is_empty());
+    let fora = dir.join("depois.jpg");
+    store.export(id, &s(&fora), &opts(ExportFormat::Jpeg), None).unwrap();
+    sem_texto_antigo(&fora, "Exportar depois de voltar à origem da abertura");
+}
+
 #[test]
 fn avif_e_heic_so_apagam_e_o_novo_texto_fica_pendente() {
     let dir = tmp("insp-avif");

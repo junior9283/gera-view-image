@@ -433,8 +433,7 @@ impl DocStore {
             d.generation += 1;
             d.error = None;
         })?;
-        // O que já foi gravado continua gravado: só a pendência (e os avisos) saem.
-        self.drop_meta_pending(id);
+        self.meta_source_changed(id, to == RevertTarget::Original);
         self.invalidate(id);
         Ok(info)
     }

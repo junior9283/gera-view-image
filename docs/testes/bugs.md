@@ -2,6 +2,13 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Textos do Inspetor: apagar deixava outra língua, e acentos viravam `\xNN` (Lote 9, antes de publicar)
+- **Sintoma (revisões):** (1) apagar o título tirava só o item padrão do XMP e o texto em outra língua voltava a aparecer; com o mesmo texto em `x-default` e `en-US`, o pacote era trocado e perdia a classificação. (2) Editar só o título gravava o autor `José` do EXIF como `Jos\xc3\xa9` no XMP novo. (3) Recarregar e depois Reverter ao Original, ou apagar e gravar em AVIF/HEIC, trazia o autor apagado de volta. (4) Tirar texto do EXIF podia zerar o início de uma tabela colada no fim de outra.
+- **Causa:** (1) apagar por item, não por propriedade. (2) O `display_value` do crate `exif` escapa tudo fora do ASCII básico, e o IPTC Latin-1 era lido como UTF-8. (3) Os marcadores do que já foi gravado pertencem à origem da abertura, mas não acompanhavam a troca de origem. (4) O ponteiro do próximo IFD era conferido só contra os valores da própria tabela.
+- **Correção:** `xmpedit::edit` apaga a propriedade inteira e, ao editar, as cópias do texto trocado; `metaedit::text_bytes` (UTF-8, senão Latin-1) na leitura do EXIF e do IPTC; semeadura só quando havia um pacote que se perdeu; `DocStore::meta_source_changed`; `exifscrub::check_slots` e corte da cadeia depois do IFD1.
+- **Teste:** `xmp_padrao_repetido_*`, `apagar_sem_x_default_*`, `textos_com_acento_*`, `sem_xmp_original_*`, `reverter_ao_original_depois_de_trocar_a_origem_*`, `apagar_e_gravar_em_avif_*`, `tabela_colada_*`, `cadeia_e_cortada_*`, `valor_sobre_o_ponteiro_*`.
+- **Lição:** testar texto sempre com acento e em mais de uma língua; só ASCII esconde erro de codificação.
+
 ## Texto editado no Inspetor voltava ao arquivo (Lote 9)
 - **Sintoma (revisões):** o autor, a descrição ou o título apagados ou trocados reapareciam no EXIF a partir do 2º Salvar, no Exportar, no Salvar Como e no Duplicar, e a aba mostrava o valor antigo depois de salvar. Em AVIF/HEIC o autor já apagado voltava quando havia um autor novo pendente. Apagar um título sem `x-default` não apagava nada, e o XMP era editado por busca de texto (quebrava com `dc:ti<dc:title/>tle`, tab antes do atributo e outro prefixo).
 - **Causa:** o EXIF guardado na abertura (`source.exif`) nunca muda, e a limpeza só rodava com edição pendente; o marcador de "já apagado" era encoberto pelo valor pendente; a edição do XMP não escolhia o mesmo item que a leitura exibe.

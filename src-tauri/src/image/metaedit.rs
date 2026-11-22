@@ -114,7 +114,10 @@ pub fn xmp_with_edits(orig: Option<&str>, e: &MetadataEdits) -> String {
 /// conhecidos do arquivo), para a edição não apagar o que o usuário não tocou.
 pub fn xmp_edited(orig: Option<&str>, e: &MetadataEdits, known: impl FnOnce() -> [Option<String>; 4]) -> String {
     let values = e.values();
-    if let Some(x) = orig.and_then(|x| xmpedit::edit(x, &values)) {
+    let Some(orig) = orig else {
+        return xmpedit::fresh(&values);
+    };
+    if let Some(x) = xmpedit::edit(orig, &values) {
         return x;
     }
     let mut seeded = known();
@@ -283,13 +286,20 @@ pub fn notes(meta: &MetaCarry, opts: &ExportOptions) -> Vec<&'static str> {
 
 /// Texto de um registro 2:xx em UTF-8: o que já é UTF-8 válido fica, o resto é lido como Latin-1
 /// (o conjunto antigo mais comum), porque o IIM gravado passa a declarar UTF-8 (1:90).
+pub fn text_bytes(v: &[u8]) -> String {
+    match std::str::from_utf8(v) {
+        Ok(s) => s.to_string(),
+        Err(_) => v.iter().map(|&b| char::from(b)).collect(),
+    }
+}
+
 fn utf8_record(r: u8, n: u8, v: &[u8]) -> Vec<u8> {
     // Só os textos (2:05 a 2:199); a conversão pode crescer até o dobro e o IIM acaba em 0x7FFF bytes.
-    if r != 2 || !(5..=199).contains(&n) || std::str::from_utf8(v).is_ok() {
+    // (2:125, a legenda rasterizada, é binário.)
+    if r != 2 || n == 125 || !(5..=199).contains(&n) || std::str::from_utf8(v).is_ok() {
         return v.to_vec();
     }
-    let text: String = v.iter().map(|&b| char::from(b)).collect();
-    cap_str(&text, 0x7FFF).as_bytes().to_vec()
+    cap_str(&text_bytes(v), 0x7FFF).as_bytes().to_vec()
 }
 
 /// IIM com os registros 2:05 (título), 2:120 (legenda) e 2:80 (autor) trocados conforme `e`
@@ -648,10 +658,24 @@ mod tests {
         let sem = orig.replace("x-default", "de");
         let y = xmp_with_edits(Some(&sem), &so_titulo("Padrão"));
         assert!(y.contains("English") && y.contains("Velho") && xmp_text(&y, "dc:title").as_deref() == Some("Padrão"));
-        // apagar tira só o padrão enquanto houver outras línguas
+        // apagar tira a propriedade inteira, em todas as línguas
         let z = xmp_with_edits(Some(&orig), &so_titulo(""));
-        assert!(z.contains("English") && !z.contains("Velho"));
-        assert_eq!(xmp_text(&z, "dc:title").as_deref(), Some("English"));
+        assert!(!z.contains("dc:title") && !z.contains("English") && !z.contains("Velho"), "{z}");
+        assert_eq!(xmp_text(&z, "dc:title"), None);
+    }
+
+    #[test]
+    fn xmp_padrao_repetido_noutra_lingua_nao_deixa_o_texto_velho_nem_perde_o_resto() {
+        // O XMP Toolkit grava o mesmo texto em x-default e em en-US.
+        let orig = format!(
+            "<rdf:RDF {NS_DECL} xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"><rdf:Description xmp:Rating=\"4\"><dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Velho</rdf:li><rdf:li xml:lang=\"en-US\">Velho</rdf:li><rdf:li xml:lang=\"fr\">Vieux</rdf:li></rdf:Alt></dc:title></rdf:Description></rdf:RDF>"
+        );
+        let x = xmp_with_edits(Some(&orig), &so_titulo("Novo"));
+        assert!(!x.contains("Velho") && x.contains("Vieux") && x.contains("Rating=\"4\""), "{x}");
+        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("Novo"));
+        let y = xmp_with_edits(Some(&orig), &so_titulo(""));
+        assert!(!y.contains("Velho") && !y.contains("Vieux") && y.contains("Rating=\"4\""), "{y}");
+        assert_eq!(xmp_text(&y, "dc:title"), None);
     }
 
     #[test]
@@ -687,6 +711,13 @@ mod tests {
         assert_eq!(e.as_cleared().title.as_deref(), Some(""));
     }
 
+    #[test]
+    fn sem_xmp_original_o_pacote_novo_so_leva_o_que_foi_editado() {
+        let x = xmp_edited(None, &so_titulo("T"), || [None, None, Some("Outra Pessoa".into()), None]);
+        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("T"));
+        assert_eq!(xmp_text(&x, "dc:creator"), None);
+    }
+
     fn alt_en_fr(extra: &str) -> String {
         format!(
             "<rdf:RDF {NS_DECL}><rdf:Description><dc:title><rdf:Alt><rdf:li xml:lang=\"en\">English</rdf:li><rdf:li xml:lang=\"fr\">Français</rdf:li>{extra}</rdf:Alt></dc:title></rdf:Description></rdf:RDF>"
@@ -694,13 +725,13 @@ mod tests {
     }
 
     #[test]
-    fn apagar_sem_x_default_apaga_o_item_exibido_e_mantem_as_outras_linguas() {
+    fn apagar_sem_x_default_tira_a_propriedade_inteira() {
         let orig = alt_en_fr("");
         assert_eq!(xmp_text(&orig, "dc:title").as_deref(), Some("English")); // o exibido é o primeiro
         let x = xmp_with_edits(Some(&orig), &so_titulo(""));
-        assert!(!x.contains("English") && x.contains("Français"), "{x}");
-        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("Français"));
-        // um único item e sem padrão: a propriedade inteira sai
+        assert!(!x.contains("dc:title") && !x.contains("English") && !x.contains("Français"), "{x}");
+        assert_eq!(xmp_text(&x, "dc:title"), None);
+        // um único item e sem padrão
         let so_um = orig.replace("<rdf:li xml:lang=\"fr\">Français</rdf:li>", "");
         let y = xmp_with_edits(Some(&so_um), &so_titulo(""));
         assert_eq!(xmp_text(&y, "dc:title"), None);
@@ -720,7 +751,7 @@ mod tests {
         let maiuscula = alt_en_fr("<rdf:li xml:lang=\"X-Default\">Padrão</rdf:li>");
         assert_eq!(xmp_text(&maiuscula, "dc:title").as_deref(), Some("Padrão"));
         let z = xmp_with_edits(Some(&maiuscula), &so_titulo(""));
-        assert!(!z.contains("Padrão") && z.contains("English"));
+        assert!(!z.contains("Padrão") && !z.contains("English"));
         let escapado = alt_en_fr("<rdf:li xml:lang=\"x&#45;default\">Esc</rdf:li>");
         assert_eq!(xmp_text(&escapado, "dc:title").as_deref(), Some("Esc"));
     }

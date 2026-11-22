@@ -302,6 +302,8 @@ struct TextMeta {
     /// Campos (valor vazio) já gravados no arquivo do documento: o EXIF de origem continua com o
     /// texto antigo, então toda gravação e a leitura dos metadados o limpam de novo.
     cleared: MetadataEdits,
+    /// `cleared` da origem da abertura, enquanto a origem atual é outra (disco ou versão).
+    original_cleared: MetadataEdits,
     /// Avisos da última gravação (códigos de `metaedit::notes`), à espera do front.
     notes: Vec<&'static str>,
 }
@@ -415,16 +417,17 @@ impl DocStore {
     }
 
     /// O documento acabou de ser gravado no próprio arquivo. Em formato que guarda o texto, as
-    /// edições passam a estar no arquivo; nos outros, ficam pendentes.
+    /// edições passam a estar no arquivo; nos outros só o que apaga, e tudo continua pendente.
     pub fn meta_written(&self, id: DocId, carries_text: bool) {
-        if !carries_text {
-            return;
-        }
         self.meta_text(|m| {
             if let Some(t) = m.get_mut(&id)
-                && let Some(p) = t.pending.take()
+                && let Some(p) = t.pending.clone()
             {
-                t.cleared = p.as_cleared().over(&t.cleared);
+                let done = if carries_text { p } else { p.only_clearing() };
+                t.cleared = done.as_cleared().over(&t.cleared);
+                if carries_text {
+                    t.pending = None;
+                }
             }
         });
     }
@@ -449,17 +452,20 @@ impl DocStore {
         self.meta_text(|m| m.get_mut(&id).map(|t| std::mem::take(&mut t.notes)).unwrap_or_default())
     }
 
-    /// Reverter: descarta as edições ainda não gravadas e os avisos, e mantém o que já foi gravado.
-    pub fn drop_meta_pending(&self, id: DocId) {
+    /// A origem dos pixels mudou: descarta as edições ainda não gravadas e os avisos. Os marcadores
+    /// pertencem à origem da abertura: saem quando ela é trocada (disco, versão) e voltam com ela.
+    pub(super) fn meta_source_changed(&self, id: DocId, to_original: bool) {
         self.meta_text(|m| {
             if let Some(t) = m.get_mut(&id) {
                 t.pending = None;
                 t.notes.clear();
+                let all = std::mem::take(&mut t.cleared).over(&std::mem::take(&mut t.original_cleared));
+                *(if to_original { &mut t.cleared } else { &mut t.original_cleared }) = all;
             }
         });
     }
 
-    /// Esquece os textos do documento (fechar, restaurar versão).
+    /// Esquece os textos do documento (fechar).
     pub fn forget_meta(&self, id: DocId) {
         self.meta_text(|m| m.remove(&id));
     }

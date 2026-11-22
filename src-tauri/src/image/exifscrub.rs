@@ -103,6 +103,23 @@ fn table(r: &Reader, at: usize, drop: &[u16], budget: &mut usize) -> Option<Tabl
     Some(Table { at, end, entries, next, has_slot })
 }
 
+/// O ponteiro do próximo IFD que fica sobre outra tabela, um valor ou a miniatura não existe
+/// (gravador que o omite): a tabela acaba em `end`.
+fn check_slots(tables: &mut [&mut Table], thumb: Option<Range<usize>>) {
+    let used: Vec<Range<usize>> = tables
+        .iter()
+        .flat_map(|t| std::iter::once(t.at..t.end).chain(t.entries.iter().filter_map(|e| e.value.clone())))
+        .chain(thumb)
+        .collect();
+    for t in tables {
+        let slot = t.end..t.end + 4;
+        if t.has_slot && used.iter().any(|u| overlaps(u, &slot)) {
+            t.has_slot = false;
+            t.next = 0;
+        }
+    }
+}
+
 fn overlaps(a: &Range<usize>, b: &Range<usize>) -> bool {
     a.start < b.end && b.start < a.end
 }
@@ -120,17 +137,37 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
         let e = t.entries.iter().find(|e| e.tag == tag)?;
         table(&r, r.u32(e.at + 8)? as usize, drop, budget)
     };
-    let exif = sub(&t0, TAG_EXIF_IFD, tags.exif, &mut budget);
+    let mut exif = sub(&t0, TAG_EXIF_IFD, tags.exif, &mut budget);
     if pointers(&t0, TAG_EXIF_IFD) > 1 || (pointers(&t0, TAG_EXIF_IFD) == 1 && exif.is_none()) {
         return None;
     }
     // GPS e interoperabilidade não levam texto: se estiverem quebrados, só não protegem nada.
-    let gps = sub(&t0, TAG_GPS_IFD, &[], &mut budget);
-    let interop = exif.as_ref().and_then(|t| sub(t, TAG_INTEROP_IFD, &[], &mut budget));
+    let mut gps = sub(&t0, TAG_GPS_IFD, &[], &mut budget);
+    let mut interop = exif.as_ref().and_then(|t| sub(t, TAG_INTEROP_IFD, &[], &mut budget));
+    let subs = [exif.as_mut(), gps.as_mut(), interop.as_mut()];
+    check_slots(&mut std::iter::once(&mut t0).chain(subs.into_iter().flatten()).collect::<Vec<_>>(), None);
     // IFD1: ilegível corta a cadeia (o IFD0 passa a dizer que não há próximo) em vez de derrubar o EXIF.
-    let t1 = (t0.next != 0).then(|| table(&r, t0.next, tags.tiff, &mut budget)).flatten();
-    if t1.is_none() {
-        t0.next = 0;
+    let mut t1 = (t0.next != 0).then(|| table(&r, t0.next, tags.tiff, &mut budget)).flatten();
+    // Ponteiro ocupado por um valor, mas que outro leitor seguiria até uma tabela com texto: ambíguo.
+    if !t0.has_slot
+        && let Some(at) = r.u32(t0.end).filter(|&at| at != 0)
+        && table(&r, at as usize, tags.tiff, &mut budget).is_some_and(|t| t.entries.iter().any(|e| e.drop))
+    {
+        return None;
+    }
+    let thumb = t1.as_ref().and_then(|t| {
+        let get = |tag| t.entries.iter().find(|e| e.tag == tag).and_then(|e| r.u32(e.at + 8));
+        let off = get(TAG_THUMB_OFFSET)? as usize;
+        Some(off..off.saturating_add(get(TAG_THUMB_LENGTH)? as usize))
+    });
+    let all = [exif.as_mut(), gps.as_mut(), interop.as_mut(), t1.as_mut()];
+    check_slots(&mut std::iter::once(&mut t0).chain(all.into_iter().flatten()).collect::<Vec<_>>(), thumb.clone());
+    // O EXIF acaba no IFD1: ponteiros além dele (ou para um IFD1 ilegível) são cortados.
+    let mut cut: Vec<usize> = Vec::new();
+    let last = t1.as_mut().unwrap_or(&mut t0);
+    if last.next != 0 {
+        last.next = 0;
+        cut.push(last.end);
     }
     let tables: Vec<&Table> = [Some(&t0), exif.as_ref(), gps.as_ref(), interop.as_ref(), t1.as_ref()]
         .into_iter()
@@ -142,8 +179,12 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
             return None;
         }
     }
+    let mut out = tiff.to_vec();
+    for end in cut {
+        out[end..end + 4].fill(0);
+    }
     if !tables.iter().any(|t| t.entries.iter().any(|e| e.drop)) {
-        return Some(tiff.to_vec());
+        return Some(out);
     }
     // Faixas que não podem ser zeradas: cabeçalho, tabelas, valores mantidos e miniatura.
     let mut protected: Vec<Range<usize>> = Vec::new();
@@ -152,12 +193,7 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
         protected.push(t.at..t.end + if t.has_slot { 4 } else { 0 });
         protected.extend(t.entries.iter().filter(|e| !e.drop).filter_map(|e| e.value.clone()));
     }
-    if let Some(t) = &t1 {
-        let get = |tag| t.entries.iter().find(|e| e.tag == tag).and_then(|e| r.u32(e.at + 8));
-        if let (Some(off), Some(len)) = (get(TAG_THUMB_OFFSET), get(TAG_THUMB_LENGTH)) {
-            protected.push(off as usize..(off as usize).saturating_add(len as usize));
-        }
-    }
+    protected.extend(thumb);
     let mut zero: Vec<Range<usize>> = Vec::new();
     for e in tables.iter().flat_map(|t| &t.entries).filter(|e| e.drop) {
         if e.unknown_type {
@@ -170,7 +206,6 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
             zero.push(v.clone());
         }
     }
-    let mut out = tiff.to_vec();
     for v in zero {
         out[v].fill(0);
     }
@@ -325,6 +360,23 @@ mod tests {
     }
 
     #[test]
+    fn tabela_colada_no_fim_de_outra_nao_perde_bytes() {
+        // Gravador que omite o ponteiro depois do sub-IFD Exif: o IFD GPS começa logo ali.
+        let t = Tags { tiff: &[], exif: &[0x9286] };
+        let exif_ifd = [vec![1, 0], [0x86, 0x92, 2, 0, 3, 0, 0, 0, b'x', b'y', 0, 0].to_vec()].concat();
+        let gps_at = base(2) + exif_ifd.len() as u32;
+        let gps = [vec![1, 0], [0x01, 0, 2, 0, 2, 0, 0, 0, b'S', 0, 0, 0].to_vec(), vec![0; 4]].concat();
+        let f = ifd0(
+            &[(0x8769, 4, 1, base(2).to_le_bytes()), (0x8825, 4, 1, gps_at.to_le_bytes())],
+            0,
+            &[exif_ifd, gps.clone()].concat(),
+        );
+        let out = scrub(&f, &t).unwrap();
+        assert_eq!(&out[gps_at as usize..], &gps[..], "o IFD GPS fica inteiro");
+        assert_eq!(&out[base(2) as usize..][..2], &[0, 0], "UserComment saiu");
+    }
+
+    #[test]
     fn texto_no_sub_ifd_exif_sai() {
         // UserComment (0x9286) no sub-IFD Exif é o "equivalente" da descrição.
         let t = Tags { tiff: &[], exif: &[0x9286] };
@@ -341,6 +393,32 @@ mod tests {
         let out = scrub(&f, &T).unwrap();
         assert_eq!(u16::from_le_bytes(out[8..10].try_into().unwrap()), 1);
         assert_eq!(&out[8 + 2 + 12..8 + 2 + 12 + 4], &[0, 0, 0, 0], "próximo IFD = 0");
+    }
+
+    #[test]
+    fn cadeia_e_cortada_mesmo_sem_nada_a_tirar_no_ifd0() {
+        let f = ifd0(&[(0x0100, 3, 1, [1, 0, 0, 0])], 0x00FF_FFFF, &[]);
+        let out = scrub(&f, &T).unwrap();
+        let slot = base(1) as usize - 4;
+        assert_eq!(&out[slot..slot + 4], &[0; 4], "IFD1 ilegível não fica apontado");
+        // IFD1 legível que aponta para um IFD2 com Artist: a cadeia acaba no IFD1.
+        let ifd2 = base(1) + 18;
+        let um = [vec![1, 0], [0x00, 0x01, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0].to_vec(), ifd2.to_le_bytes().to_vec()].concat();
+        let dois = [vec![1, 0], [0x3B, 0x01, 2, 0, 3, 0, 0, 0, b'A', b'b', 0, 0].to_vec(), vec![0; 4]].concat();
+        let g = ifd0(&[(0x0100, 3, 1, [1, 0, 0, 0])], base(1), &[um, dois].concat());
+        let out = scrub(&g, &T).unwrap();
+        let slot = ifd2 as usize - 4;
+        assert_eq!(&out[slot..slot + 4], &[0; 4], "IFD2 não fica apontado");
+    }
+
+    #[test]
+    fn valor_sobre_o_ponteiro_que_tambem_aponta_para_tabela_com_texto_derruba_o_bloco() {
+        // O valor de Make começa sobre o ponteiro, e esses bytes também levam a um IFD com Artist.
+        let alvo = base(1) + 4;
+        let tabela = [vec![1, 0], [0x3B, 0x01, 2, 0, 3, 0, 0, 0, b'A', b'b', 0, 0].to_vec(), vec![0; 4]].concat();
+        let make = (0x010F, 2, 8, (base(1) - 4).to_le_bytes());
+        let f = ifd0(&[make], alvo, &[vec![b'x'; 4], tabela].concat());
+        assert_eq!(scrub(&f, &T), None);
     }
 
     #[test]

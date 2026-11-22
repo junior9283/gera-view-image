@@ -368,7 +368,7 @@ impl DocStore {
             d.saved_len = usize::MAX;
             d.deep = None;
         })?;
-        self.forget_meta(id);
+        self.meta_source_changed(id, false);
         self.invalidate(id);
         Ok(info)
     }

@@ -139,8 +139,15 @@ pub fn parse_blocks(file: &[u8], exif_tiff: Option<&[u8]>) -> Blocks {
             if f.tag.0 == Context::Gps || f.tag == Tag::MakerNote {
                 continue;
             }
-            let value = f.display_value().with_unit(&exif).to_string();
-            out.exif.push((f.tag.to_string(), unquote(&value)));
+            let value = match &f.value {
+                // O crate mostra o ASCII com todo byte fora do básico escapado (`Jos\xc3\xa9`).
+                Value::Ascii(v) => {
+                    let parts: Vec<String> = v.iter().map(|b| metaedit::text_bytes(b).trim().to_string()).filter(|s| !s.is_empty()).collect();
+                    parts.join(", ")
+                }
+                _ => unquote(&f.display_value().with_unit(&exif).to_string()),
+            };
+            out.exif.push((f.tag.to_string(), value));
         }
         out.gps = gps_of(&exif);
         out.maker = makernote::maker_of(&exif);
@@ -326,7 +333,7 @@ fn parse_iim(mut d: &[u8], fields: &mut Vec<(String, String)>, keywords: &mut Ve
         if rec != 2 {
             continue;
         }
-        let text = String::from_utf8_lossy(v).trim().to_string();
+        let text = metaedit::text_bytes(v).trim().to_string();
         if num == 25 {
             if !text.is_empty() && !keywords.contains(&text) {
                 keywords.push(text);
@@ -452,6 +459,22 @@ fn iso_utc(t: SystemTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn textos_com_acento_do_exif_e_do_iptc_saem_decodificados() {
+        let asc = |b: &[u8]| (0x013Bu16, 2u16, b.len() as u32 + 1, [b, &[0]].concat());
+        let autor = |b: &[u8]| {
+            let tiff = crate::image::test_util::tiff_le(&[asc(b)]);
+            known_texts(None, Some(&tiff))[2].clone()
+        };
+        assert_eq!(autor("José Simões".as_bytes()).as_deref(), Some("José Simões"));
+        assert_eq!(autor(b"Jos\xe9 Sim\xf5es").as_deref(), Some("José Simões"), "Latin-1");
+        assert_eq!(autor(b"Ana \"Nina\" \\ Cia").as_deref(), Some("Ana \"Nina\" \\ Cia"));
+        assert_eq!(autor(b"Ana\0Bia").as_deref(), Some("Ana, Bia"));
+        let mut iim = vec![0x1C, 2, 120, 0, 10];
+        iim.extend_from_slice(b"Legenda \xe7\xe3");
+        assert_eq!(known_texts(Some(&iim), None)[1].as_deref(), Some("Legenda çã"));
+    }
 
     #[test]
     fn data_iso() {

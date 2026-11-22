@@ -352,10 +352,10 @@ pub fn fresh(values: &[Option<String>; 4]) -> String {
     )
 }
 
-/// Troca os campos de `values` (`Some("")` apaga o item exibido) e devolve o pacote editado, com o
+/// Troca os campos de `values` (`Some("")` apaga a propriedade, em todas as línguas) e devolve o pacote editado, com o
 /// resto intacto. Elementos e atributos da propriedade, em qualquer prefixo e quantidade, saem; em
-/// listas de idioma só o item padrão muda (sem `xml:lang` ou `x-default`) e as outras línguas
-/// ficam. `None` se o pacote não puder ser editado com segurança: ilegível, grande demais, lido
+/// listas de idioma a edição muda só o item padrão (sem `xml:lang` ou `x-default`) e as cópias dele;
+/// as outras línguas ficam. `None` se o pacote não puder ser editado com segurança: ilegível, grande demais, lido
 /// só em parte ou com resultado diferente do pedido.
 pub fn edit(xmp: &str, values: &[Option<String>; 4]) -> Option<String> {
     let xmp = no_bom(xmp);
@@ -389,19 +389,16 @@ pub fn edit(xmp: &str, values: &[Option<String>; 4]) -> Option<String> {
             ops.push(whole(if v.is_empty() { String::new() } else { element(p, &first.qname, rdf, &v) }));
             continue;
         }
-        let defaults: Vec<&Item> = first.items.iter().filter(|it| it.default_lang).collect();
         if v.is_empty() {
-            // Apaga o item exibido (todos os padrão, ou o primeiro se não houver padrão); sem
-            // item nenhum depois, a propriedade inteira sai.
-            let gone: Vec<&Item> = if defaults.is_empty() { shown(&first.items).into_iter().collect() } else { defaults };
-            if gone.len() == first.items.len() {
-                ops.push(whole(String::new()));
-            } else {
-                ops.extend(gone.iter().map(|it| (it.span.clone(), String::new())));
-            }
-        } else if let Some((head, rest)) = defaults.split_first() {
+            // Apagar vale para todas as línguas: um item que ficasse voltaria a ser exibido.
+            ops.push(whole(String::new()));
+        } else if let Some(head) = first.items.iter().find(|it| it.default_lang) {
             ops.push((head.span.clone(), item(prefix_of(&head.qname).unwrap_or(rdf), &v)));
-            ops.extend(rest.iter().map(|it| (it.span.clone(), String::new())));
+            // Saem os outros padrões e as cópias do texto trocado (o XMP Toolkit repete o padrão em en-US).
+            let old = text_of(xmp, &head.inner);
+            let copy = |it: &&Item| it.default_lang || (old.is_some() && text_of(xmp, &it.inner) == old);
+            let rest = first.items.iter().filter(|it| it.span != head.span);
+            ops.extend(rest.filter(copy).map(|it| (it.span.clone(), String::new())));
         } else if let Some((at, qn)) = &first.alt {
             ops.push((*at..*at, item(prefix_of(qn).unwrap_or(rdf), &v)));
         } else {
@@ -429,7 +426,7 @@ pub fn edit(xmp: &str, values: &[Option<String>; 4]) -> Option<String> {
     let (was, now) = (values_of(xmp, &s), values_of(&out, &after));
     let ok = (0..4).all(|i| match values[i].as_deref().map(clean) {
         None => now[i] == was[i],
-        Some(v) if v.is_empty() => now[i].is_none() || now[i] != was[i],
+        Some(v) if v.is_empty() => now[i].is_none(),
         Some(v) => now[i].as_deref() == Some(v.as_str()),
     });
     ok.then_some(out)
