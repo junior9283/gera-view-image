@@ -70,6 +70,15 @@ pub struct Metadata {
     pub maker: Option<Maker>,
     pub lens: Vec<(String, String)>,
     pub texts: Texts,
+    pub carried: Carried,
+}
+
+/// Blocos do arquivo que uma gravação levaria (para avisar antes o que o formato não guarda).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Carried {
+    pub exif: bool,
+    /// XMP ou IPTC.
+    pub text: bool,
 }
 
 /// Lê os metadados de `path`. `decoded` traz EXIF, ICC e DPI já extraídos na abertura.
@@ -117,6 +126,7 @@ pub fn read_metadata_with(path: &Path, decoded: &Decoded, cleared: &MetadataEdit
         maker: b.maker,
         lens: b.lens,
         texts: b.texts,
+        carried: Carried { exif: exif.is_some(), text: has_text(&bytes) },
     })
 }
 
@@ -258,6 +268,14 @@ pub fn file_iim_xmp(file: &[u8]) -> (Option<Vec<u8>>, Option<String>) {
             .and_then(|mut d| d.xmp_metadata().ok().flatten());
         (None, xmp.map(text))
     }
+}
+
+/// O arquivo tem XMP ou IPTC. Nos contêineres que o app não lê nem regrava (HEIF, JPEG 2000, PSD),
+/// procura o pacote XMP, que neles não é comprimido.
+fn has_text(file: &[u8]) -> bool {
+    const RDF: &[u8] = b"<rdf:RDF";
+    let (iim, xmp) = file_iim_xmp(file);
+    iim.is_some() || xmp.is_some() || file.windows(RDF.len()).any(|w| w == RDF)
 }
 
 fn jpeg_iim_xmp(file: &[u8]) -> (Option<Vec<u8>>, Option<String>) {

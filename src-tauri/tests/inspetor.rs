@@ -11,6 +11,7 @@ use gera_view_image_lib::{
         store::DocStore,
     },
     image::{
+        container::{TiffMeta, exif_with_dpi, tiff_with_meta},
         decode::decode,
         encode::{ExportFormat, ExportOptions, MetaCarry, encode},
         formatinfo,
@@ -563,4 +564,100 @@ fn edicao_que_cai_no_pacote_novo_leva_os_textos_conhecidos_e_avisa() {
     // O EXIF não podia ser limpo: não é gravado (e o texto antigo dele não vaza), com aviso.
     assert_eq!(store.take_meta_notes(id), ["xmpRebuilt", "exifDropped"]);
     assert!(d.exif.is_none());
+}
+
+const TEXTOS_ANTIGOS: [&str; 3] = ["Antigo Autor", "Descricao antiga", "Autor XP antigo"];
+
+/// Gravar com outra resolução não pode deixar uma cópia morta dos textos no EXIF: apagados numa
+/// gravação seguinte, eles continuariam nos bytes.
+#[test]
+fn resolucao_nova_nao_deixa_copia_dos_textos_no_exif() {
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    for (fmt, ext) in [(ExportFormat::Jpeg, "jpg"), (ExportFormat::Png, "png"), (ExportFormat::Webp, "webp")] {
+        let meta = MetaCarry { exif: Some(exif_com_textos_antigos()), ..MetaCarry::default() };
+        let com_dpi = ExportOptions { dpi: Some(300.0), ..opts(fmt) };
+        let path = tmp(&format!("insp-dpi-{ext}")).join(format!("a.{ext}"));
+        fs::write(&path, encode(&rgba, &com_dpi, &meta).unwrap()).unwrap();
+        let exif = decode(&path).unwrap().exif.expect("EXIF");
+        for velho in TEXTOS_ANTIGOS {
+            assert!(contem(&exif, velho), "{velho}: o ppp não apaga textos");
+        }
+        let limpo = MetaCarry { exif: Some(exif), exif_cleared: Some(edicao_autor_e_descricao()), ..MetaCarry::default() };
+        let out = encode(&rgba, &opts(fmt), &limpo).unwrap();
+        for velho in TEXTOS_ANTIGOS {
+            assert!(!contem(&out, velho), "{velho} sobrou no .{ext}");
+        }
+        fs::write(&path, &out).unwrap();
+        let d = decode(&path).unwrap();
+        let m = read_metadata(&path, &d).unwrap();
+        assert!(campo(&m.exif, "Make").unwrap().contains("Gera"), ".{ext} perdeu o Make");
+    }
+    // A resolução entra de fato, uma vez só por bloco.
+    let uma = exif_with_dpi(Some(&exif_com_textos_antigos()), 300.0).unwrap();
+    let duas = exif_with_dpi(Some(&uma), 72.0).unwrap();
+    let r = exif::Reader::new().read_raw(duas).unwrap();
+    let x = r.get_field(exif::Tag::XResolution, exif::In::PRIMARY).unwrap();
+    assert!(matches!(&x.value, exif::Value::Rational(v) if v[0].to_f64() == 72.0));
+}
+
+/// Arquivo gravado por uma versão antiga do app, já com a cópia morta: apagar também a limpa.
+#[test]
+fn copia_morta_de_versoes_antigas_tambem_e_apagada() {
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    let dpi = TiffMeta { dpi: Some((300.0, 300.0)), ..TiffMeta::default() };
+    let antigo = tiff_with_meta(&exif_com_textos_antigos(), &dpi).unwrap();
+    let meta = MetaCarry { exif: Some(antigo), exif_cleared: Some(edicao_autor_e_descricao()), ..MetaCarry::default() };
+    let out = encode(&rgba, &opts(ExportFormat::Jpeg), &meta).unwrap();
+    for velho in TEXTOS_ANTIGOS {
+        assert!(!contem(&out, velho), "{velho} sobrou");
+    }
+    let path = tmp("insp-morta").join("a.jpg");
+    fs::write(&path, &out).unwrap();
+    let d = decode(&path).unwrap();
+    assert!(campo(&read_metadata(&path, &d).unwrap().exif, "Make").unwrap().contains("Gera"));
+}
+
+#[test]
+fn exif_que_nao_cabe_no_jpeg_avisa() {
+    let dir = tmp("insp-exif-grande");
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    let mut exif = exif_com_textos_antigos();
+    exif.resize(70_000, 0);
+    let meta = MetaCarry { exif: Some(exif), ..MetaCarry::default() };
+    let src = dir.join("a.png");
+    fs::write(&src, encode(&rgba, &opts(ExportFormat::Png), &meta).unwrap()).unwrap();
+    let store = DocStore::new();
+    let id = store.open_documents(&[s(&src)]).remove(0).id;
+    store.wait_ready(id).unwrap();
+    let grava = |o: ExportOptions, ext: &str| {
+        store.export(id, &s(&dir.join(format!("b.{ext}"))), &o, None).unwrap();
+        store.take_meta_notes(id)
+    };
+    assert_eq!(grava(opts(ExportFormat::Jpeg), "jpg"), ["exifTooBig"]);
+    assert!(decode(&dir.join("b.jpg")).unwrap().exif.is_none());
+    assert!(grava(opts(ExportFormat::Webp), "webp").is_empty());
+    let sem = ExportOptions { strip_metadata: true, ..opts(ExportFormat::Jpeg) };
+    assert!(grava(sem, "jpg").is_empty(), "remover metadados é uma escolha");
+}
+
+/// O que uma gravação levaria, para o aviso de perda antes de gravar.
+#[test]
+fn metadados_dizem_que_blocos_o_arquivo_tem() {
+    let tem = |m: Metadata| (m.carried.exif, m.carried.text);
+    assert_eq!(tem(meta("meta_gps.jpg")), (true, false));
+    assert_eq!(tem(meta("meta_iptc.jpg")).1, true);
+    assert_eq!(tem(meta("alpha.png")), (false, false));
+    let dir = tmp("insp-levados");
+    for (fmt, ext) in [(ExportFormat::Png, "png"), (ExportFormat::Tiff, "tiff"), (ExportFormat::Psd, "psd")] {
+        let path = fonte(&dir, fmt, ext);
+        let d = decode(&path).unwrap();
+        assert!(tem(read_metadata(&path, &d).unwrap()).1, ".{ext}");
+    }
+    // AVIF com XMP (que o app não lê nem regrava): também conta.
+    let avif = dir.join("x.avif");
+    let mut b = fs::read(ensure_fixtures().join("img.avif")).unwrap();
+    b.extend(XMP.as_bytes());
+    fs::write(&avif, b).unwrap();
+    let d = decode(&avif).unwrap();
+    assert!(tem(read_metadata(&avif, &d).unwrap()).1);
 }

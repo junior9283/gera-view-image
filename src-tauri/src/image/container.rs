@@ -104,6 +104,11 @@ impl<'a> Reader<'a> {
         })
     }
 
+    /// Tag de uma entrada crua de 12 bytes.
+    fn entry_tag(&self, e: &[u8; 12]) -> u16 {
+        Reader { b: e, le: self.le }.u16(0).unwrap_or(0)
+    }
+
     fn ifd0(&self) -> Option<usize> {
         self.u32(4).map(|o| o as usize)
     }
@@ -462,16 +467,67 @@ impl TiffJoin {
     }
 }
 
-/// EXIF (bloco TIFF) com a resolução `dpi` no IFD0; sem EXIF, um bloco só com ela. O IFD0 é
-/// regravado no fim, sem o IFD1 (a miniatura embutida). `None` se o bloco for ilegível.
+/// EXIF (bloco TIFF) com a resolução `dpi` no IFD0; sem EXIF, um bloco só com ela. Só a tabela do
+/// IFD0 vai para o fim: as outras entradas (e os valores e IFDs que elas apontam) ficam como estão,
+/// e a tabela antiga é zerada, para nenhum texto sobrar fora do alcance de quem o apagar depois.
+/// `None` se o bloco for ilegível ou a tabela estiver sobre um valor (forjado).
 pub fn exif_with_dpi(exif: Option<&[u8]>, dpi: f32) -> Option<Vec<u8>> {
     // IFD0 vazio: zero entradas e nenhum IFD seguinte.
     const EMPTY: &[u8] = b"II*\0\x08\0\0\0\0\0\0\0\0\0";
-    let meta = TiffMeta {
-        dpi: Some((dpi, dpi)),
-        ..TiffMeta::default()
+    let exif = exif.unwrap_or(EMPTY);
+    let r = Reader::new(exif)?;
+    let at = r.ifd0()?;
+    let first = at.checked_add(2)?;
+    let end = first.checked_add(12 * r.u16(at)? as usize)?;
+    let table = exif.get(first..end)?;
+    // Sem o ponteiro do próximo IFD (bloco cortado ali), a tabela acaba nas entradas.
+    let next = r.u32(end);
+    let old = at..if next.is_some() { end + 4 } else { end };
+    let mut entries: Vec<[u8; 12]> = table.as_chunks::<12>().0.to_vec();
+    entries.retain(|e| !matches!(r.entry_tag(e), 282 | 283 | 296));
+    for e in &entries {
+        // Valor ou sub-IFD sobre a tabela antiga: zerá-la o estragaria.
+        let v = Reader { b: e, le: r.le };
+        let len = unit(v.u16(2)?).and_then(|(size, _)| size.checked_mul(v.u32(4)? as usize));
+        let pointer = matches!(v.u16(0)?, TAG_EXIF_IFD | TAG_GPS_IFD);
+        if pointer || len.is_none_or(|l| l > 4) {
+            let start = v.u32(8)? as usize;
+            let stop = start.saturating_add(len.unwrap_or(1).max(1));
+            if start < old.end && old.start < stop {
+                return None;
+            }
+        }
+    }
+    let mut out = exif.to_vec();
+    out[old].fill(0);
+    if out.len() % 2 == 1 {
+        out.push(0);
+    }
+    let values = u32::try_from(out.len()).ok()?;
+    for v in [(dpi.max(0.0) * 100.0).round() as u32, 100, (dpi.max(0.0) * 100.0).round() as u32, 100] {
+        put32(&mut out, v, r.le);
+    }
+    let mut add = |tag: u16, ty: u16, value: &dyn Fn(&mut Vec<u8>)| {
+        let mut e = Vec::with_capacity(12);
+        put16(&mut e, tag, r.le);
+        put16(&mut e, ty, r.le);
+        put32(&mut e, 1, r.le);
+        value(&mut e);
+        e.resize(12, 0);
+        entries.push(e.try_into().expect("12 bytes"));
     };
-    tiff_with_meta(exif.unwrap_or(EMPTY), &meta)
+    add(282, 5, &|e| put32(e, values, r.le));
+    add(283, 5, &|e| put32(e, values + 8, r.le));
+    add(296, 3, &|e| put16(e, 2, r.le)); // polegadas
+    entries.sort_by_key(|e| r.entry_tag(e));
+    let new = u32::try_from(out.len()).ok()?;
+    put16(&mut out, u16::try_from(entries.len()).ok()?, r.le);
+    out.extend(entries.as_flattened());
+    put32(&mut out, next.unwrap_or(0), r.le);
+    let mut pointer = Vec::with_capacity(4);
+    put32(&mut pointer, new, r.le);
+    out[4..8].copy_from_slice(&pointer);
+    Some(out)
 }
 
 /// EXIF com `PixelXDimension`/`PixelYDimension` (sub-IFD EXIF) iguais a `w`x`h`, quando as
@@ -795,6 +851,76 @@ mod tests {
         assert_eq!(exif_set_pixel_dims(&t, (5, 5)), t);
         assert_eq!(exif_set_pixel_dims(&t, (70_000, 5)), t, "SHORT que viraria LONG");
         assert!(tiff_exif_block(&t).is_some() || tiff_exif_block(&t).is_none());
+    }
+
+    #[test]
+    fn resolucao_no_exif_big_endian_mantem_o_resto_e_zera_a_tabela_antiga() {
+        let t = tiff_be();
+        let out = exif_with_dpi(Some(&t), 300.0).unwrap();
+        let r = Reader::new(&out).unwrap();
+        let es = r.read_ifd(r.ifd0().unwrap(), 0).unwrap();
+        let get = |tag| es.iter().find(|e| e.tag == tag).map(|e| e.data.clone()).unwrap();
+        assert_eq!(get(271), b"Canon\0");
+        assert_eq!(get(274), 6u16.to_le_bytes());
+        assert_eq!(get(282), [30_000u32.to_le_bytes(), 100u32.to_le_bytes()].concat());
+        assert!(out[8..8 + 2 + 36 + 4].iter().all(|&b| b == 0));
+        assert_eq!(out.windows(5).filter(|w| w == b"Canon").count(), 1);
+        // Valor forjado sobre a tabela, bloco cortado e lixo: sem pânico.
+        let mut forjado = t.clone();
+        forjado[18..22].copy_from_slice(&10u32.to_be_bytes());
+        assert_eq!(exif_with_dpi(Some(&forjado), 300.0), None);
+        for n in 0..t.len() {
+            let _ = exif_with_dpi(Some(&t[..n]), 300.0);
+        }
+    }
+
+    fn um_tiff(w: u32, h: u32) -> Vec<u8> {
+        let mut c = std::io::Cursor::new(Vec::new());
+        tiff::encoder::TiffEncoder::new(&mut c)
+            .unwrap()
+            .write_image::<tiff::encoder::colortype::Gray8>(w, h, &vec![7; (w * h) as usize])
+            .unwrap();
+        c.into_inner()
+    }
+
+    #[test]
+    fn paginas_juntadas_relidas_e_apontadas() {
+        let mut j = TiffJoin::new(1 << 20);
+        j.push(&um_tiff(5, 4)).unwrap();
+        j.push(&um_tiff(9, 8)).unwrap();
+        let mut b = j.finish();
+        let pages = tiff_pages(&b).unwrap();
+        assert_eq!(pages.len(), 2);
+        tiff_set_first(&mut b, pages[1]);
+        assert_eq!(tiff_tag(&b, 256).unwrap()[0], 9);
+        // Teto e lixo.
+        assert_eq!(TiffJoin::new(10).push(&um_tiff(5, 4)), None);
+        assert_eq!(TiffJoin::new(1 << 20).push(b"lixo"), None);
+    }
+
+    #[test]
+    fn cadeia_de_ifds_hostil_e_recusada() {
+        // Ciclo: o próximo IFD é ele mesmo.
+        let mut t = b"II*\0\x08\0\0\0".to_vec();
+        t.extend(0u16.to_le_bytes());
+        t.extend(8u32.to_le_bytes());
+        assert_eq!(tiff_pages(&t), None);
+        assert_eq!(tiff_pages(&t[..9]), None);
+        // BigTIFF de uma página vazia, e com contagem absurda.
+        let mut big = b"II+\0\x08\0\0\0".to_vec();
+        big.extend(16u64.to_le_bytes());
+        big.extend(0u64.to_le_bytes());
+        big.extend(0u64.to_le_bytes());
+        assert_eq!(tiff_pages(&big), Some(vec![16]));
+        tiff_set_first(&mut big, 99);
+        assert_eq!(big[8..16], 99u64.to_le_bytes());
+        tiff_set_first(&mut big, 16);
+        big[16..24].copy_from_slice(&u64::MAX.to_le_bytes());
+        assert_eq!(tiff_pages(&big), None);
+        // Offset no fim do espaço de endereços.
+        big[8..16].copy_from_slice(&u64::MAX.to_le_bytes());
+        assert_eq!(tiff_pages(&big), None);
+        tiff_set_first(&mut b"II".to_vec(), 1);
     }
 
     /// Payload de extensão com o pacote `<rdf:RDF>X</rdf:RDF>` inteiro.

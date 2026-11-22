@@ -17,6 +17,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Cada imagem pertence a uma janela só, e o núcleo recusa comandos de outra. Abrir um arquivo que já está em outra janela traz essa janela para a frente em vez de abri-lo duas vezes (abrir pelo gerenciador de arquivos continua iniciando outro processo).
 
 ### Alterado
+- TIFF de várias páginas é gravado inteiro: Salvar, Salvar Como TIFF e Exportar TIFF (caixa "Todas as páginas", ligada por padrão) levam todas, cada uma com o próprio tamanho, as próprias anotações e etiquetas, e com 16 bits por canal quando a página tem 16 bits. A gravação continua atômica; se o arquivo passar de 2 GB, o app recusa com aviso antes de gravar. Exportar Selecionadas em TIFF também leva todas, e nos outros formatos avisa que só a primeira página vai.
+- Antes de gravar, o app diz o que o formato escolhido não guarda: as outras páginas, as anotações delas, o EXIF (data, câmera, localização) ou o XMP/IPTC (título, descrição, autor, palavras-chave). Salvar e Salvar Como perguntam (Cancelar não muda nada); no Exportar, o aviso aparece no diálogo.
+- Em documentos de várias páginas, recortar, apagar, remover fundo, girar, espelhar, redimensionar e ajustar cor valem só para a página exibida, como no Visualização do macOS. Desfazer, refazer e reverter acompanham. Atribuir Perfil continua valendo para o documento todo.
 - Imprimir passou do diálogo do WebKit para o do sistema (`GtkPrintOperation`), com um diálogo próprio antes: prévia da página, cópias, papel, orientação, girar automaticamente, escala em %, Imprimir imagem inteira ou Preencher o papel, de 1 a 16 imagens por página (uma só imagem se repete) e mostrar ou não as marcações.
 - Sair (Ctrl+Q) e reiniciar para atualizar perguntam pelas alterações de todas as janelas antes de fechar qualquer uma; um Cancelar mantém tudo como estava. Fechar Todas também fecha as outras janelas, cada uma perguntando pelas próprias alterações. Fechar a janela pergunta de novo se algo mudou enquanto as outras imagens eram salvas e confirma antes o texto em edição.
 - O consentimento da câmera da assinatura e o cancelamento do Texto ao Vivo e do Remover Fundo passam a valer só na janela em que foram pedidos. Preferências e assinaturas mudadas numa janela aparecem nas outras.
@@ -25,10 +28,16 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - TIFF com resolução sem unidade (só a proporção) não é mais lido como 1 ppp, o que fazia as páginas impressas e em PDF terem metros de lado.
 - Em documentos de várias páginas (TIFF), cada anotação pertence à página em que foi feita: aparece, é editada, impressa, exportada em PDF e achatada só nela. Antes era carimbada em todas. Exportar, Salvar Como e Copiar usam a página exibida (o Exportar diz qual); as anotações das outras páginas continuam editáveis e não salvas, com aviso, e Duplicar as leva para a cópia. Em GIF e WebP animados continua valendo para todos os quadros.
 - Cancelar o Exportar aberto pelo Salvar (formato que não dá para regravar) não deixa mais as anotações achatadas.
+- TIFF com páginas de tamanhos diferentes: cada página aparece inteira e no tamanho dela. Antes a página menor que a primeira saía fora dos limites e a maior, cortada. Ajustar, Tamanho Real, zoom, seleção, anotações, Inspetor, Recorte, Ajustar Tamanho, impressão e PDF usam a página exibida.
+- Recortar numa página de um TIFF não recorta mais as outras.
+- Salvar não grava mais por cima de um arquivo que virou outra coisa no disco (mais páginas, animação ou outro formato) depois de ignorar o aviso de alteração: abre o Exportar. Reverter passa a acompanhar o formato e as páginas do arquivo relido.
+- Salvar Como grava a página que estava na tela quando foi pedido, mesmo que ela mude com o diálogo aberto.
+- Privacidade: exportar com outra resolução deixava dentro do arquivo uma cópia escondida dos textos do EXIF, que continuava lá depois de apagar o autor ou a descrição. A cópia não é mais criada, e apagar o texto também a remove dos arquivos gravados por versões anteriores.
+- EXIF maior que o limite de 64 KB do JPEG saía sem aviso; agora o app avisa, e os avisos de metadados dizem de que documento são.
 - Reiniciar depois de instalar uma atualização descartava as alterações não salvas sem perguntar.
 
 ### Limitações conhecidas (o que falta para a 1.0)
-- TIFF de várias páginas é gravado com uma página só (a exibida); a partir da segunda, sempre a partir dos 8 bits por canal.
+- TIFF de várias páginas: os formatos de uma página (PNG, JPEG e os demais, exceto o Exportar como PDF…) gravam só a página exibida, com aviso antes. O título, a descrição e as palavras-chave editados vão para a primeira página (apagar vale para todas), e um arquivo acima de 2 GB não é gravado de uma vez.
 
 ## [0.4.1] - 2026-11-22
 

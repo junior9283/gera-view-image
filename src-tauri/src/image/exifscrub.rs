@@ -3,7 +3,8 @@
 //! O bloco é de um arquivo não confiável. Nada é movido: as entradas das tags tiradas saem da
 //! tabela do IFD (as seguintes sobem) e os bytes dos valores delas são zerados, mas só se a faixa
 //! não tocar o cabeçalho, uma tabela de IFD nem o valor de uma entrada que fica (isso também cobre
-//! valor compartilhado, MakerNote e miniatura). Se alguma limpeza não puder ser feita com
+//! valor compartilhado, MakerNote e miniatura). Cópias do mesmo valor em áreas mortas do bloco
+//! (versões antigas do app deixavam a do IFD0) também são zeradas. Se alguma limpeza não puder ser feita com
 //! segurança (tipo desconhecido, faixa que cruza algo mantido, tabela quebrada), devolve `None` e
 //! quem chama descarta o EXIF inteiro: o texto antigo nunca sobrevive por falha da limpeza.
 use super::makernote::{tiff_header, u16_at};
@@ -206,13 +207,42 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
             zero.push(v.clone());
         }
     }
+    if zero.len().saturating_mul(tiff.len()) > MAX_COPY_SCAN {
+        return None;
+    }
     for v in zero {
-        out[v].fill(0);
+        out[v.clone()].fill(0);
+        wipe_copies(&mut out, &tiff[v], &protected);
     }
     for t in tables {
         compact(&mut out, t, le);
     }
     Some(out)
+}
+
+/// Teto da varredura por cópias (valores vezes bytes do bloco); um EXIF real fica muito abaixo.
+const MAX_COPY_SCAN: usize = 256 << 20;
+/// Bytes do começo do valor que identificam uma cópia.
+const COPY_SEED: usize = 16;
+
+/// Zera as cópias de `value` fora de `protected`: o que nenhuma entrada alcança.
+fn wipe_copies(b: &mut [u8], value: &[u8], protected: &[Range<usize>]) {
+    let end = value.iter().rposition(|&c| c != 0).map_or(0, |i| i + 1);
+    let value = &value[..end];
+    if value.len() < 4 {
+        return;
+    }
+    let seed = &value[..value.len().min(COPY_SEED)];
+    let mut i = 0;
+    while let Some(at) = b.get(i..).and_then(|rest| rest.windows(seed.len()).position(|w| w == seed)) {
+        let start = i + at;
+        let len = b[start..].iter().zip(value).take_while(|(x, y)| x == y).count();
+        let found = start..start + len;
+        i = found.end;
+        if !protected.iter().any(|p| overlaps(p, &found)) {
+            b[found].fill(0);
+        }
+    }
 }
 
 /// Tira da tabela as entradas marcadas: as seguintes sobem, o ponteiro do próximo IFD acompanha e

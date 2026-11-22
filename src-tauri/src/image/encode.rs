@@ -201,7 +201,7 @@ pub(super) const DPI_MIN: f32 = 1.0;
 pub(super) const DPI_MAX: f32 = 10_000.0;
 const ICO_MAX: u32 = 256;
 /// Maior EXIF de um JPEG: os 65 533 bytes do APP1 menos o `Exif\0\0`.
-const JPEG_EXIF_MAX: usize = 65_533 - 6;
+pub(super) const JPEG_EXIF_MAX: usize = 65_533 - 6;
 
 fn yes() -> bool {
     true

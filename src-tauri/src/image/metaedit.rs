@@ -6,7 +6,7 @@ use super::{
     exifscrub::{self, Tags},
     xmpedit::{self, PROPS},
 };
-use super::encode::{ExportOptions, MetaCarry};
+use super::encode::{ExportFormat, ExportOptions, JPEG_EXIF_MAX, MetaCarry};
 use crate::commands::describe::MetadataEdits;
 
 /// Teto de caracteres de cada campo (uma edição maior é cortada, nunca recusada).
@@ -256,8 +256,8 @@ pub fn exif_clear_set(pending: Option<&MetadataEdits>, cleared: Option<&Metadata
 }
 
 /// Avisos para o usuário sobre uma gravação com `meta` e `opts` (códigos para o front traduzir):
-/// `xmpRebuilt` (o XMP foi refeito e perdeu o resto), `exifDropped` (o EXIF inteiro saiu) e
-/// `textNotSaved` (o formato não guarda o texto novo).
+/// `xmpRebuilt` (o XMP foi refeito e perdeu o resto), `exifDropped` (o EXIF inteiro saiu),
+/// `exifTooBig` (não cabe no JPEG) e `textNotSaved` (o formato não guarda o texto novo).
 pub fn notes(meta: &MetaCarry, opts: &ExportOptions) -> Vec<&'static str> {
     let mut out = Vec::new();
     if opts.strip_metadata {
@@ -278,6 +278,8 @@ pub fn notes(meta: &MetaCarry, opts: &ExportOptions) -> Vec<&'static str> {
     let set = exif_clear_set(meta.text_edits.as_ref(), meta.exif_cleared.as_ref(), carries);
     if !set.is_empty() && meta.exif.as_deref().is_some_and(|e| exif_without_text(e, &set).is_none()) {
         out.push("exifDropped");
+    } else if opts.format == ExportFormat::Jpeg && meta.exif.as_ref().is_some_and(|e| e.len() > JPEG_EXIF_MAX) {
+        out.push("exifTooBig");
     }
     out
 }
