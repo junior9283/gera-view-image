@@ -57,7 +57,8 @@ export function selectionAfterClick(
     return { next: { picked, anchor: id }, activate };
   }
   const to = docs.findIndex((d) => d.id === id);
-  const anchor = cur.anchor ?? activeId;
+  // Âncora que saiu da seleção (a navegação mudou o ativo por outro caminho) não vale mais.
+  const anchor = cur.anchor !== null && current.includes(cur.anchor) ? cur.anchor : activeId;
   const from = docs.findIndex((d) => d.id === anchor);
   if (shift && from >= 0 && to >= 0) return { next: { picked: range(docs, from, to), anchor }, activate: id };
   return { next: { picked: [id], anchor: id }, activate: id };
@@ -78,7 +79,7 @@ export function selectionAfterKey(
   const to = key === "Home" ? 0 : key === "End" ? docs.length - 1 : Math.max(0, Math.min(docs.length - 1, at + (key === "ArrowDown" ? 1 : -1)));
   const id = docs[to].id;
   if (!shift) return { next: { picked: [id], anchor: id }, activate: id };
-  const anchor = cur.anchor ?? docs[at].id;
+  const anchor = cur.anchor !== null && effectiveSelection(docs, activeId, cur.picked).includes(cur.anchor) ? cur.anchor : docs[at].id;
   const from = docs.findIndex((d) => d.id === anchor);
   return { next: { picked: range(docs, from < 0 ? at : from, to), anchor }, activate: id };
 }

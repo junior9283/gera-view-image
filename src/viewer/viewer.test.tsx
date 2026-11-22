@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 const setFullscreen = vi.fn(async () => {});
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ setFullscreen }) }));
 
+import { useThumbSelection } from "../sidebar/selection";
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { resetPrefsForTests, setPrefs } from "../store/prefs";
 import { resetUiForTests, useUi } from "../store/ui";
@@ -55,6 +56,7 @@ beforeEach(() => {
   invoke.mockReset();
   invoke.mockImplementation(async (cmd: string) => (cmd === "render_view" || cmd === "thumbnail" ? buf() : undefined));
   resetDocsForTests();
+  useThumbSelection.setState({ picked: [], anchor: null });
   resetPrefsForTests();
   setPrefs({ language: "pt-BR" });
   resetUiForTests();
