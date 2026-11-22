@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Store } from "@tauri-apps/plugin-store";
+import { shareStore, type SharedStore } from "../lib/sharedStore";
 
 export interface Prefs {
   background: "window" | "black" | "white" | "gray" | "custom";
@@ -108,7 +108,7 @@ let state: Prefs = DEFAULT_PREFS;
 let loaded = false;
 /** Mudanças feitas antes de o `prefs.json` terminar de carregar: valem sobre o disco e são gravadas depois. */
 let dirty: Partial<Prefs> = {};
-let store: Store | null = null;
+let store: SharedStore | null = null;
 let loading: Promise<Prefs> | null = null;
 const listeners = new Set<() => void>();
 
@@ -153,14 +153,21 @@ function clearLegacy() {
   }
 }
 
+/** Outra janela gravou uma preferência: vale aqui também (e não é regravada com o valor antigo). */
+function changedElsewhere(key: string, value: unknown): void {
+  if (!loaded || !(key in DEFAULT_PREFS)) return;
+  state = sanitize({ ...state, [key]: value });
+  emit();
+}
+
 async function doLoad(): Promise<Prefs> {
   const raw: Record<string, unknown> = {};
   const migrated: Record<string, unknown> = {};
   try {
     // Import dinâmico: o plugin só é carregado quando as preferências são lidas.
     const { load } = await import("@tauri-apps/plugin-store");
-    store = await load(FILE, { defaults: {}, autoSave: false });
-    const s = store;
+    const s = await load(FILE, { defaults: {}, autoSave: false });
+    const shared = (store = shareStore(s, changedElsewhere));
     await Promise.all(KEYS.map(async (k) => (raw[k] = await s.get(k))));
     for (const [k, v] of Object.entries(legacyValues())) {
       if (raw[k] === undefined || raw[k] === null) {
@@ -168,8 +175,8 @@ async function doLoad(): Promise<Prefs> {
         migrated[k] = v;
       }
     }
-    await Promise.all(Object.entries(migrated).map(([k, v]) => s.set(k, v)));
-    if (Object.keys(migrated).length) await store.save();
+    await Promise.all(Object.entries(migrated).map(([k, v]) => shared.set(k, v)));
+    if (Object.keys(migrated).length) await shared.save();
     clearLegacy();
   } catch {
     // Sem store (ex.: fora do Tauri): segue em memória, e o localStorage continua intacto.

@@ -18,7 +18,7 @@ use std::{
     sync::mpsc,
     time::Duration,
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
@@ -82,9 +82,15 @@ pub async fn move_to(store: State<'_, DocStore>, id: DocId, dir: String) -> AppR
 }
 
 #[tauri::command]
-pub async fn duplicate(store: State<'_, DocStore>, id: DocId, name: String) -> AppResult<DocInfo> {
+pub async fn duplicate(
+    window: WebviewWindow,
+    store: State<'_, DocStore>,
+    id: DocId,
+    name: String,
+) -> AppResult<DocInfo> {
     let store = store.inner().clone();
-    blocking(move || store.duplicate(id, &name)).await
+    let copy = blocking(move || store.duplicate(id, &name)).await?;
+    super::window::claimed_one(&window, copy)
 }
 
 /// Existe algo em `path`? (Exportar pergunta antes de substituir.)
@@ -198,8 +204,10 @@ pub fn start_watch(app: AppHandle, store: DocStore) {
                 }
                 match store.disk_change(id) {
                     Ok(Some(removed)) if reported.get(&id) != Some(&removed) => {
-                        reported.insert(id, removed);
-                        let _ = app.emit(CHANGED_EVENT, DiskChanged { id, removed });
+                        // Só a janela dona fica sabendo (sem dono ainda, tenta de novo depois).
+                        if super::window::emit_to_owner(&app, id, CHANGED_EVENT, DiskChanged { id, removed }) {
+                            reported.insert(id, removed);
+                        }
                     }
                     Ok(None) => {
                         reported.remove(&id);

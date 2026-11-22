@@ -14,6 +14,7 @@ import { getItems, useMarkup } from "../markup/store";
 import type { CaptureMode, DocId, DocInfo, ExportOptions, RevertTarget } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { addRecent, getPrefs, setPrefs } from "../store/prefs";
+import { openHere } from "../tabs/open";
 import { activate, activeDoc, viewable } from "../viewer/actions";
 import { runBeforeSave } from "./beforeSave";
 import { confirmClose } from "./unsaved";
@@ -216,7 +217,7 @@ export const openWith = async () => {
 
 /** Abre um recente; se ele não abrir (apagado/movido), sai da lista. */
 export async function openRecent(path: string): Promise<void> {
-  const [info] = await useDocs.getState().open([path]);
+  const [info] = await openHere([path]);
   if (!info) return;
   activate(info.id);
   if (info.error) setPrefs({ recent: getPrefs().recent.filter((p) => p !== path) });

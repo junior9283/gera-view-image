@@ -3,6 +3,7 @@
 // menus e atalhos só chamam `undo`/`redo` de lá.
 import { opsHistory, setHistoryProvider, type HistoryProvider } from "../edit/history";
 import type { DocId } from "../ipc/types";
+import { registerDocState } from "../lib/docState";
 import { useDocs } from "../store/docs";
 import { transformForOp, type Annotation } from "./model";
 import { getItems, useMarkup } from "./store";
@@ -121,6 +122,15 @@ export function installHistory(): () => void {
   };
   useDocs.setState({ applyOp: tracked });
   setHistoryProvider(unifiedHistory);
+  // A pilha vai com o documento que muda de janela, depois do desfazer em andamento.
+  const offState = registerDocState("history", {
+    dump: (id) => stacks.get(id),
+    load: (id, data) => {
+      stacks.set(id, data as Stacks);
+      notify();
+    },
+    settle: (id) => chains.get(id),
+  });
   const off = useDocs.subscribe((s, prev) => {
     if (s.docs === prev.docs) return;
     const open = new Set(s.docs.map((d) => d.id));
@@ -132,6 +142,7 @@ export function installHistory(): () => void {
   });
   return () => {
     off();
+    offState();
     if (useDocs.getState().applyOp === tracked) useDocs.setState({ applyOp: orig });
     setHistoryProvider(null);
   };

@@ -7,7 +7,7 @@
 //! - Nada é enviado para fora: `open_web` só abre o navegador quando o usuário escolhe Traduzir,
 //!   Pesquisar ou Pesquisar Imagem na Web (esta última não envia a imagem: ela vai para a área de
 //!   transferência e o usuário decide colar na página).
-use super::blocking;
+use super::{Epochs, blocking};
 use crate::{
     doc::{model::DocId, store::DocStore},
     error::{AppError, AppResult},
@@ -22,10 +22,10 @@ use std::{
     time::Duration,
     sync::{
         Arc, LazyLock, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
 };
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -42,12 +42,12 @@ type Key = (DocId, u32, u64);
 struct OcrState {
     engine: Mutex<Option<Arc<Engine>>>,
     cache: Mutex<VecDeque<(Key, Arc<Vec<TextLine>>)>>,
-    /// Muda a cada pedido novo ou cancelamento; o pedido em curso para quando ela muda.
-    generation: AtomicU64,
     downloading: AtomicBool,
 }
 
 static STATE: LazyLock<OcrState> = LazyLock::new(OcrState::default);
+/// Muda a cada pedido novo ou cancelamento na janela; o pedido dela em curso para quando muda.
+static GENERATION: Epochs = Epochs::new();
 
 fn models_dir(app: &AppHandle) -> AppResult<PathBuf> {
     let dir = app.path().app_data_dir().map_err(|e| AppError::Io(e.to_string()))?;
@@ -197,11 +197,13 @@ fn remember(key: Key, lines: Arc<Vec<TextLine>>) {
 #[tauri::command]
 pub async fn recognize_text(
     app: AppHandle,
+    window: WebviewWindow,
     store: State<'_, DocStore>,
     id: DocId,
     frame: u32,
 ) -> AppResult<Vec<TextLine>> {
-    let generation = STATE.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let current = GENERATION.of(window.label());
+    let generation = current.fetch_add(1, Ordering::SeqCst) + 1;
     let store = store.inner().clone();
     let dir = models_dir(&app)?;
     blocking(move || {
@@ -210,7 +212,7 @@ pub async fn recognize_text(
             return Ok(lines.as_ref().clone());
         }
         let engine = engine(&dir)?;
-        let cancelled = || STATE.generation.load(Ordering::SeqCst) != generation;
+        let cancelled = || current.load(Ordering::SeqCst) != generation;
         let img = store.render_full(id, frame)?;
         if cancelled() {
             return Err(core::cancelled_error());
@@ -224,8 +226,13 @@ pub async fn recognize_text(
 
 /// Para o reconhecimento em curso (a imagem ativa mudou ou o Texto ao Vivo foi desligado).
 #[tauri::command]
-pub fn cancel_text_recognition() {
-    STATE.generation.fetch_add(1, Ordering::SeqCst);
+pub fn cancel_text_recognition(window: WebviewWindow) {
+    cancel(window.label());
+}
+
+/// Cancela o reconhecimento em curso na janela (também quando ela fecha).
+pub fn cancel(label: &str) {
+    GENERATION.of(label).fetch_add(1, Ordering::SeqCst);
 }
 
 #[tauri::command]

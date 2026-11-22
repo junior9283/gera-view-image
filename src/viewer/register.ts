@@ -1,5 +1,6 @@
 // Lote 8 (Visualizar extras): Mostrar Lupa, Mostrar Fundo da Imagem, Voltar/Avançar e Fechar Todas.
 // Importado uma vez no `main.tsx`; os registros valem pela vida do app. Guia: docs/arquitetura/extensao.md.
+import * as ipc from "../ipc/commands";
 import { registerSlot } from "../lib/slots";
 import { registerCommand, runCommand } from "../shortcuts/commands";
 import { isTyping } from "../shortcuts/keymap";
@@ -11,11 +12,17 @@ import { Magnifier, toggleMagnifier } from "./Magnifier";
 
 const hasDocs = () => useDocs.getState().docs.length > 0;
 
+/** Fecha os documentos desta janela e depois as outras janelas (cada uma pergunta pelos seus). */
+async function closeAll() {
+  await closeDocs(useDocs.getState().docs.map((d) => d.id));
+  if (!hasDocs()) await ipc.closeOtherWindows();
+}
+
 registerCommand("tools.magnifier", toggleMagnifier, () => viewable(activeDoc()));
 registerCommand("view.imageBackground", () => setPrefs({ showImageBackground: !getPrefs().showImageBackground }));
 registerCommand("go.back", back, canBack);
 registerCommand("go.forward", forward, canForward);
-registerCommand("file.closeAll", () => closeDocs(useDocs.getState().docs.map((d) => d.id)), hasDocs);
+registerCommand("file.closeAll", closeAll, hasDocs);
 registerSlot("viewport-overlay", "magnifier", Magnifier);
 installHistory();
 

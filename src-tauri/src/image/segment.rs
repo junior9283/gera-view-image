@@ -186,9 +186,7 @@ pub fn read_model(path: &Path, sha256: &str) -> Option<Vec<u8>> {
 
 // ---------- Cancelamento ----------
 
-static EPOCH: AtomicU64 = AtomicU64::new(0);
-
-/// Trabalho de segmentação cancelável: `cancel_all` invalida os que já começaram.
+/// Trabalho de segmentação cancelável: mudar o contador invalida os que já começaram.
 #[derive(Debug, Clone, Copy)]
 pub struct Job {
     epoch: &'static AtomicU64,
@@ -196,11 +194,7 @@ pub struct Job {
 }
 
 impl Job {
-    pub fn start() -> Self {
-        Self::on(&EPOCH)
-    }
-
-    /// Trabalho ligado a outro contador (testes não cancelam uns aos outros).
+    /// Trabalho ligado a um contador (um por janela).
     pub fn on(epoch: &'static AtomicU64) -> Self {
         Job {
             epoch,
@@ -220,10 +214,6 @@ impl Job {
             Ok(())
         }
     }
-}
-
-pub fn cancel_all() {
-    EPOCH.fetch_add(1, Ordering::SeqCst);
 }
 
 #[cfg(test)]

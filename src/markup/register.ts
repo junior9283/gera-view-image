@@ -4,6 +4,7 @@
 import { registerDirtySource } from "../file/dirty";
 import i18n from "../i18n";
 import { setAnnotationSource } from "../inspector/annotations";
+import { registerDocState } from "../lib/docState";
 import { registerSlot } from "../lib/slots";
 import { TOGGLE_MARKUP_EVENT } from "../shortcuts/events";
 import { useDocs } from "../store/docs";
@@ -15,6 +16,7 @@ import { Eyedropper } from "./Eyedropper";
 import { MarkupBar } from "./MarkupBar";
 import { MarkupLayer } from "./MarkupLayer";
 import "./markup.css";
+import type { Annotation } from "./model";
 import { docOf, hasPages, pageItems } from "./pages";
 import { getItems, getSelected, toggleMarkupBar, useMarkup } from "./store";
 
@@ -25,6 +27,7 @@ registerSlot("viewport-overlay", "markup", MarkupLayer);
 registerDirtySource(
   (id) => getItems(id).length > 0,
   (cb) => useMarkup.subscribe((s, prev) => s.docs !== prev.docs && cb()),
+  "markup",
 );
 /** Selecionada que não aparece (outra página) fica desmarcada: Delete e estilo não a alcançam. */
 function deselectHidden(): void {
@@ -38,6 +41,16 @@ function deselectHidden(): void {
 }
 useUi.subscribe((s, prev) => s.page !== prev.page && deselectHidden());
 useDocs.subscribe((s, prev) => (s.activeId !== prev.activeId || s.docs !== prev.docs) && deselectHidden());
+// As anotações (e quais estão selecionadas) vão junto quando o documento muda de janela. Na origem,
+// `history.ts` já as esquece quando o documento sai.
+registerDocState("markup", {
+  dump: (id) => (getItems(id).length ? { items: getItems(id), selected: getSelected(id) } : undefined),
+  load: (id, data) => {
+    const { items, selected } = data as { items: Annotation[]; selected: string[] };
+    useMarkup.getState().setItems(id, items);
+    useMarkup.getState().select(id, selected);
+  },
+});
 registerSlot("below-toolbar", "markup-bar", MarkupBar);
 registerSlot("viewport-overlay", "eyedropper", Eyedropper);
 // Ouvinte de módulo (não de componente): a Toolbar e o Ctrl+Shift+M (Task 6) alternam a

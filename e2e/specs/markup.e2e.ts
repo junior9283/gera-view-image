@@ -54,6 +54,9 @@ describe("marcação", () => {
   it("Ctrl+Shift+M mostra a barra de Marcação", async () => {
     await browser.keys([Key.Ctrl, Key.Shift, "m"]);
     await $('[data-testid="markup-bar"]').waitForExist({ timeout: 5000 });
+    // A barra encolhe a camada na hora, mas a view só a acompanha no quadro seguinte (ResizeObserver).
+    // Num CI lento o arrasto começava com a view antiga e a seta saía inclinada.
+    await browser.executeAsync((done: () => void) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
   });
 
   it("desenha uma seta, um texto e uma lupa", async () => {

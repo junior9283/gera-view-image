@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
+import * as ipc from "../ipc/commands";
 import { useWindowEvent } from "../lib/events";
+import { windowLabel } from "../lib/window";
 import { COMMAND_IDS, commandsVersion, isEnabled, runCommand, type CommandId } from "../shortcuts/commands";
 import { subscribeEnabled } from "../shortcuts/useEnabled";
 import { KEYMAP, formatShortcut } from "../shortcuts/keymap";
+import { useTabs } from "../tabs/store";
 import { MENUS, type MenuItem } from "./menus";
 import { searchMenus } from "./menuSearch";
+import { notifyError } from "./notify";
 
 /** Item calculado na hora (resultado da busca, app do Abrir com): texto já traduzido. */
 export interface ActionItem {
@@ -14,6 +18,8 @@ export interface ActionItem {
   /** Texto à direita (no lugar do atalho). */
   hint?: string;
   disabled?: boolean;
+  /** Item de escolha única (janela atual no menu Janela). */
+  checked?: boolean;
   label?: never;
   command?: never;
   submenu?: never;
@@ -28,9 +34,10 @@ const enabled = (i: Entry): boolean =>
 /** Ajuda › Pesquisar (Ctrl+?): abre o menu Ajuda com o foco no campo de busca. */
 export const HELP_SEARCH_EVENT = "gvi:help-search";
 const HELP = MENUS.findIndex((m) => m.label === "menu.help.title");
+const WINDOW = MENUS.findIndex((m) => m.label === "menu.window.title");
 
 /** Itens focáveis da própria lista (sem os dos submenus). */
-const rows = (ul: HTMLElement) => Array.from(ul.querySelectorAll<HTMLElement>(":scope > li[role=menuitem]"));
+const rows = (ul: HTMLElement) => Array.from(ul.querySelectorAll<HTMLElement>(":scope > li[role^=menuitem]"));
 
 interface ListProps {
   label: string;
@@ -115,7 +122,8 @@ export function MenuList({ label, items, header, level, autoFocus, onRun, onClos
         return (
           <li
             key={key}
-            role="menuitem"
+            role={isAction(it) && it.checked !== undefined ? "menuitemradio" : "menuitem"}
+            aria-checked={isAction(it) ? it.checked : undefined}
             tabIndex={-1}
             aria-disabled={!on}
             aria-haspopup={it.submenu ? "menu" : undefined}
@@ -285,6 +293,15 @@ export function MenuBar() {
       : [{ text: t("helpSearch.noResults"), run: () => {}, disabled: true }];
     return [...found, { separator: true }, ...rest];
   };
+  // Janelas abertas, no fim do menu Janela.
+  const windows = useTabs((s) => s.windows);
+  const windowItems = (items: MenuItem[]): ListItem[] => {
+    if (!windows.length) return items;
+    const list = windows.map((w) => ({
+      text: w.title, checked: w.label === windowLabel(), run: () => void ipc.focusWindow(w.label).catch(notifyError),
+    }));
+    return [...items, { separator: true }, ...list];
+  };
   const searching = open === HELP && isEnabled("help.search");
 
   return (
@@ -307,7 +324,7 @@ export function MenuBar() {
             <MenuList
               key={i}
               label={t(m.label)}
-              items={searching && i === HELP ? helpItems(m.items) : m.items}
+              items={searching && i === HELP ? helpItems(m.items) : i === WINDOW ? windowItems(m.items) : m.items}
               header={
                 searching && i === HELP ? (
                   <HelpSearch

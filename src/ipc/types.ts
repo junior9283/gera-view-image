@@ -254,4 +254,22 @@ export interface PrintPreview {
 }
 
 /** Lote 12 (`window.rs`). */
-export interface WindowEntry { label: string; title: string }
+export interface WindowEntry {
+  label: string;
+  title: string;
+}
+
+/** Documentos entregues a esta janela, com o estado da interface deles (`tabs/transfer.ts`). */
+export interface Incoming {
+  infos: DocInfo[];
+  state: string;
+}
+
+/** Eventos do Lote 12, mandados só à janela de destino (menos `WINDOWS_CHANGED_EVENT`: a lista nova, a todas). */
+export const DOCS_INCOMING_EVENT = "docs-incoming";
+export const MERGE_REQUEST_EVENT = "merge-request";
+export const CONFIRM_CLOSE_EVENT = "confirm-close";
+export const QUIT_CANCELLED_EVENT = "quit-cancelled";
+export const CLOSE_WINDOW_EVENT = "close-window";
+export const ACTIVATE_DOCUMENT_EVENT = "activate-document";
+export const WINDOWS_CHANGED_EVENT = "windows-changed";

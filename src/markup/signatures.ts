@@ -1,9 +1,9 @@
 // Assinaturas salvas (plugin-store, `signatures.json`) e sua criação: desenho suavizado
 // (Catmull-Rom) ou importação de um arquivo de imagem, sem o fundo claro (Alfa Instantâneo).
 import { useSyncExternalStore } from "react";
-import type { Store } from "@tauri-apps/plugin-store";
 import * as ipc from "../ipc/commands";
 import type { DocInfo } from "../ipc/types";
+import { shareStore, type SharedStore } from "../lib/sharedStore";
 import { rasterize } from "../select/lasso";
 import { PNG_DATA_URL, newId, type Box, type Point } from "./model";
 
@@ -26,7 +26,7 @@ const MAX_IMPORT_PIXELS = 40e6;
 export const signatureSrc = (s: Signature) => PNG_DATA_URL + s.png;
 
 let list: Signature[] = [];
-let store: Store | null = null;
+let store: SharedStore | null = null;
 let loading: Promise<Signature[]> | null = null;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
@@ -43,13 +43,20 @@ const valid = (v: unknown): v is Signature => {
   );
 };
 
+const clean = (raw: unknown): Signature[] => (Array.isArray(raw) ? raw.filter(valid).slice(0, MAX_SIGNATURES) : []);
+
 export function loadSignatures(): Promise<Signature[]> {
   return (loading ??= (async () => {
     try {
       const { load } = await import("@tauri-apps/plugin-store");
-      store = await load(FILE, { defaults: {}, autoSave: false });
-      const raw = await store.get<unknown[]>(KEY);
-      list = Array.isArray(raw) ? raw.filter(valid).slice(0, MAX_SIGNATURES) : [];
+      const s = await load(FILE, { defaults: {}, autoSave: false });
+      // Assinatura criada ou removida em outra janela aparece aqui também.
+      store = shareStore(s, (key, value) => {
+        if (key !== KEY) return;
+        list = clean(value);
+        emit();
+      });
+      list = clean(await s.get<unknown[]>(KEY));
     } catch {
       store = null; // fora do Tauri: só em memória
     }

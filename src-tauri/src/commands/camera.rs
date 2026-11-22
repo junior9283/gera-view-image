@@ -1,13 +1,17 @@
 //! Lote 10 (Marcação extra): consentimento da câmera para capturar a assinatura.
 //!
 //! O WebKitGTK só libera `getUserMedia` se o app responder ao sinal `permission-request` (o
-//! Tauri não responde). O handler é instalado no setup do app e é a única barreira: a interface
-//! só arma depois de um clique explícito do usuário e de uma confirmação própria. O armamento
-//! vale para UM pedido de vídeo, por poucos segundos; todo o resto (áudio, captura de tela,
-//! localização, notificações, pedido sem armamento) é negado. A propriedade
+//! Tauri não responde). O handler é instalado em cada janela ao criá-la e é a única barreira: a
+//! interface só arma depois de um clique explícito do usuário e de uma confirmação própria. O
+//! armamento vale para UM pedido de vídeo da MESMA janela, por poucos segundos; todo o resto
+//! (áudio, captura de tela, localização, notificações, pedido sem armamento) é negado. A propriedade
 //! `enable-media-stream` do WebKit não é alterada.
 use crate::error::AppResult;
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
+use tauri::WebviewWindow;
 
 /// Quanto tempo o armamento vale até o `getUserMedia` chegar.
 const TTL: Duration = Duration::from_secs(20);
@@ -33,6 +37,20 @@ impl Consent {
     }
 }
 
+/// Consentimentos por janela (rótulo): armar a câmera numa não libera a outra.
+#[derive(Default)]
+pub(crate) struct Consents(HashMap<String, Consent>);
+
+impl Consents {
+    pub(crate) fn of(&mut self, label: &str) -> &mut Consent {
+        self.0.entry(label.to_string()).or_default()
+    }
+
+    pub(crate) fn forget(&mut self, label: &str) {
+        self.0.remove(label);
+    }
+}
+
 /// Decide o pedido de mídia: só vídeo de câmera (nem áudio nem captura de tela), e só se armado. Um pedido recusado por ser
 /// de áudio (ou sem vídeo) não gasta o armamento.
 pub(crate) fn decide(consent: &mut Consent, video: bool, audio: bool, display: bool, now: Instant) -> bool {
@@ -42,19 +60,26 @@ pub(crate) fn decide(consent: &mut Consent, video: bool, audio: bool, display: b
 #[cfg(target_os = "linux")]
 mod webkit {
     use super::*;
-    use std::sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
+    use std::{
+        collections::HashSet,
+        sync::{LazyLock, Mutex, MutexGuard},
     };
-    use tauri::{AppHandle, Manager};
     use webkit2gtk::{
-        PermissionRequestExt, UserMediaPermissionRequest, UserMediaPermissionRequestExt, WebView,
-        WebViewExt,
+        PermissionRequestExt, UserMediaPermissionRequest, UserMediaPermissionRequestExt, WebViewExt,
         glib::{Cast, translate::ToGlibPtr},
     };
 
-    static CONSENT: Mutex<Consent> = Mutex::new(Consent { until: None });
-    static HOOKED: AtomicBool = AtomicBool::new(false);
+    static CONSENTS: LazyLock<Mutex<Consents>> = LazyLock::new(Mutex::default);
+    /// Janelas que já têm o handler.
+    static HOOKED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
+
+    fn consents() -> MutexGuard<'static, Consents> {
+        CONSENTS.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn hooked() -> MutexGuard<'static, HashSet<String>> {
+        HOOKED.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     /// Pedido de captura de tela/janela. O wrapper Rust não expõe isso (e não é uma propriedade
     /// GObject): chama a função C `webkit_user_media_permission_is_for_display_device`
@@ -65,12 +90,15 @@ mod webkit {
         unsafe { webkit2gtk::ffi::webkit_user_media_permission_is_for_display_device(m.to_glib_none().0) != 0 }
     }
 
-    fn on_request(req: &webkit2gtk::PermissionRequest) -> bool {
+    fn on_request(label: &str, req: &webkit2gtk::PermissionRequest) -> bool {
         let allow = match req.downcast_ref::<UserMediaPermissionRequest>() {
-            Some(m) => {
-                let mut c = CONSENT.lock().unwrap_or_else(|e| e.into_inner());
-                decide(&mut c, m.is_for_video_device(), m.is_for_audio_device(), for_display(m), Instant::now())
-            }
+            Some(m) => decide(
+                consents().of(label),
+                m.is_for_video_device(),
+                m.is_for_audio_device(),
+                for_display(m),
+                Instant::now(),
+            ),
             _ => false,
         };
         if allow {
@@ -81,52 +109,61 @@ mod webkit {
         true
     }
 
-    fn hook(view: &WebView) {
-        if !HOOKED.swap(true, Ordering::SeqCst) {
-            view.connect_permission_request(|_, req| on_request(req));
+    /// Sem o handler o WebKitGTK nega tudo; com ele, só o pedido de vídeo armado nesta janela passa.
+    pub fn install(window: &WebviewWindow) {
+        let label = window.label().to_string();
+        if !hooked().insert(label.clone()) {
+            return;
+        }
+        let failed = label.clone();
+        let installed = window.with_webview(move |w| {
+            w.inner().connect_permission_request(move |_, req| on_request(&label, req));
+        });
+        if installed.is_err() {
+            hooked().remove(&failed);
         }
     }
 
-    /// Instala o handler de permissões no webview principal (uma vez, no setup do app). Sem ele o
-    /// WebKitGTK nega tudo; com ele, só o pedido de vídeo armado passa.
-    pub fn install(app: &AppHandle) {
-        if let Some(win) = app.get_webview_window("main") {
-            let _ = win.with_webview(|w| hook(&w.inner()));
+    pub fn allow(window: &WebviewWindow, allowed: bool) {
+        if !allowed {
+            consents().of(window.label()).disarm();
+            return;
         }
+        // Reforço: se a janela ainda não tem o handler, instala agora (idempotente).
+        install(window);
+        consents().of(window.label()).arm(Instant::now());
     }
 
-    pub fn allow(app: &AppHandle, allowed: bool) {
-        {
-            let mut c = CONSENT.lock().unwrap_or_else(|e| e.into_inner());
-            if allowed {
-                c.arm(Instant::now());
-            } else {
-                c.disarm();
-            }
-        }
-        // Reforço: se o setup não achou a janela, instala agora (idempotente).
-        if allowed && !HOOKED.load(Ordering::SeqCst) {
-            install(app);
-        }
+    pub fn forget(label: &str) {
+        consents().forget(label);
+        hooked().remove(label);
     }
 }
 
-/// Instala a barreira de permissão da câmera. Chamado no `setup`, antes de qualquer uso.
-pub fn install(app: &tauri::AppHandle) {
+/// Instala a barreira de permissão da câmera na janela, ao criá-la, antes de qualquer uso.
+pub fn install(window: &WebviewWindow) {
     #[cfg(target_os = "linux")]
-    webkit::install(app);
+    webkit::install(window);
     #[cfg(not(target_os = "linux"))]
-    let _ = app;
+    let _ = window;
 }
 
-/// Arma (`true`) ou desarma (`false`) a câmera. A interface chama depois do clique de
-/// consentimento, antes de `getUserMedia`, e de novo (`false`) ao parar a câmera.
+/// Janela destruída: o consentimento dela acaba junto.
+pub fn forget(label: &str) {
+    #[cfg(target_os = "linux")]
+    webkit::forget(label);
+    #[cfg(not(target_os = "linux"))]
+    let _ = label;
+}
+
+/// Arma (`true`) ou desarma (`false`) a câmera na janela que chamou. A interface chama depois do
+/// clique de consentimento, antes de `getUserMedia`, e de novo (`false`) ao parar a câmera.
 #[tauri::command]
-pub async fn camera_allow(app: tauri::AppHandle, allowed: bool) -> AppResult<()> {
+pub async fn camera_allow(window: WebviewWindow, allowed: bool) -> AppResult<()> {
     #[cfg(target_os = "linux")]
-    webkit::allow(&app, allowed);
+    webkit::allow(&window, allowed);
     #[cfg(not(target_os = "linux"))]
-    let _ = (app, allowed);
+    let _ = (window, allowed);
     Ok(())
 }
 
@@ -173,6 +210,22 @@ mod tests {
         c.arm(t);
         c.disarm();
         assert!(!decide(&mut c, true, false, false, t));
+    }
+
+    #[test]
+    fn consentimento_vale_so_na_janela_que_o_deu() {
+        let (mut c, t) = (Consents::default(), Instant::now());
+        c.of("doc-1").arm(t);
+        assert!(!decide(c.of("main"), true, false, false, t), "outra janela continua negada");
+        assert!(decide(c.of("doc-1"), true, false, false, t));
+    }
+
+    #[test]
+    fn janela_fechada_perde_o_consentimento() {
+        let (mut c, t) = (Consents::default(), Instant::now());
+        c.of("doc-1").arm(t);
+        c.forget("doc-1");
+        assert!(!decide(c.of("doc-1"), true, false, false, t));
     }
 
     /// Exercita a ligação real: o símbolo C que `for_display` chama existe na libwebkit2gtk

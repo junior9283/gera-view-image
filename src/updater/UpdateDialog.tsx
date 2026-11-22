@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useModal } from "../lib/modal";
+import { MAIN_WINDOW, windowLabel } from "../lib/window";
 import "./update.css";
 import { checkForUpdate, installUpdate, restartApp, RELEASES_URL, skipVersion, type UpdateInfo } from "./updater";
 
@@ -51,13 +52,10 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
       setBusy(false);
       return;
     }
-    try {
-      await restartApp();
-    } catch {
-      // Instalou, mas não reiniciou: não é erro de instalação.
-      setInstalled(true);
-      setBusy(false);
-    }
+    const restarting = await restartApp().catch(() => false);
+    // Instalou, mas não reiniciou (falhou ou o usuário cancelou): não é erro de instalação.
+    setInstalled(!restarting);
+    setBusy(restarting);
   };
   const openPage = () => openUrl(`${RELEASES_URL}${info.version}`);
 
@@ -111,7 +109,8 @@ export function UpdateHost() {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => void run(false), 5000);
+    // A verificação automática é uma só, por mais janelas que se abram; a manual é da janela que pediu.
+    const timer = windowLabel() === MAIN_WINDOW ? setTimeout(() => void run(false), 5000) : undefined;
     const onManual = () => void run(true);
     window.addEventListener(CHECK_UPDATES_EVENT, onManual);
     return () => {

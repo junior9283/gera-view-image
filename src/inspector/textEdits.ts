@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { registerDirtySource } from "../file/dirty";
 import type { DocId, MetadataEdits, MetaTexts } from "../ipc/types";
+import { registerDocState } from "../lib/docState";
 
 /**
  * Título, descrição, autor e texto alternativo editados no Inspetor, por documento, só em memória
@@ -64,7 +65,18 @@ function subscribeTexts(l: () => void): () => void {
   return () => listeners.delete(l);
 }
 
-registerDirtySource((id) => edits.has(id), subscribeTexts);
+registerDirtySource((id) => edits.has(id), subscribeTexts, "texts");
+// Vão junto quando o documento muda de janela.
+registerDocState("texts", {
+  dump: (id) => (edits.has(id) ? { edits: edits.get(id), original: originals.get(id) } : undefined),
+  load: (id, data) => {
+    const { edits: e, original } = data as { edits: Edits; original?: MetaTexts };
+    edits.set(id, e);
+    if (original) originals.set(id, original);
+    emit();
+  },
+  drop: clearTextEdits,
+});
 
 export function resetTextEditsForTests() {
   edits.clear();

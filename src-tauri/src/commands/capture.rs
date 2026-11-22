@@ -1,7 +1,7 @@
 //! Documentos novos sem arquivo: área de transferência e captura de tela (portal
 //! `org.freedesktop.portal.Screenshot`, via zbus que já é dependência: nada novo no NEEDED).
 //! Também o `OpenURI.OpenFile` com `ask=true` do "Abrir com…".
-use super::blocking;
+use super::{blocking, window::claimed_one};
 use crate::{
     doc::{
         model::{DocInfo, SourceFormat},
@@ -13,7 +13,7 @@ use crate::{
 use ::image::RgbaImage;
 use serde::Deserialize;
 use std::{collections::HashMap, os::fd::AsFd, path::Path};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
@@ -24,6 +24,7 @@ const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 #[tauri::command]
 pub async fn new_from_clipboard(
     app: AppHandle,
+    window: WebviewWindow,
     store: State<'_, DocStore>,
     name: String,
 ) -> AppResult<DocInfo> {
@@ -33,7 +34,7 @@ pub async fn new_from_clipboard(
         .map_err(|_| AppError::ClipboardEmpty)?;
     let rgba = RgbaImage::from_raw(img.width(), img.height(), img.rgba().to_vec())
         .ok_or(AppError::ClipboardEmpty)?;
-    Ok(store.insert_untitled(&name, Decoded::single(rgba, SourceFormat::Png)))
+    claimed_one(&window, store.insert_untitled(&name, Decoded::single(rgba, SourceFormat::Png)))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -47,6 +48,7 @@ pub enum CaptureMode {
 /// Captura pelo portal. `None` = o usuário cancelou.
 #[tauri::command]
 pub async fn capture_screen(
+    window: WebviewWindow,
     store: State<'_, DocStore>,
     mode: CaptureMode,
     name: String,
@@ -57,7 +59,7 @@ pub async fn capture_screen(
             return Ok(None);
         };
         let decoded = decode::decode(Path::new(&path))?;
-        Ok(Some(store.insert_untitled(&name, decoded)))
+        claimed_one(&window, store.insert_untitled(&name, decoded)).map(Some)
     })
     .await
 }

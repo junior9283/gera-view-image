@@ -1,6 +1,7 @@
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getPrefs, loadPrefs, setPrefs } from "../store/prefs";
+import { quitWith } from "../tabs/closing";
 
 export interface UpdateInfo {
   version: string;
@@ -58,4 +59,5 @@ export async function installUpdate(onProgress: (fraction: number | null) => voi
   });
 }
 
-export const restartApp = () => relaunch();
+/** Reinicia depois de perguntar pelas alterações de todas as janelas; `false` = o usuário cancelou. */
+export const restartApp = () => quitWith(relaunch);
