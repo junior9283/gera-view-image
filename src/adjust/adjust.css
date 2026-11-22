@@ -31,14 +31,13 @@
 .adjust-dialog h3 {
   margin: 0 0 8px;
 }
-.adjust-preview {
-  display: block;
+/* Prévia na imagem do visor, abaixo da seleção e da Marcação. */
+.adjust-layer {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: auto;
-  max-height: 200px;
-  object-fit: contain;
-  background: #111;
-  border-radius: 4px;
+  height: 100%;
+  z-index: -1;
 }
 .adjust-hist {
   display: grid;

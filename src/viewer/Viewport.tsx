@@ -7,8 +7,8 @@ import { usePrefs, type Prefs } from "../store/prefs";
 import { useUi } from "../store/ui";
 import { panBy, syncView, toggleFitActual, zoomBy } from "./actions";
 import { DocError } from "./DocError";
-import { bufferToCanvas, checkerPattern, dpr, useAnimatedFrame } from "./paint";
-import { visibleRegion, type Size, type ViewState } from "./zoom";
+import { bufferToCanvas, dpr, paintBuffer, useAnimatedFrame } from "./paint";
+import { contains, visibleRegion, type Size, type ViewState } from "./zoom";
 import { ByteLru } from "../lib/byteLru";
 import { Slot, type OverlayProps } from "../lib/slots";
 import { useSelection } from "../store/selection";
@@ -68,8 +68,6 @@ function needFor(view: ViewState, doc: DocInfo, size: Size): Need {
   };
 }
 
-const contains = (a: Rect, b: Rect) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
-
 const satisfies = (b: Buf, doc: DocInfo, frame: number, need: Need) =>
   b.id === doc.id &&
   b.rev === doc.rev &&
@@ -115,17 +113,8 @@ export function Viewport() {
   const paint = useRef(() => {
     const cv = canvas.current;
     const { doc, view, viewSize, frame, showBg } = cur.current;
-    const ctx = cv?.getContext("2d");
-    if (!cv || !ctx) return;
-    const k = dpr();
-    const w = Math.round(viewSize.w * k);
-    const h = Math.round(viewSize.h * k);
-    if (cv.width !== w || cv.height !== h) {
-      cv.width = w;
-      cv.height = h;
-    }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    if (!cv) return;
+    paintBuffer(cv, viewSize, null, false);
     if (!doc || doc.error || !view) return;
     const b = [buffers.current.get(frame), shown.current].find((x) => x?.id === doc.id);
     if (!b) return;
@@ -136,15 +125,9 @@ export function Viewport() {
     } else if (b.region.w === b.img.w && b.region.h === b.img.h) {
       dest = img; // dimensões mudaram (ex.: girar): o buffer antigo inteiro ocupa a imagem nova até chegar o certo
     } else return;
-    ctx.setTransform(k, 0, 0, k, 0, 0);
-    // Visualizar › Mostrar Fundo da Imagem (Lote 8): xadrez atrás da transparência.
-    if (showBg) {
-      ctx.fillStyle = checkerPattern(ctx, 8) ?? "#fff";
-      ctx.fillRect(dest.x, dest.y, dest.w, dest.h);
-    }
-    // Ampliação forte: pixels nítidos; o resto suavizado.
-    ctx.imageSmoothingEnabled = (dest.w * k) / b.canvas.width < 2;
-    ctx.drawImage(b.canvas, dest.x, dest.y, dest.w, dest.h);
+    paintBuffer(cv, viewSize, { canvas: b.canvas, dest }, showBg);
+    // O que está na tela: a prévia de Ajustar Cor espera por isto depois do OK.
+    cv.dataset.shown = `${b.id}:${b.rev}`;
     shown.current = b;
   });
 

@@ -14,7 +14,9 @@ vi.mock("../ipc/commands", () => ipc);
 
 import { useDocs } from "../store/docs";
 import { NEUTRAL_ADJUST, type DocInfo } from "../ipc/types";
-import { AdjustColorPanel, PREVIEW_THROTTLE_MS } from "./AdjustColorPanel";
+import { useUi } from "../store/ui";
+import { AdjustColorPanel } from "./AdjustColorPanel";
+import { AdjustPreviewLayer, PREVIEW_THROTTLE_MS } from "./AdjustPreviewLayer";
 import { ResizeDialog } from "./ResizeDialog";
 
 const doc = { id: 1, width: 4000, height: 3000, rev: 1, error: null } as DocInfo;
@@ -22,7 +24,7 @@ const doc = { id: 1, width: 4000, height: 3000, rev: 1, error: null } as DocInfo
 beforeEach(() => {
   vi.clearAllMocks();
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
-    clearRect: vi.fn(), fillRect: vi.fn(), putImageData: vi.fn(),
+    clearRect: vi.fn(), fillRect: vi.fn(), putImageData: vi.fn(), setTransform: vi.fn(), drawImage: vi.fn(), createPattern: vi.fn(() => null),
   })) as never;
   vi.stubGlobal("ImageData", class { constructor(public data: unknown, public width: number, public height: number) {} });
   useDocs.setState({ docs: [doc], activeId: 1 });
@@ -38,6 +40,9 @@ describe("AdjustColorPanel", () => {
     const apply = vi.spyOn(useDocs.getState(), "applyOp");
     useDocs.setState({ applyOp: ipc.applyOp as never });
     const onClose = vi.fn();
+    // A prévia é da camada do visor (a imagem inteira cabe nele).
+    useUi.setState({ viewSize: { w: 800, h: 600 } });
+    render(createElement(AdjustPreviewLayer, { scale: 0.2, panX: 0, panY: 0, imageW: 4000, imageH: 3000 }));
     render(createElement(AdjustColorPanel, { docId: 1, onClose }));
     await act(() => vi.advanceTimersByTimeAsync(PREVIEW_THROTTLE_MS));
     const before = ipc.previewAdjust.mock.calls.length;
