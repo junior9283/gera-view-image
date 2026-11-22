@@ -5,6 +5,7 @@ import { SUPPORTED_EXTENSIONS } from "../file/extensions";
 import { useDocs } from "../store/docs";
 import { useUi } from "../store/ui";
 import { addAnnotation } from "./actions";
+import { CameraTab } from "./CameraTab";
 import { DEFAULT_STYLE, newId, type Point } from "./model";
 import {
   MAX_SIGNATURES,
@@ -147,7 +148,7 @@ function ImportTab() {
 export function SignaturePanel({ onDone }: { onDone: () => void }) {
   const { t } = useTranslation();
   const list = useSignatures();
-  const [tab, setTab] = useState<"draw" | "import">("draw");
+  const [tab, setTab] = useState<"draw" | "import" | "camera">("draw");
 
   useEffect(() => {
     void loadSignatures();
@@ -178,8 +179,9 @@ export function SignaturePanel({ onDone }: { onDone: () => void }) {
       <div role="tablist" className="sig-tabs">
         <button type="button" role="tab" aria-selected={tab === "draw"} onClick={() => setTab("draw")}>{t("markup.sig.draw")}</button>
         <button type="button" role="tab" aria-selected={tab === "import"} onClick={() => setTab("import")}>{t("markup.sig.import")}</button>
+        <button type="button" role="tab" aria-selected={tab === "camera"} onClick={() => setTab("camera")}>{t("markup.sig.cameraTab")}</button>
       </div>
-      {tab === "draw" ? <DrawTab /> : <ImportTab />}
+      {tab === "draw" ? <DrawTab /> : tab === "import" ? <ImportTab /> : <CameraTab />}
       <p className="sig-hint">{t("markup.sig.limit", { n: MAX_SIGNATURES })}</p>
     </div>
   );

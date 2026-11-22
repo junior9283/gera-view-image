@@ -10,6 +10,7 @@ import {
   type Point,
   type Style,
 } from "./model";
+import { cssFont } from "./fontCss";
 import { handlesFor, type HandleColor } from "./tools/handles";
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -188,7 +189,7 @@ function ends(ctx: Ctx, pts: readonly Point[], s: Style): void {
 function drawText(ctx: Ctx, a: Extract<Annotation, { kind: "text" }>): void {
   const f = a.style.font ?? DEFAULT_FONT;
   const b = normBox(a.geom);
-  ctx.font = `${f.italic ? "italic " : ""}${f.bold ? "bold " : ""}${f.size}px ${f.family}, sans-serif`;
+  ctx.font = cssFont(f);
   ctx.fillStyle = f.color;
   ctx.textBaseline = "top";
   ctx.textAlign = f.align;

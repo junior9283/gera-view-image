@@ -115,6 +115,7 @@ pub fn run() {
             commands::sidebar::file_stats,
             commands::describe::edit_metadata,
             commands::fonts::system_fonts,
+            commands::camera::camera_allow,
             commands::print::export_pdf,
             commands::print::print_native,
             commands::window::new_window,

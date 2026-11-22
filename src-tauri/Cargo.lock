@@ -1925,6 +1925,7 @@ dependencies = [
  "trash",
  "unicode-normalization",
  "url",
+ "webkit2gtk",
  "webp",
  "xattr",
  "zbus",

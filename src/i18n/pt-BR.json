@@ -210,7 +210,13 @@
       "fill": "Cor de preenchimento",
       "textStyle": "Estilo do texto",
       "rotate": "Girar para a esquerda",
-      "crop": "Recortar"
+      "crop": "Recortar",
+      "colors": "Cores",
+      "fonts": "Fontes",
+      "adjustColor": "Ajustar Cor",
+      "resize": "Ajustar Tamanho",
+      "properties": "Propriedades da anotação",
+      "description": "Descrição da Imagem"
     },
     "kind": {
       "line": "Linha",
@@ -277,7 +283,65 @@
       "importButton": "Escolher Imagem…",
       "importFailed": "Não foi possível importar a assinatura.",
       "limit": "Até {{n}} assinaturas; a mais antiga sai.",
-      "pad": "Área de desenho da assinatura"
+      "pad": "Área de desenho da assinatura",
+      "cameraTab": "Câmera",
+      "camera": {
+        "hint": "Assine num papel branco e mostre à câmera. A câmera só liga quando você pedir.",
+        "start": "Usar a câmera…",
+        "consentTitle": "Ligar a câmera?",
+        "consentBody": "O app vai usar a câmera só para capturar a assinatura. Nada é gravado além da assinatura (tinta preta sobre fundo transparente) e a câmera desliga ao capturar ou fechar.",
+        "cancel": "Cancelar",
+        "allow": "Permitir e ligar",
+        "starting": "Ligando a câmera…",
+        "on": "Câmera ligada",
+        "preview": "Imagem da câmera",
+        "aim": "Enquadre a assinatura no papel e capture.",
+        "off": "Desligar",
+        "capture": "Capturar",
+        "offNow": "Câmera desligada.",
+        "result": "Assinatura capturada",
+        "noInk": "Não achei tinta no quadro. Ajuste a sensibilidade ou tente de novo com mais luz.",
+        "sensitivity": "Sensibilidade",
+        "retry": "Tentar de novo",
+        "error": {
+          "unsupported": "Esta janela não permite usar a câmera (falta suporte de mídia no WebKitGTK/GStreamer).",
+          "denied": "Permissão da câmera negada.",
+          "notFound": "Nenhuma câmera encontrada. Conecte uma e tente de novo.",
+          "busy": "A câmera está em uso por outro programa.",
+          "failed": "Não foi possível ligar a câmera."
+        }
+      }
+    },
+    "colors": {
+      "title": "Cores",
+      "target": {
+        "stroke": "Borda",
+        "fill": "Preenchimento",
+        "text": "Texto"
+      },
+      "eyedropper": "Conta-gotas",
+      "eyedropperHint": "Clique na imagem para pegar a cor. Esc cancela.",
+      "opacity": "Opacidade",
+      "recent": "Cores recentes",
+      "noRecent": "Nenhuma cor recente."
+    },
+    "fonts": {
+      "title": "Fontes",
+      "search": "Buscar fonte",
+      "loading": "Carregando as fontes do sistema…",
+      "failed": "Não foi possível listar as fontes do sistema. Mostrando as básicas.",
+      "more": "Mais {{n}} fontes: refine a busca.",
+      "none": "Nenhuma fonte encontrada."
+    },
+    "props": {
+      "title": "Propriedades",
+      "none": "Selecione uma anotação para ver as propriedades.",
+      "many": "{{n}} anotações",
+      "width": "Largura",
+      "height": "Altura",
+      "text": "Texto",
+      "dash": "Traço",
+      "colors": "Cores…"
     },
     "selectTool": {
       "pointer": "Selecionar anotações",

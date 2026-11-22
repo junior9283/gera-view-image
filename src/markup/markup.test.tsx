@@ -59,7 +59,8 @@ describe("barra de Marcação", () => {
     const labels = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
     expect(labels).toEqual([
       "Seleção", "Esboço", "Desenho", "Formas", "Texto", "Assinatura", "Estilo da linha",
-      "Cor da borda", "Cor de preenchimento", "Estilo do texto", "Girar para a esquerda", "Recortar",
+      "Cor da borda", "Cor de preenchimento", "Estilo do texto", "Cores", "Fontes", "Girar para a esquerda", "Recortar",
+      "Ajustar Cor", "Ajustar Tamanho", "Propriedades da anotação", "Descrição da Imagem",
     ]);
   });
 

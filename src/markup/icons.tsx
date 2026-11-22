@@ -31,4 +31,23 @@ export const ICONS = {
   textStyle: svg(<path d="M3 16l4-11 4 11M4.5 12h5M13 16v-5.5a2 2 0 014 0V16M17 13h-4" />),
   rotate: svg(<path d="M6 7a5.5 5.5 0 11-1 6M6 3v4h4" />),
   crop: svg(<path d="M6 2v12h12M2 6h12v12" />),
+  colors: svg(
+    <>
+      <circle cx="10" cy="10" r="7" />
+      <circle cx="7.5" cy="8" r="1" fill="currentColor" />
+      <circle cx="12" cy="7.5" r="1" fill="currentColor" />
+      <circle cx="12.5" cy="12" r="1" fill="currentColor" />
+    </>,
+  ),
+  fonts: svg(<path d="M3 16l4-11 4 11M4.5 12h5M13 7h4M15 7v9" />),
+  adjustColor: svg(
+    <>
+      <path d="M3 6h14M3 14h14" />
+      <circle cx="7" cy="6" r="2" fill="currentColor" />
+      <circle cx="13" cy="14" r="2" fill="currentColor" />
+    </>,
+  ),
+  resize: svg(<path d="M4 16V9h7v7zM9 11V4h7v7M11 9l4-4" />),
+  properties: svg(<path d="M3 5h14M3 10h14M3 15h14M7 3v4M13 8v4M9 13v4" />),
+  description: svg(<path d="M3.5 4.5h13v9h-7l-3.5 3v-3h-2.5zM6.5 8h7M6.5 10.5h4" />),
 };

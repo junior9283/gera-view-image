@@ -10,6 +10,7 @@ import { useDocs } from "../store/docs";
 import { registerMarkupCommands } from "./commands";
 import { flattenAnnotations } from "./flatten";
 import { installHistory } from "./history";
+import { Eyedropper } from "./Eyedropper";
 import { MarkupBar } from "./MarkupBar";
 import { MarkupLayer } from "./MarkupLayer";
 import "./markup.css";
@@ -24,6 +25,7 @@ registerDirtySource(
   (cb) => useMarkup.subscribe((s, prev) => s.docs !== prev.docs && cb()),
 );
 registerSlot("below-toolbar", "markup-bar", MarkupBar);
+registerSlot("viewport-overlay", "eyedropper", Eyedropper);
 // Ouvinte de módulo (não de componente): a Toolbar e o Ctrl+Shift+M (Task 6) alternam a
 // barra mesmo que nenhum slot esteja montado no momento.
 window.addEventListener(TOGGLE_MARKUP_EVENT, toggleMarkupBar);

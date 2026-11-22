@@ -1,5 +1,7 @@
 // Ações de anotação que entram no desfazer (cada uma é um passo).
 import type { DocId } from "../ipc/types";
+import { useDocs } from "../store/docs";
+import { useUi } from "../store/ui";
 import { pushMarkup } from "./history";
 import { moveItems, restyle, type Annotation, type StylePatch } from "./model";
 import { getItems, getSelected, useMarkup } from "./store";
@@ -40,4 +42,25 @@ export function deleteSelected(id: DocId): boolean {
   commit(id, getItems(id).filter((a) => !sel.has(a.id)));
   useMarkup.getState().select(id, []);
   return true;
+}
+
+/**
+ * Aplica o estilo às próximas anotações e às selecionadas. A barra fala em px de tela;
+ * as selecionadas recebem o valor convertido pela escala atual.
+ */
+export function applyStyle(patch: StylePatch): void {
+  useMarkup.getState().setStyle(patch);
+  const id = useDocs.getState().activeId;
+  if (id === null) return;
+  const scale = useUi.getState().view?.scale ?? 1;
+  const img: StylePatch = { ...patch };
+  if (patch.width !== undefined) img.width = patch.width / scale;
+  if (patch.font?.size !== undefined) img.font = { ...patch.font, size: patch.font.size / scale };
+  restyleSelected(id, img);
+}
+
+/** Troca as selecionadas por `f(anotação)` como um passo só do desfazer (inspetor de propriedades). */
+export function updateSelected(id: DocId, f: (a: Annotation) => Annotation): void {
+  const sel = new Set(getSelected(id));
+  if (sel.size) commit(id, getItems(id).map((a) => (sel.has(a.id) ? f(a) : a)));
 }

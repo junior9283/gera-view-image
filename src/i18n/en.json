@@ -210,7 +210,13 @@
       "fill": "Fill Color",
       "textStyle": "Text Style",
       "rotate": "Rotate Left",
-      "crop": "Crop"
+      "crop": "Crop",
+      "colors": "Colors",
+      "fonts": "Fonts",
+      "adjustColor": "Adjust Color",
+      "resize": "Adjust Size",
+      "properties": "Annotation properties",
+      "description": "Image Description"
     },
     "kind": {
       "line": "Line",
@@ -277,7 +283,65 @@
       "importButton": "Choose Image…",
       "importFailed": "Could not import the signature.",
       "limit": "Up to {{n}} signatures; the oldest is removed.",
-      "pad": "Signature drawing area"
+      "pad": "Signature drawing area",
+      "cameraTab": "Camera",
+      "camera": {
+        "hint": "Sign on white paper and show it to the camera. The camera only turns on when you ask.",
+        "start": "Use the camera…",
+        "consentTitle": "Turn on the camera?",
+        "consentBody": "The app will use the camera only to capture the signature. Nothing is recorded besides the signature (black ink on a transparent background) and the camera turns off when you capture or close.",
+        "cancel": "Cancel",
+        "allow": "Allow and turn on",
+        "starting": "Turning the camera on…",
+        "on": "Camera on",
+        "preview": "Camera image",
+        "aim": "Frame the signature on the paper and capture.",
+        "off": "Turn off",
+        "capture": "Capture",
+        "offNow": "Camera is off.",
+        "result": "Captured signature",
+        "noInk": "No ink found in the frame. Adjust the sensitivity or retry with more light.",
+        "sensitivity": "Sensitivity",
+        "retry": "Try again",
+        "error": {
+          "unsupported": "This window cannot use the camera (no media support in WebKitGTK/GStreamer).",
+          "denied": "Camera permission denied.",
+          "notFound": "No camera found. Connect one and try again.",
+          "busy": "The camera is in use by another program.",
+          "failed": "Could not turn the camera on."
+        }
+      }
+    },
+    "colors": {
+      "title": "Colors",
+      "target": {
+        "stroke": "Border",
+        "fill": "Fill",
+        "text": "Text"
+      },
+      "eyedropper": "Eyedropper",
+      "eyedropperHint": "Click the image to pick a color. Esc cancels.",
+      "opacity": "Opacity",
+      "recent": "Recent colors",
+      "noRecent": "No recent colors."
+    },
+    "fonts": {
+      "title": "Fonts",
+      "search": "Search fonts",
+      "loading": "Loading system fonts…",
+      "failed": "Could not list the system fonts. Showing the basic ones.",
+      "more": "{{n}} more fonts: narrow the search.",
+      "none": "No fonts found."
+    },
+    "props": {
+      "title": "Properties",
+      "none": "Select an annotation to see its properties.",
+      "many": "{{n}} annotations",
+      "width": "Width",
+      "height": "Height",
+      "text": "Text",
+      "dash": "Stroke",
+      "colors": "Colors…"
     },
     "selectTool": {
       "pointer": "Select Annotations",
