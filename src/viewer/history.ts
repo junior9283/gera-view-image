@@ -3,6 +3,7 @@
 import type { DocId, DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { getPrefs } from "../store/prefs";
+import { openHere } from "../tabs/open";
 import { useUi } from "../store/ui";
 import { activate, closeDocs } from "./actions";
 
@@ -56,7 +57,7 @@ async function visit(v: Visit): Promise<void> {
   const { docs } = useDocs.getState();
   const d = openDoc(docs, v);
   if (d) return activate(d.id, v.page);
-  const [opened] = await useDocs.getState().open([v.path]);
+  const [opened] = await openHere([v.path]);
   if (!opened) return;
   activate(opened.id, v.page);
   await closeDocs([docs[0].id]);

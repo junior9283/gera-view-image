@@ -1,12 +1,16 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { track } from "./inflight";
 import type {
   AppEntry, CaptureMode, ColorAdjust, ColorProfile, DetectedCode, DocId, DocInfo, DragSource, ExportOptions, FileStat,
-  FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, Rect, RevertTarget, SaveOutcome, TextLine,
+  FileVersion, Histogram, Incoming, Mask, Metadata, MetadataEdits, Op, PrintOptions, Rect, RevertTarget, SaveOutcome, TextLine,
   ViewBuffer, WindowEntry,
 } from "./types";
 // Lote 6
 import type { Device } from "./types";
 import type { LinkInfo, OcrModels, WebKind } from "./types";
+
+/** `invoke` que conta os comandos em andamento por documento (`whenIdle`). */
+const invoke = <T>(...args: Parameters<typeof tauriInvoke>): Promise<T> => track(args[0], args[1], tauriInvoke<T>(...args));
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -186,9 +190,29 @@ export const exportPdf = (ids: DocId[], dest: string) => invoke<void>("export_pd
 export const printNative = (ids: DocId[], opts: PrintOptions) => invoke<void>("print_native", { ids, opts });
 
 // Lote 12: janelas e scanner
-export const newWindow = (ids: DocId[]) => invoke<string>("new_window", { ids });
+/** Passa os documentos (com o estado da interface, opaco) para uma janela nova; devolve o rótulo dela. */
+export const newWindow = (ids: DocId[], state: string) => invoke<string>("new_window", { ids, state });
+export const moveDocuments = (ids: DocId[], to: string, state: string) => invoke<void>("move_documents", { ids, to, state });
+/** Retira os documentos entregues a esta janela. */
+export const takeDocuments = () => invoke<Incoming[]>("take_documents");
 export const listWindows = () => invoke<WindowEntry[]>("list_windows");
 export const focusWindow = (label: string) => invoke<void>("focus_window", { label });
-export const mergeWindows = (into: string) => invoke<void>("merge_windows", { into });
+export const bringAllToFront = () => invoke<void>("bring_all_to_front");
+/** Pede às outras janelas que mandem seus documentos para esta. */
+export const mergeWindows = () => invoke<void>("merge_windows");
+export const setWindowTitle = (title: string) => invoke<void>("set_window_title", { title });
+/** Foca a janela dos arquivos já abertos em outra; devolve os caminhos que faltam abrir. */
+export const focusOpenPaths = (paths: string[]) => invoke<string[]>("focus_open_paths", { paths });
+/** Começa a fechar esta janela; falso = há documentos chegando (retire-os e pergunte de novo). */
+export const sealWindow = () => invoke<boolean>("seal_window");
+export const unsealWindow = () => invoke<void>("unseal_window");
+/** Fecha esta janela (só depois de selada). */
+export const closeWindow = () => invoke<void>("close_window");
+export const closeOtherWindows = () => invoke<void>("close_other_windows");
+/** Pergunta a cada janela; verdadeiro = todas concordaram em fechar. */
+export const confirmQuit = () => invoke<boolean>("confirm_quit");
+export const answerClose = (ok: boolean) => invoke<void>("answer_close", { ok });
+export const cancelQuit = () => invoke<void>("cancel_quit");
+export const quitApp = () => invoke<void>("quit_app");
 /** `null` = o usuário cancelou. */
 export const scanImage = (name: string) => invoke<DocInfo | null>("scan_image", { name });

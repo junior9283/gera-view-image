@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { subscribe } from "../lib/events";
 import { draggingOut } from "../sidebar/dragOut";
-import { useDocs } from "../store/docs";
+import { openHere } from "../tabs/open";
 import { activate } from "./actions";
 
 /** Abre os arquivos soltos na janela e ativa o primeiro. */
 export async function openDropped(paths: string[]): Promise<void> {
   if (!paths.length) return;
-  const [first] = await useDocs.getState().open(paths);
+  const [first] = await openHere(paths);
   if (first) activate(first.id);
 }
 

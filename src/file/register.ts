@@ -1,9 +1,9 @@
 // Liga o menu Arquivo ao registro de comandos, a faixa de alteração externa ao slot
-// `below-toolbar`, o fechar da janela ao diálogo de não salvo e os abertos aos Recentes.
-import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+// `below-toolbar` e os abertos aos Recentes. Fechar a janela: `tabs/closing.ts`.
 import { subscribe } from "../lib/events";
+import { registerDocState } from "../lib/docState";
 import { registerSlot } from "../lib/slots";
+import { listenHere } from "../lib/window";
 import { flattenAnnotations } from "../markup/flatten";
 import { DOC_CHANGED_ON_DISK_EVENT, type DiskChanged } from "../ipc/types";
 import { registerCommand, type CommandId } from "../shortcuts/commands";
@@ -13,7 +13,7 @@ import { registerBeforeSave } from "./beforeSave";
 import { hasUnsaved } from "./dirty";
 import * as file from "./fileActions";
 import { DiskBanner } from "./DiskBanner";
-import { confirmAndSave, setSaveHandler } from "./unsaved";
+import { setSaveHandler } from "./unsaved";
 
 const hasDoc = () => !!file.current();
 const hasFile = () => !!file.current()?.path;
@@ -68,7 +68,7 @@ function trackRecents(): () => void {
   return useDocs.subscribe(sync);
 }
 
-/** Registra comandos, faixa, vigia e o fechar da janela; devolve a função que desfaz tudo. */
+/** Registra comandos, faixa e vigia; devolve a função que desfaz tudo. */
 export function registerFileCommands(): () => void {
   const offs = ENTRIES.map(([id, run, enabled]) => registerCommand(id, run, enabled));
   setSaveHandler(file.saveDoc);
@@ -77,17 +77,19 @@ export function registerFileCommands(): () => void {
   offs.push(registerSlot("below-toolbar", "disk-banner", DiskBanner));
   offs.push(trackRecents());
   offs.push(
-    subscribe(
-      listen<DiskChanged>(DOC_CHANGED_ON_DISK_EVENT, (e) => file.markChanged(e.payload.id, e.payload.removed)),
-    ),
+    subscribe(listenHere<DiskChanged>(DOC_CHANGED_ON_DISK_EVENT, (c) => file.markChanged(c.id, c.removed))),
   );
-  // Fechar a janela com alterações pergunta antes (Salvar / Não Salvar / Cancelar).
+  // A faixa acompanha o documento que muda de janela (o vigia só avisa uma vez).
   offs.push(
-    subscribe(
-      getCurrentWindow().onCloseRequested(async (e) => {
-        if (!(await confirmAndSave(useDocs.getState().docs))) e.preventDefault();
-      }),
-    ),
+    registerDocState("diskChange", {
+      dump: (id) => file.useFileUi.getState().changed[id],
+      load: (id, removed) => {
+        if (!(id in file.useFileUi.getState().changed)) file.markChanged(id, removed === true);
+      },
+      drop: (id) => file.markChanged(id, null),
+    }),
   );
+  // Vindo de outra janela, já foi posto nos Recentes ao abrir.
+  offs.push(registerDocState("recent", { dump: () => true, load: (id) => seen.add(id) }));
   return () => offs.forEach((off) => off());
 }

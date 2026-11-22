@@ -20,10 +20,17 @@ import { AdjustHost } from "./adjust/AdjustHost";
 import { InspectorHost } from "./inspector/Inspector";
 import { FileHost } from "./file/FileHost";
 import { initDocs, useDocs } from "./store/docs";
+import { TAB_PANEL_ID } from "./tabs/TabBar";
+import { receiveDocs } from "./tabs/transfer";
+import { installWindowEvents } from "./tabs/windowEvents";
 import { useUi } from "./store/ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { syncFullscreen } from "./viewer/actions";
 import { subscribe } from "./lib/events";
+
+/** Uma falha aqui não impede de abrir as imagens. */
+const joinWindow = () =>
+  installWindowEvents().then(receiveDocs).catch((e) => console.error("falha ao ligar a janela:", e));
 
 let autoShown = false;
 
@@ -50,7 +57,7 @@ export default function App() {
   useAutoSidebar();
 
   useEffect(() => {
-    initDocs().catch((e) => console.error("falha ao abrir imagens:", e));
+    initDocs(joinWindow).catch((e) => console.error("falha ao abrir imagens:", e));
   }, []);
 
   // A tela cheia também muda por fora (gerenciador de janelas): o estado segue a janela real.
@@ -74,7 +81,7 @@ export default function App() {
         </>
       )}
       <Slot name="above-content" props={{}} />
-      <div className="app-body">
+      <div id={TAB_PANEL_ID} className="app-body">
         {sidebar === "thumbs" && <Sidebar />}
         {sidebar === "contact" ? <ContactSheet /> : <Viewport />}
         {dropping && <div className="drop-overlay">{t("viewer.dropHere")}</div>}

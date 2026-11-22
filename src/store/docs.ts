@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { listen } from "@tauri-apps/api/event";
 import * as ipc from "../ipc/commands";
+import { listenHere } from "../lib/window";
 import { DOC_UPDATED_EVENT, type DocId, type DocInfo, type Op } from "../ipc/types";
 
 interface DocsState {
@@ -18,6 +18,8 @@ interface DocsState {
   applyOrder: (ids: DocId[]) => void;
   /** Fecha no Rust e remove; se era o ativo, ativa o seguinte (ou o anterior). Não pergunta nada. */
   close: (id: DocId) => Promise<void>;
+  /** Tira da janela sem fechar no Rust (o documento foi para outra janela). */
+  detach: (ids: DocId[]) => void;
   applyOp: (id: DocId, op: Op) => Promise<DocInfo>;
   undo: (id: DocId) => Promise<DocInfo>;
   redo: (id: DocId) => Promise<DocInfo>;
@@ -26,6 +28,16 @@ interface DocsState {
 /** `doc-updated` de documentos que ainda não chegaram ao store (o evento pode vencer a resposta do IPC). */
 const early = new Map<DocId, DocInfo>();
 const newest = (a: DocInfo, b: DocInfo | undefined) => (b && b.rev >= a.rev ? b : a);
+
+/** Tira `ids`; se o ativo saiu, ativa o seguinte que ficou (ou o anterior). */
+function without(s: DocsState, ids: DocId[]): Pick<DocsState, "docs" | "activeId"> {
+  const out = new Set(ids);
+  const docs = s.docs.filter((d) => !out.has(d.id));
+  if (s.activeId === null || !out.has(s.activeId)) return { docs, activeId: s.activeId };
+  const at = s.docs.findIndex((d) => d.id === s.activeId);
+  const next = s.docs.slice(at).find((d) => !out.has(d.id)) ?? docs[docs.length - 1];
+  return { docs, activeId: next?.id ?? null };
+}
 
 export const useDocs = create<DocsState>((set, get) => {
   const replaceWith = async (p: Promise<DocInfo>) => {
@@ -79,14 +91,11 @@ export const useDocs = create<DocsState>((set, get) => {
       }),
     close: async (id) => {
       await ipc.closeDocument(id);
-      early.delete(id);
-      set((s) => {
-        const i = s.docs.findIndex((d) => d.id === id);
-        if (i < 0) return s;
-        const docs = s.docs.filter((d) => d.id !== id);
-        const activeId = s.activeId !== id ? s.activeId : (docs[Math.min(i, docs.length - 1)]?.id ?? null);
-        return { docs, activeId };
-      });
+      get().detach([id]);
+    },
+    detach: (ids) => {
+      ids.forEach((id) => early.delete(id));
+      set((s) => (s.docs.some((d) => ids.includes(d.id)) ? without(s, ids) : s));
     },
     applyOp: (id, op) => replaceWith(ipc.applyOp(id, op)),
     undo: (id) => replaceWith(ipc.undo(id)),
@@ -97,12 +106,14 @@ export const useDocs = create<DocsState>((set, get) => {
 let init: Promise<void> | null = null;
 
 /**
- * Liga o `doc-updated` e só então busca os documentos de `argv`; assim nenhuma atualização se
- * perde entre as duas coisas. Idempotente: o StrictMode monta os efeitos duas vezes.
+ * Liga o `doc-updated` e só então busca os documentos da janela (os de `argv`, na principal);
+ * assim nenhuma atualização se perde entre as duas coisas. `adopt` recebe antes os que vieram de
+ * outra janela, com o estado deles. Idempotente: o StrictMode monta os efeitos duas vezes.
  */
-export function initDocs(): Promise<void> {
+export function initDocs(adopt?: () => Promise<unknown>): Promise<void> {
   return (init ??= (async () => {
-    await listen<DocInfo>(DOC_UPDATED_EVENT, (e) => useDocs.getState().update(e.payload));
+    await listenHere<DocInfo>(DOC_UPDATED_EVENT, (info) => useDocs.getState().update(info));
+    await adopt?.();
     useDocs.getState().add(await ipc.startupDocuments());
   })());
 }

@@ -6,7 +6,7 @@ import { Thumb } from "./Thumb";
 import "./sidebar.css";
 
 /** Pede as miniaturas em degraus de 64 px para o controle de tamanho não refazer tudo a cada pixel. */
-const bucket = (px: number) => Math.ceil(px / 64) * 64;
+export const bucket = (px: number) => Math.ceil(px / 64) * 64;
 
 /** Folha de contato: grade de miniaturas no lugar do visualizador. Duplo clique abre a imagem. */
 export function ContactSheet() {

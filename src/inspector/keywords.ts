@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { registerDirtySource } from "../file/dirty";
 import type { DocId } from "../ipc/types";
+import { registerDocState } from "../lib/docState";
 
 /**
  * Palavras-chave editadas no inspetor, por documento, só em memória.
@@ -61,7 +62,18 @@ function subscribeKeywords(l: () => void): () => void {
 }
 
 // Palavras-chave editadas e ainda não gravadas contam como alteração (Salvar, diálogo de não salvo).
-registerDirtySource((id) => lists.has(id), subscribeKeywords);
+registerDirtySource((id) => lists.has(id), subscribeKeywords, "keywords");
+// E vão junto quando o documento muda de janela.
+registerDocState("keywords", {
+  dump: (id) => (lists.has(id) ? { list: lists.get(id), original: originals.get(id) } : undefined),
+  load: (id, data) => {
+    const { list, original } = data as { list: string[]; original?: string[] };
+    lists.set(id, list);
+    if (original) originals.set(id, original);
+    emit();
+  },
+  drop: clearKeywords,
+});
 
 export function resetKeywordsForTests() {
   lists.clear();

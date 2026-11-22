@@ -40,6 +40,21 @@ describe("store de documentos", () => {
     expect(useDocs.getState().activeId).toBe(1);
   });
 
+  it("detach tira sem fechar no Rust e ativa o seguinte que ficou, ou o último", () => {
+    const left = (ids: number[], active: number) => {
+      useDocs.setState({ docs: [1, 2, 3, 4].map((i) => info(i)), activeId: active });
+      useDocs.getState().detach(ids);
+      const { docs, activeId } = useDocs.getState();
+      return [docs.map((d) => d.id), activeId];
+    };
+    expect(left([2], 2)).toEqual([[1, 3, 4], 3]);
+    expect(left([2, 3], 2)).toEqual([[1, 4], 4]);
+    expect(left([3, 4], 4)).toEqual([[1, 2], 2]);
+    expect(left([2], 1)).toEqual([[1, 3, 4], 1]);
+    expect(left([1, 2, 3, 4], 2)).toEqual([[], null]);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("applyOp, undo e redo substituem o DocInfo pelo devolvido", async () => {
     useDocs.setState({ docs: [info(1)], activeId: 1 });
     invoke.mockResolvedValue(info(1, { dirty: true, canUndo: true, rev: 1 }));

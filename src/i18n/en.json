@@ -792,5 +792,17 @@
     "linkOpen": "Open",
     "linkWebTitle": "Open this website?",
     "linkIdnBody": "The address was read from the image and uses international characters, which can imitate another site. Check the domain before opening:"
+  },
+  "tabs": {
+    "bar": "Tabs",
+    "close": "Close {{name}}",
+    "new": "Open in new tab",
+    "unsaved": "{{name}} (unsaved changes)",
+    "all": "All tabs",
+    "moving": "Moving the images…",
+    "closing": "Closing the window…",
+    "busy": "Close the panel or finish the current operation before moving the images.",
+    "pending": "Save the changes to “{{name}}” before moving the image to another window.",
+    "timeout": "The image is still being processed. Try moving it again in a moment."
   }
 }

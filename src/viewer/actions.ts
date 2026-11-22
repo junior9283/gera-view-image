@@ -5,6 +5,7 @@ import type { DocId, DocInfo, Rect } from "../ipc/types";
 import { confirmAndSave } from "../file/unsaved";
 import { useDocs } from "../store/docs";
 import { getPrefs } from "../store/prefs";
+import { openHere } from "../tabs/open";
 import { useUi, type SidebarMode } from "../store/ui";
 import { dpr } from "./paint";
 import { clampPan, fitState, nextStep, rectState, zoomAt, type Size, type ViewState } from "./zoom";
@@ -132,7 +133,7 @@ async function goFolder(doc: DocInfo, dir: Dir, wrap: boolean): Promise<void> {
   const list = await ipc.folderImages(doc.path);
   const j = folderTarget(list, doc, dir, wrap);
   if (j === null) return;
-  const [opened] = await useDocs.getState().open([list[j]]);
+  const [opened] = await openHere([list[j]]);
   if (!opened) return;
   activate(opened.id);
   await closeDocs([doc.id]);

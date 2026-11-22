@@ -14,6 +14,8 @@ import { maskBounds } from "../select/lasso";
 import { applyToTargets } from "../sidebar/batch";
 import { batchTargets } from "../sidebar/selection";
 import { useDocs } from "../store/docs";
+import { quit } from "../tabs/closing";
+import { openHere } from "../tabs/open";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
 import { CHECK_UPDATES_EVENT } from "../updater/UpdateDialog";
@@ -78,7 +80,7 @@ async function openFiles() {
     filters: [{ name: i18n.t("dialog.images"), extensions: [...SUPPORTED_EXTENSIONS] }],
   });
   if (!picked?.length) return;
-  const [first] = await useDocs.getState().open(picked);
+  const [first] = await openHere(picked);
   if (first) view.activate(first.id);
 }
 
@@ -126,8 +128,8 @@ const ENTRIES: Entry[] = [
   ["tools.instantAlpha", sel.startInstantAlpha, hasDoc],
   ["tools.inspector", toggleInspector],
 
-  // Fechar a janela passa pelo `onCloseRequested`, que pergunta pelas alterações não salvas.
-  ["file.quit", () => getCurrentWindow().close()],
+  // Pergunta pelas alterações não salvas de todas as janelas.
+  ["file.quit", quit],
   ["window.minimize", () => getCurrentWindow().minimize()],
   ["window.maximize", () => getCurrentWindow().toggleMaximize()],
 
