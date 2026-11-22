@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "../lib/dialogs";
 import { SUPPORTED_EXTENSIONS } from "../file/extensions";
 import { useDocs } from "../store/docs";
 import { useUi } from "../store/ui";

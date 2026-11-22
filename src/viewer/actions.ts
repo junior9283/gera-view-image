@@ -5,7 +5,7 @@ import type { DocId, DocInfo, Rect } from "../ipc/types";
 import { confirmAndSave } from "../file/unsaved";
 import { useDocs } from "../store/docs";
 import { getPrefs } from "../store/prefs";
-import { openHere } from "../tabs/open";
+import { notElsewhere } from "../tabs/open";
 import { useUi, type SidebarMode } from "../store/ui";
 import { dpr } from "./paint";
 import { zoomUnit } from "./unit";
@@ -134,10 +134,19 @@ function folderTarget(list: string[], doc: DocInfo, dir: Dir, wrap: boolean): nu
 }
 
 async function goFolder(doc: DocInfo, dir: Dir, wrap: boolean): Promise<void> {
-  const list = await ipc.folderImages(doc.path);
-  const j = folderTarget(list, doc, dir, wrap);
-  if (j === null) return;
-  const [opened] = await openHere([list[j]]);
+  let list = await ipc.folderImages(doc.path);
+  for (;;) {
+    const j = folderTarget(list, doc, dir, wrap);
+    if (j === null) return;
+    const path = list[j];
+    if ((await notElsewhere([path])).length) return goTo(path, doc);
+    // Aberto em outra janela: pula, sem tirar o foco desta.
+    list = list.filter((p) => p !== path);
+  }
+}
+
+async function goTo(path: string, doc: DocInfo): Promise<void> {
+  const [opened] = await useDocs.getState().open([path]);
   if (!opened) return;
   activate(opened.id);
   await closeDocs([doc.id]);

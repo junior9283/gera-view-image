@@ -1,9 +1,11 @@
 // Eventos que a janela recebe do Rust e do sistema (Lote 12).
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { notifyError } from "../chrome/notify";
+import { notify, notifyError } from "../chrome/notify";
+import i18n from "../i18n";
 import * as ipc from "../ipc/commands";
 import {
-  ACTIVATE_DOCUMENT_EVENT, CLOSE_WINDOW_EVENT, CONFIRM_CLOSE_EVENT, DOCS_INCOMING_EVENT, MERGE_REQUEST_EVENT,
+  ACTIVATE_DOCUMENT_EVENT, CLOSE_WINDOW_EVENT, CONFIRM_CLOSE_EVENT, DOCS_INCOMING_EVENT, MERGE_DECLINED_EVENT,
+  MERGE_REQUEST_EVENT, PING_WINDOW_EVENT,
   QUIT_CANCELLED_EVENT, WINDOWS_CHANGED_EVENT, type DocId, type WindowEntry,
 } from "../ipc/types";
 import { listenHere } from "../lib/window";
@@ -39,13 +41,12 @@ export async function installWindowEvents(): Promise<void> {
       report(closeThisWindow());
     }),
     listenHere<void>(CLOSE_WINDOW_EVENT, () => report(closeThisWindow())),
-    listenHere<void>(CONFIRM_CLOSE_EVENT, () => {
-      getCurrentWindow().setFocus().catch(() => {});
-      report(answerQuit());
-    }),
-    listenHere<void>(QUIT_CANCELLED_EVENT, quitCancelled),
+    listenHere<number>(PING_WINDOW_EVENT, (n) => report(ipc.pong(n))),
+    listenHere<number>(CONFIRM_CLOSE_EVENT, (round) => report(answerQuit(round))),
+    listenHere<number>(QUIT_CANCELLED_EVENT, quitCancelled),
     listenHere<void>(DOCS_INCOMING_EVENT, () => report(receiveDocs())),
     listenHere<string>(MERGE_REQUEST_EVENT, (to) => report(sendAllTo(to))),
+    listenHere<string>(MERGE_DECLINED_EVENT, (name) => notify(i18n.t("tabs.mergeDeclined", { name }))),
     listenHere<DocId>(ACTIVATE_DOCUMENT_EVENT, (id) => {
       if (useDocs.getState().docs.some((d) => d.id === id)) activate(id);
     }),

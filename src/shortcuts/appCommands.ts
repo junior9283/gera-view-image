@@ -1,7 +1,7 @@
 // Liga ao registro de comandos as ações que já existem. Itens de tarefas futuras (Salvar, Exportar,
 // Imprimir, Colar, Anotar ▸…) ficam sem registro e, por isso, desabilitados nos menus.
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "../lib/dialogs";
 import { SUPPORTED_EXTENSIONS } from "../file/extensions";
 import i18n from "../i18n";
 import { openAdjustColor, openResize } from "../adjust/actions";

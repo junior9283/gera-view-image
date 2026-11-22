@@ -951,6 +951,27 @@
     "moving": "Movendo as imagens…",
     "closing": "Fechando a janela…",
     "quitting": "Saindo…",
+    "saving": "Salvando…",
+    "stillOpening": "A janela “{{name}}” ainda está abrindo com imagens. Espere, ou feche-a para as imagens voltarem a outra janela.",
+    "mergeDeclined": "A janela “{{name}}” não pôde ser juntada: há um diálogo aberto ou uma operação em andamento nela.",
+    "unresponsive": {
+      "title": "Uma janela não responde",
+      "body": "A janela “{{name}}” não responde. Saindo sem esperar por ela, as alterações não salvas nela se perdem.",
+      "leave": "Sair sem esperar",
+      "cancel": "Cancelar"
+    },
+    "running": {
+      "title": "Operação em andamento",
+      "body": "Há uma impressão, gravação ou edição em andamento nesta janela. Fechar agora pode interrompê-la.",
+      "close": "Fechar assim mesmo",
+      "wait": "Esperar"
+    },
+    "stuck": {
+      "title": "A janela não terminou de abrir",
+      "body": "As imagens movidas para esta janela ainda não apareceram. Fechando agora, as alterações não salvas nelas se perdem.",
+      "close": "Fechar sem salvar",
+      "cancel": "Cancelar"
+    },
     "answerElsewhere": "Se outra janela estiver perguntando por alterações não salvas, responda nela.",
     "cancelQuit": "Cancelar",
     "busy": "Feche o painel ou termine a operação em andamento antes de mover as imagens.",

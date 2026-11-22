@@ -3,7 +3,7 @@
 import type { DocId, DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { getPrefs } from "../store/prefs";
-import { openHere } from "../tabs/open";
+import { notElsewhere } from "../tabs/open";
 import { useUi } from "../store/ui";
 import { activate, closeDocs } from "./actions";
 
@@ -57,11 +57,15 @@ async function visit(v: Visit): Promise<void> {
   const { docs } = useDocs.getState();
   const d = openDoc(docs, v);
   if (d) return activate(d.id, v.page);
-  const [opened] = await openHere([v.path]);
+  const [opened] = await useDocs.getState().open([v.path]);
   if (!opened) return;
   activate(opened.id, v.page);
   await closeDocs([docs[0].id]);
 }
+
+/** Fechado aqui e aberto em outra janela: voltar a ele tiraria o foco desta. */
+const elsewhere = async (v: Visit) =>
+  !openDoc(useDocs.getState().docs, v) && !(await notElsewhere([v.path])).length;
 
 async function travel(from: Visit[], to: Visit[]): Promise<void> {
   if (traveling) return;
@@ -69,7 +73,7 @@ async function travel(from: Visit[], to: Visit[]): Promise<void> {
   try {
     while (from.length) {
       const v = from.pop()!;
-      if (!reachable(v)) continue;
+      if (!reachable(v) || (await elsewhere(v))) continue;
       if (last) to.push(last);
       await visit(v);
       break;

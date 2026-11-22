@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({}) }));
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { resetPrefsForTests, setPrefs } from "../store/prefs";
 import { resetUiForTests, useUi } from "../store/ui";
+import { resetTabsForTests, useTabs } from "../tabs/store";
 import { resetUnsavedForTests } from "../file/unsaved";
 import { activate } from "./actions";
 import { back, canBack, canForward, forward, installHistory } from "./history";
@@ -123,5 +124,26 @@ describe("navegando pela pasta (um só documento aberto)", () => {
     expect(useDocs.getState().docs.map((d) => d.id)).toEqual([5]);
     expect(active()).toBe(5);
     expect(canForward()).toBe(true);
+  });
+
+  it("arquivo anterior aberto em outra janela: Voltar pula para o outro, sem tirar o foco", async () => {
+    setPrefs({ browseFolder: true });
+    useDocs.getState().add([info(1)]);
+    await flush();
+    for (const id of [2, 3]) {
+      useDocs.getState().add([info(id)]);
+      activate(id);
+      await useDocs.getState().close(id - 1);
+      await flush();
+    }
+    useTabs.setState({ windows: [{ label: "main", title: "a" }, { label: "doc-1", title: "b" }] });
+    invoke.mockImplementation(async (cmd: string, args: { paths: string[]; focus?: boolean }) => {
+      if (cmd === "focus_open_paths") return args.paths.filter((p) => p !== "/pasta/2.png");
+      if (cmd === "open_documents") return [info(9, { path: args.paths[0] })];
+    });
+    await back();
+    expect(useDocs.getState().docs.map((d) => d.path)).toEqual(["/pasta/1.png"]);
+    expect(invoke).not.toHaveBeenCalledWith("focus_open_paths", expect.objectContaining({ focus: true }));
+    resetTabsForTests();
   });
 });

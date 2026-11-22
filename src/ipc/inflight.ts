@@ -35,22 +35,26 @@ export function track<T>(command: string, args: unknown, result: Promise<T>): Pr
   return result;
 }
 
-const busy = (ids: DocId[]) => ids.some((id) => running.has(id));
 const tick = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/**
- * Espera não haver comando em andamento nesses documentos, dando tempo às continuações (que podem
- * começar outro). `false` = não terminou em `timeoutMs`.
- */
-export async function whenIdle(ids: DocId[], timeoutMs: number): Promise<boolean> {
-  const end = Date.now() + timeoutMs;
+/** Espera `busy` sossegar, dando tempo às continuações (que podem começar outro comando). */
+async function settled(busy: () => boolean, stop: () => boolean): Promise<boolean> {
   for (;;) {
     await tick(0);
-    if (!busy(ids)) {
+    if (!busy()) {
       await tick(0);
-      if (!busy(ids)) return true;
+      if (!busy()) return true;
     }
-    if (Date.now() >= end) return false;
+    if (stop()) return false;
     await tick(30);
   }
 }
+
+/** Espera não haver comando em andamento nesses documentos. `false` = não terminou em `timeoutMs`. */
+export function whenIdle(ids: DocId[], timeoutMs: number): Promise<boolean> {
+  const end = Date.now() + timeoutMs;
+  return settled(() => ids.some((id) => running.has(id)), () => Date.now() >= end);
+}
+
+/** O mesmo, em todos os documentos desta janela; `stop` desiste. */
+export const whenAllIdle = (stop: () => boolean): Promise<boolean> => settled(() => running.size > 0, stop);

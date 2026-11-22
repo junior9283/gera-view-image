@@ -9,6 +9,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ setFullscr
 
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { resetPrefsForTests, setPrefs } from "../store/prefs";
+import { resetTabsForTests, useTabs } from "../tabs/store";
 import { resetUiForTests, useUi } from "../store/ui";
 import { answerUnsaved, confirmClose, currentUnsaved, resetUnsavedForTests } from "../file/unsaved";
 import * as actions from "./actions";
@@ -102,6 +103,30 @@ describe("navegação na pasta", () => {
     useDocs.getState().add([info(1, { path: "/pasta/1.png" })]);
     await actions.prev();
     expect(ids()).toEqual([10]);
+  });
+
+  it("vizinho aberto em outra janela: pula para o seguinte, sem tirar o foco", async () => {
+    useTabs.setState({ windows: [{ label: "main", title: "a" }, { label: "doc-1", title: "b" }] });
+    const base = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (cmd: string, args: { paths?: string[]; focus?: boolean }) =>
+      cmd === "focus_open_paths" ? args.paths!.filter((p) => p !== "/pasta/1.png") : base(cmd, args));
+    useDocs.getState().add([info(1, { path: "/pasta/0.png" })]);
+    await actions.next();
+    expect(ids()).toEqual([12]);
+    expect(invoke.mock.calls.filter(([c]) => c === "focus_open_paths").every(([, a]) => a.focus === false)).toBe(true);
+    await actions.prev();
+    expect(ids()).toEqual([10]);
+    resetTabsForTests();
+  });
+
+  it("todos os vizinhos em outras janelas: fica onde está", async () => {
+    useTabs.setState({ windows: [{ label: "main", title: "a" }, { label: "doc-1", title: "b" }] });
+    const base = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (cmd: string, args: object) => (cmd === "focus_open_paths" ? [] : base(cmd, args)));
+    useDocs.getState().add([info(1, { path: "/pasta/1.png" })]);
+    await actions.next();
+    expect(ids()).toEqual([1]);
+    resetTabsForTests();
   });
 
   it("na ponta da pasta não faz nada", async () => {

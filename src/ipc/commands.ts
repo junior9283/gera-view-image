@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { track } from "./inflight";
 import type {
   AppEntry, CaptureMode, ColorAdjust, ColorProfile, DetectedCode, DocId, DocInfo, DragSource, ExportOptions, FileStat,
-  FileVersion, Histogram, Incoming, Mask, Metadata, MetadataEdits, Op, PrintOptions, PrintPreview, Rect, RevertTarget, SaveOutcome, TaggedExport, TextLine,
+  FileVersion, Histogram, Incoming, Mask, Metadata, MetadataEdits, Op, PrintOptions, PrintPreview, QuitOutcome, Rect, RevertTarget, SaveOutcome, TaggedExport, TextLine,
   ViewBuffer, WindowEntry,
 } from "./types";
 // Lote 6
@@ -224,17 +224,23 @@ export const bringAllToFront = () => invoke<void>("bring_all_to_front");
 /** Pede às outras janelas que mandem seus documentos para esta. */
 export const mergeWindows = () => invoke<void>("merge_windows");
 export const setWindowTitle = (title: string) => invoke<void>("set_window_title", { title });
-/** Foca a janela dos arquivos já abertos em outra; devolve os caminhos que faltam abrir. */
-export const focusOpenPaths = (paths: string[]) => invoke<string[]>("focus_open_paths", { paths });
-/** Começa a fechar esta janela; falso = há documentos chegando (retire-os e pergunte de novo). */
-export const sealWindow = () => invoke<boolean>("seal_window");
+/** Os caminhos que não estão abertos em outra janela; `focus` traz para a frente a janela dos outros. */
+export const focusOpenPaths = (paths: string[], focus: boolean) => invoke<string[]>("focus_open_paths", { paths, focus });
+/**
+ * Começa a fechar esta janela; falso = há documentos chegando (retire-os e pergunte de novo). `quit` é a
+ * rodada da saída: se ela for cancelada, o selo cai.
+ */
+export const sealWindow = (quit: number | null) => invoke<boolean>("seal_window", { quit });
 export const unsealWindow = () => invoke<void>("unseal_window");
 /** Fecha esta janela (só depois de selada). */
 export const closeWindow = () => invoke<void>("close_window");
 export const closeOtherWindows = () => invoke<void>("close_other_windows");
-/** Pergunta a cada janela; verdadeiro = todas concordaram em fechar. */
-export const confirmQuit = () => invoke<boolean>("confirm_quit");
-export const answerClose = (ok: boolean) => invoke<void>("answer_close", { ok });
+/** Pergunta a cada janela; `skip` = as que não respondem e o usuário decidiu não esperar. */
+export const confirmQuit = (skip: string[]) => invoke<QuitOutcome>("confirm_quit", { skip });
+export const answerClose = (round: number, ok: boolean) => invoke<void>("answer_close", { round, ok });
+export const pong = (n: number) => invoke<void>("pong", { n });
+/** Juntar Todas as Janelas: esta não pode ir agora. */
+export const declineMerge = (to: string) => invoke<void>("decline_merge", { to });
 export const cancelQuit = () => invoke<void>("cancel_quit");
 export const quitApp = () => invoke<void>("quit_app");
 /** `null` = o usuário cancelou. */

@@ -153,3 +153,37 @@ Formato: sintoma, causa, correção, teste, lição.
 ### ppp absurdo do arquivo na página do PDF e na impressão
 - **Correção:** ppp não finito ou fora de 1 a 10 000 é ignorado (72), nos dois eixos juntos para não distorcer.
 - **Teste:** `ppp_fora_da_faixa_e_ignorado` (`src-tauri/src/image/pdf.rs`) e `escala_em_porcentagem_do_tamanho_natural` (`src-tauri/src/image/print_layout.rs`).
+
+## Correções da revisão do Lote 12 (antes de publicar)
+
+### A janela que precisava responder à saída não vinha para a frente
+- **Causa:** `setFocus()` no JS é negado pela ACL, e o `catch` vazio escondia o erro.
+- **Correção:** `raise` no Rust (mostrar, desminimizar, focar) em `ask` e `close_other_windows`; nenhuma permissão nova.
+- **Teste:** "a janela perguntada responde, sem fechar" (`src/tabs/closing.test.ts`) exige que o JS não chame `setFocus`.
+- **Lição:** um `catch` vazio em volta de uma API com permissão esconde que ela nunca funcionou.
+
+### Sair ficava preso por uma janela que não respondia ou não terminava de abrir
+- **Causa:** a espera da resposta não tinha prazo, a janela não carregada recusava fechar e `confirm_quit` desistia calado.
+- **Correção:** ping com prazo antes de perguntar; sem resposta, `confirm_quit` devolve `unresponsive` e a janela que pediu pergunta (padrão Cancelar). Janela que não abriu devolve os documentos a outra ao fechar, ou pergunta pelo sistema se for a única.
+- **Teste:** `ping_diz_quem_nao_respondeu`, `janela_que_nao_abriu_fecha_devolvendo_o_que_ia_chegar`, `janela_que_some_antes_da_pergunta_nao_prende_a_saida` (`commands/window.rs`) e "janela que não responde" (`closing.test.ts`).
+
+### Véu apagado por quem não o pôs deixava editável uma janela selada
+- **Causa:** um véu só, global; o fim de um mover e o `quit-cancelled` o tiravam, fosse de quem fosse.
+- **Correção:** `putVeil` devolve a função que tira só o próprio véu; saída numerada por rodada; selo no Rust com motivo (`Seal`); `seal` espera o movimento em andamento.
+- **Teste:** "cada véu cai só pela mão de quem o pôs", "o fim da saída de outra não destrava a janela que está fechando", "com documento mudando de janela, espera terminar antes de selar" e `cancelar_a_saida_nao_solta_quem_esta_fechando_nem_rodada_mais_nova`.
+
+### Edição feita durante uma gravação lenta era dada como respondida ao fechar
+- **Causa:** a versão respondida era lida depois de todas as gravações.
+- **Correção:** véu durante a gravação e nova conferência até não sobrar documento não salvo; só o descarte explícito vale, na versão em que foi feito.
+- **Teste:** "editado durante a gravação lenta de outro: é perguntado de novo".
+
+### Navegar pela pasta roubava o foco e travava num vizinho aberto em outra janela
+- **Correção:** `goFolder` e o histórico pulam para o seguinte (`notElsewhere`), sem trazer a outra janela.
+- **Teste:** "vizinho aberto em outra janela" (`src/viewer/actions.test.ts`, `history.test.ts`).
+
+### Menores
+- Aviso de alteração no disco perdido com o documento mudando de janela: fica pendente até alguém o ter (`mudanca_no_disco_nao_se_perde_com_o_documento_mudando_de_janela`).
+- Janela destruída entre o registro da pergunta e o envio prendia a saída (`begin_ask`).
+- Mover com o seletor de arquivos do sistema aberto: `src/lib/dialogs.ts`. Juntar recusado avisa quem pediu.
+- Fechar durante impressão, PDF ou gravação: espera um pouco e pergunta.
+- Permissão `core:window:allow-destroy` retirada (não era usada).
