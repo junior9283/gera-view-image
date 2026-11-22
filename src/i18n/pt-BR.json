@@ -491,6 +491,9 @@
       "toolbar": "Ocultar Barra de Ferramentas",
       "customizeToolbar": "Personalizar Barra de Ferramentas…",
       "imageBackground": "Mostrar Fundo da Imagem",
+      "softProof": "Prova de Cor com Perfil",
+      "softProofNone": "Nenhum",
+      "softProofChoose": "Escolher Perfil…",
       "tabBar": "Mostrar Barra de Abas",
       "allTabs": "Mostrar Todas as Abas"
     },
@@ -757,6 +760,7 @@
     }
   },
   "color": {
+    "iccFiles": "Perfis ICC",
     "assign": {
       "title": "Atribuir Perfil",
       "current": "Perfil atual: {{name}}",
@@ -818,7 +822,7 @@
     },
     "saveAs": {
       "images": "Imagens",
-      "badFormat": "Use uma extensão que o Salvar grava: .jpg, .png, .tiff, .webp, .avif ou .bmp."
+      "badFormat": "Use uma extensão que o Salvar Como grava: .jpg, .png, .tiff, .heic, .webp, .avif, .jp2, .exr ou .bmp. Os outros formatos ficam em Exportar."
     },
     "versions": {
       "title": "Versões de {{name}}",

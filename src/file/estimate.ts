@@ -19,13 +19,15 @@ export const exportFormats = (heic: boolean, alt = false): ExportFormat[] => {
 
 let heicProbe: Promise<boolean> | null = null;
 
-/** Consulta (uma vez por sessão) se há codificador HEIC. `null` enquanto não sabe. */
+/** Consulta (uma vez por sessão) se há codificador HEIC. */
+export const heicEncoder = (): Promise<boolean> => (heicProbe ??= ipc.heicEncoderAvailable().catch(() => false));
+
+/** `heicEncoder`; `null` enquanto não sabe. */
 export function useHeicEncoder(): boolean | null {
   const [ok, setOk] = useState<boolean | null>(null);
   useEffect(() => {
     let live = true;
-    heicProbe ??= ipc.heicEncoderAvailable().catch(() => false);
-    void heicProbe.then((v) => live && setOk(v));
+    void heicEncoder().then((v) => live && setOk(v));
     return () => {
       live = false;
     };
@@ -45,7 +47,8 @@ export const EXTENSIONS: Record<ExportFormat, string> = {
 
 /** Formato de exportação que corresponde ao do arquivo (para o tamanho resultante). */
 export function exportFormatOf(f: SourceFormat, formats: ExportFormat[] = EXPORT_FORMATS): ExportFormat {
-  return (formats as string[]).includes(f) ? (f as ExportFormat) : "png";
+  // O OpenEXR aberto já está em SDR: sugerir o próprio formato levaria a perder o alcance do original.
+  return f !== "exr" && (formats as string[]).includes(f) ? (f as ExportFormat) : "png";
 }
 
 export const defaultOptions = (format: ExportFormat): ExportOptions => ({
