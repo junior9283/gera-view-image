@@ -1,13 +1,18 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cropToSelection } from "../select/actions";
 import type { SelectionTool } from "../select/tools";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
-import { useUi } from "../store/ui";
-import { restyleSelected } from "./actions";
+import { isEnabled, runCommand, subscribeCommands } from "../shortcuts/commands";
+import { applyStyle } from "./actions";
+import { ColorsPanel } from "./ColorsPanel";
+import { PALETTE } from "./colors";
+import { BASE_FONTS } from "./fonts";
+import { FONT_SIZES, FontsPanel } from "./FontsPanel";
+import { PropertiesPanel } from "./PropertiesPanel";
 import { ICONS } from "./icons";
-import type { ArrowEnd, Dash, StylePatch } from "./model";
+import type { ArrowEnd, Dash } from "./model";
 import { SignaturePanel } from "./SignaturePanel";
 import { useMarkup, type BarMenu, type ShapeTool, type Tool } from "./store";
 
@@ -16,25 +21,6 @@ const SHAPES: ShapeTool[] = ["line", "arrow", "rect", "roundRect", "oval", "bubb
 const WIDTHS = [1, 2, 3, 5, 8, 12];
 const DASHES: Dash[] = ["solid", "dashed", "dotted"];
 const ENDS: ArrowEnd[] = ["none", "arrow", "circle"];
-const COLORS = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#0a84ff", "#af52de", "#000000", "#8e8e93", "#ffffff"];
-const FONTS = ["Inter", "sans-serif", "serif", "monospace"];
-const FONT_SIZES = [10, 12, 14, 18, 24, 32, 48, 64];
-
-/**
- * Aplica o estilo às próximas anotações e às selecionadas. A barra fala em px de tela;
- * as selecionadas recebem o valor convertido pela escala atual.
- */
-function applyStyle(patch: StylePatch) {
-  const st = useMarkup.getState();
-  st.setStyle(patch);
-  const id = useDocs.getState().activeId;
-  if (id === null) return;
-  const scale = useUi.getState().view?.scale ?? 1;
-  const img: StylePatch = { ...patch };
-  if (patch.width !== undefined) img.width = patch.width / scale;
-  if (patch.font?.size !== undefined) img.font = { ...patch.font, size: patch.font.size / scale };
-  restyleSelected(id, img);
-}
 
 function rotateLeft() {
   const id = useDocs.getState().activeId;
@@ -67,7 +53,7 @@ function Swatches({ value, onPick, allowNone }: { value: string | null; onPick: 
       {allowNone && (
         <button type="button" role="menuitemradio" aria-checked={value === null} className="markup-swatch none" aria-label={t("markup.noFill")} title={t("markup.noFill")} onClick={() => onPick(null)} />
       )}
-      {COLORS.map((c) => (
+      {PALETTE.map((c) => (
         <button key={c} type="button" role="menuitemradio" aria-checked={value === c} aria-label={c} className="markup-swatch" style={{ background: c }} onClick={() => onPick(c)} />
       ))}
       <label className="markup-custom-color" title={t("markup.customColor")}>
@@ -88,6 +74,8 @@ export function MarkupBar() {
   const canCrop = useSelection((s) => s.selection !== null);
   const selTool = useSelection((s) => s.selectionTool);
   const bar = useRef<HTMLDivElement>(null);
+  // Reavalia quando um lote registra (ou tira) o comando.
+  const describable = useSyncExternalStore(subscribeCommands, () => isEnabled("tools.imageDescription"));
 
   const st = useMarkup.getState;
   const setTool = (tl: Tool) => {
@@ -105,7 +93,10 @@ export function MarkupBar() {
   useEffect(() => {
     if (!menu) return;
     const close = (e: PointerEvent) => {
-      if (!bar.current?.contains(e.target as Node)) useMarkup.getState().setMenu(null);
+      if (bar.current?.contains(e.target as Node)) return;
+      // O campo em edição perde o foco ANTES de o painel sair (o blur grava o valor digitado).
+      if (document.activeElement instanceof HTMLElement && bar.current?.contains(document.activeElement)) document.activeElement.blur();
+      useMarkup.getState().setMenu(null);
     };
     window.addEventListener("pointerdown", close, true);
     return () => window.removeEventListener("pointerdown", close, true);
@@ -212,7 +203,7 @@ export function MarkupBar() {
             <label>
               {t("markup.font")}
               <select value={font.family} onChange={(e) => applyStyle({ font: { family: e.target.value } })}>
-                {FONTS.map((f) => (
+                {(BASE_FONTS.includes(font.family) ? BASE_FONTS : [font.family, ...BASE_FONTS]).map((f) => (
                   <option key={f} value={f}>{f}</option>
                 ))}
               </select>
@@ -244,8 +235,24 @@ export function MarkupBar() {
           </div>
         )}
       </div>
+      <div className="markup-group">
+        <BarButton id="colors" label={t("markup.tool.colors")} onClick={() => toggleMenu("colors")}>{ICONS.colors}</BarButton>
+        {menu === "colors" && <ColorsPanel />}
+      </div>
+      <div className="markup-group">
+        <BarButton id="fonts" label={t("markup.tool.fonts")} onClick={() => toggleMenu("fonts")}>{ICONS.fonts}</BarButton>
+        {menu === "fonts" && <FontsPanel />}
+      </div>
       <BarButton id="rotate" label={t("markup.tool.rotate")} disabled={!hasDoc} onClick={rotateLeft}>{ICONS.rotate}</BarButton>
       <BarButton id="crop" label={t("markup.tool.crop")} disabled={!canCrop} onClick={() => void cropToSelection().catch((e) => console.error(e))}>{ICONS.crop}</BarButton>
+      <BarButton id="adjustColor" label={t("markup.tool.adjustColor")} disabled={!hasDoc} onClick={() => runCommand("tools.adjustColor")}>{ICONS.adjustColor}</BarButton>
+      <BarButton id="resize" label={t("markup.tool.resize")} disabled={!hasDoc} onClick={() => runCommand("tools.resize")}>{ICONS.resize}</BarButton>
+      <div className="markup-group">
+        <BarButton id="properties" label={t("markup.tool.properties")} onClick={() => toggleMenu("properties")}>{ICONS.properties}</BarButton>
+        {menu === "properties" && <PropertiesPanel />}
+      </div>
+      {/* O comando é do Lote 9 (Inspetor): sem handler registrado fica desabilitado. */}
+      <BarButton id="description" label={t("markup.tool.description")} disabled={!hasDoc || !describable} onClick={() => runCommand("tools.imageDescription")}>{ICONS.description}</BarButton>
     </div>
   );
 }

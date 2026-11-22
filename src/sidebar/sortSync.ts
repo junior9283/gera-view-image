@@ -13,8 +13,9 @@ export function startSortSync(): () => void {
 
   const run = async () => {
     const by = getPrefs().sortBy;
-    if (by === "manual") return;
+    // Também em "manual": invalida a ordenação que ainda espera o file_stats.
     const mine = ++seq;
+    if (by === "manual") return;
     if (needsStats(by)) {
       const missing = useDocs.getState().docs.filter((d) => d.path && stats.get(d.id)?.rev !== d.rev);
       if (missing.length) {

@@ -7,7 +7,7 @@ import { DEFAULT_FONT, DEFAULT_STYLE, mergeStyle, type Annotation, type Style, t
 export type ShapeTool =
   | "line" | "arrow" | "rect" | "roundRect" | "oval" | "bubble" | "star" | "polygon" | "loupe" | "highlight" | "highlightOval";
 export type Tool = "select" | "sketch" | "draw" | "text" | ShapeTool;
-export type BarMenu = "select" | "shapes" | "signature" | "lineStyle" | "stroke" | "fill" | "textStyle";
+export type BarMenu = "select" | "shapes" | "signature" | "lineStyle" | "stroke" | "fill" | "textStyle" | "colors" | "fonts" | "properties";
 
 const EMPTY: Annotation[] = [];
 

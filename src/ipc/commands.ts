@@ -178,6 +178,8 @@ export const editMetadata = (id: DocId, edits: MetadataEdits) => invoke<void>("e
 
 // Lote 10: fontes do sistema
 export const systemFonts = () => invoke<string[]>("system_fonts");
+/** Arma/desarma o consentimento da câmera da assinatura (só vale para um pedido de vídeo). */
+export const cameraAllow = (allowed: boolean) => invoke<void>("camera_allow", { allowed });
 
 // Lote 11: PDF e impressão nativa
 export const exportPdf = (ids: DocId[], dest: string) => invoke<void>("export_pdf", { ids, dest });

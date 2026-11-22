@@ -57,6 +57,18 @@ describe("startSortSync", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it("voltar para manual durante o file_stats preserva o arraste", async () => {
+    let responder: (v: unknown) => void = () => {};
+    invoke.mockImplementation(() => new Promise((r) => (responder = r)));
+    stop = startSortSync();
+    setPrefs({ sortBy: "date" });
+    await settle();
+    setPrefs({ sortBy: "manual" });
+    responder([1, 2, 3].map((id) => ({ id, modifiedMs: id * 10, size: 1 })));
+    await settle();
+    expect(order()).toEqual([1, 2, 3]);
+  });
+
   it("falha no file_stats não derruba a barra", async () => {
     invoke.mockRejectedValue({ code: "io" });
     vi.spyOn(console, "error").mockImplementation(() => {});

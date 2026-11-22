@@ -8,6 +8,7 @@ import { useSelection } from "../store/selection";
 import { dpr } from "../viewer/paint";
 import { addAnnotation, commit, deleteSelected } from "./actions";
 import { loadSource } from "./flatten";
+import { cssFont } from "./fontCss";
 import { DEFAULT_FONT, hitTest, moveItems, normBox, type Annotation, type Point } from "./model";
 import { render, renderSelection, type Source, type ViewXf } from "./render";
 import { getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
@@ -318,7 +319,7 @@ function TextEditor({ docId, item, view }: { docId: number; item: Extract<Annota
         top: view.panY + b.y * view.scale,
         width: Math.max(b.w * view.scale, size * 4),
         height: Math.max(b.h, (value.split("\n").length) * f.size * 1.25) * view.scale + 4,
-        font: `${f.italic ? "italic " : ""}${f.bold ? "bold " : ""}${size}px ${f.family}, sans-serif`,
+        font: cssFont({ ...f, size }),
         color: f.color,
         textAlign: f.align,
         textDecoration: f.underline ? "underline" : undefined,

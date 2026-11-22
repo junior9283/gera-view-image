@@ -8,6 +8,7 @@ pub mod meta;
 pub mod theme;
 pub mod view;
 // Lotes de paridade (Lote 0 criou os stubs; cada lote preenche só o seu módulo).
+pub mod camera; // Lote 10
 pub mod color; // Lote 1
 pub mod describe; // Lote 9
 pub mod finder; // Lote 5
@@ -58,9 +59,8 @@ mod tests {
 
     #[test]
     fn stubs_dos_lotes_devolvem_unsupported() {
-        let e = fonts::system_fonts().unwrap_err();
+        let e = window::list_windows().unwrap_err();
         assert_eq!(e.code(), "unsupported");
-        assert!(e.to_string().contains("system_fonts"));
-        assert_eq!(window::list_windows().unwrap_err().code(), "unsupported");
+        assert!(e.to_string().contains("list_windows"));
     }
 }

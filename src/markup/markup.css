@@ -263,3 +263,156 @@
   font: inherit;
   cursor: pointer;
 }
+
+/* Painéis Cores, Fontes e Propriedades (Lote 10). */
+.colors-panel,
+.fonts-panel,
+.props-panel {
+  width: 280px;
+}
+.colors-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+}
+.colors-opacity,
+.props-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+}
+.colors-opacity input[type="range"],
+.props-field input[type="range"] {
+  flex: 1;
+}
+.fonts-search {
+  margin: 4px 8px;
+  width: calc(100% - 16px);
+  box-sizing: border-box;
+}
+.fonts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.fonts-list li[aria-selected="true"] button {
+  background: rgb(10 132 255 / 0.25);
+}
+.fonts-list button {
+  display: block;
+  width: 100%;
+  padding: 3px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+}
+.fonts-list button:hover {
+  background: rgb(127 127 127 / 0.2);
+}
+.props-kind {
+  margin: 2px 8px;
+  font-weight: 600;
+}
+.props-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.props-field input[type="number"] {
+  width: 64px;
+}
+.props-text {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* Conta-gotas: camada sobre a imagem enquanto escolhe a cor. */
+.eyedropper-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  cursor: crosshair;
+  touch-action: none;
+}
+.eyedropper-hint {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.7);
+  color: #fff;
+  font: 12px Inter, system-ui, sans-serif;
+  pointer-events: none;
+}
+.eyedropper-swatch {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.75);
+  color: #fff;
+  font: 12px ui-monospace, monospace;
+  pointer-events: none;
+}
+.eyedropper-swatch span {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #fff;
+  border-radius: 3px;
+}
+
+/* Câmera da assinatura. */
+.camera-video {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 4px 8px;
+  border-radius: 6px;
+  background: #000;
+  transform: scaleX(-1);
+}
+.camera-on {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 8px;
+  font-weight: 600;
+  color: #ff3b30;
+}
+.camera-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff3b30;
+  animation: camera-blink 1.2s infinite;
+}
+@keyframes camera-blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+.camera-off {
+  margin: 4px 8px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.camera-result {
+  margin: 4px 8px;
+  padding: 6px;
+  border-radius: 6px;
+  background: #fff;
+  text-align: center;
+}
+.camera-result img {
+  max-width: 100%;
+  max-height: 120px;
+}

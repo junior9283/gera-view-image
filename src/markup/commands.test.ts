@@ -23,6 +23,7 @@ describe("comandos de menu da Marcação", () => {
       "tools.annotate.rect", "tools.annotate.oval", "tools.annotate.line", "tools.annotate.arrow",
       "tools.annotate.text", "tools.annotate.bubble", "tools.annotate.star", "tools.annotate.polygon",
       "tools.annotate.loupe", "tools.annotate.highlight", "tools.annotate.signature", "view.markupBar",
+      "tools.showColors", "tools.showFonts", "tools.markupInspector",
     ]);
   });
 
