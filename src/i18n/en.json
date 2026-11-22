@@ -577,6 +577,8 @@
     "linkEmailTitle": "Write an email to this address?",
     "linkPhoneTitle": "Call this number?",
     "linkBody": "The address was read from the image. Check it before opening:",
-    "linkOpen": "Open"
+    "linkOpen": "Open",
+    "linkWebTitle": "Open this website?",
+    "linkIdnBody": "The address was read from the image and uses international characters, which can imitate another site. Check the domain before opening:"
   }
 }

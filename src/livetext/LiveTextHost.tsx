@@ -30,7 +30,8 @@ function ConfirmDialog() {
   const close = () => useConfirm.setState({ pending: null });
   useModal(dialog, { active: !!pending, initialFocus: cancel, onClose: close });
   if (!pending) return null;
-  const link = pending.kind === "link" ? pending.href : null;
+  const info = pending.kind === "link" ? pending.info : null;
+  const link = info?.href ?? null;
   const go = () => {
     close();
     void (link ? ipc.openWeb("link", link, "") : searchImage()).catch(notifyError);
@@ -40,11 +41,20 @@ function ConfirmDialog() {
     <div className="file-backdrop" role="presentation">
       <div ref={dialog} className="file-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId} data-testid={`${testId}-dialog`}>
         <h3 id={titleId}>
-          {link ? t(link.toLowerCase().startsWith("tel:") ? "livetext.linkPhoneTitle" : "livetext.linkEmailTitle") : t("livetext.imageSearchTitle")}
+          {t(
+            !link
+              ? "livetext.imageSearchTitle"
+              : link.startsWith("tel:")
+                ? "livetext.linkPhoneTitle"
+                : link.startsWith("mailto:")
+                  ? "livetext.linkEmailTitle"
+                  : "livetext.linkWebTitle",
+          )}
         </h3>
         {link ? (
           <>
-            <p>{t("livetext.linkBody")}</p>
+            <p>{t(info?.idn ? "livetext.linkIdnBody" : "livetext.linkBody")}</p>
+            {info?.host && <p className="livetext-confirm-target"><strong>{info.host}</strong></p>}
             <p className="livetext-confirm-target">{link}</p>
           </>
         ) : (

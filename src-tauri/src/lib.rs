@@ -87,6 +87,7 @@ pub fn run() {
             commands::ocr::cancel_text_recognition,
             commands::ocr::copy_text,
             commands::ocr::open_web,
+            commands::ocr::inspect_link,
             commands::segment::segment_subject,
             commands::finder::file_tags,
             commands::finder::set_file_tags,

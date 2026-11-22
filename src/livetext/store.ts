@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { listen } from "@tauri-apps/api/event";
 import * as ipc from "../ipc/commands";
-import { OCR_MODELS_PROGRESS_EVENT, type DetectedCode, type DocInfo, type OcrProgress } from "../ipc/types";
+import { OCR_MODELS_PROGRESS_EVENT, type DetectedCode, type DocInfo, type LinkInfo, type OcrProgress } from "../ipc/types";
 import { notifyError } from "../chrome/notify";
 import { useDocs } from "../store/docs";
 import { getPrefs, subscribePrefs } from "../store/prefs";
@@ -25,6 +25,8 @@ interface LiveTextState {
   model: TextModel | null;
   data: DataItem[];
   codes: DetectedCode[];
+  /** Destino normalizado (Rust) de cada link lido, pelo texto cru. */
+  links: Record<string, LinkInfo>;
   /** Progresso do download (0 a 1). */
   progress: number;
   /** Botão Texto ao Vivo ligado: destaca todo o texto, links e QR codes. */
@@ -42,6 +44,7 @@ const INITIAL: LiveTextState = {
   model: null,
   data: [],
   codes: [],
+  links: {},
   progress: 0,
   highlight: false,
   sel: null,
@@ -63,11 +66,14 @@ function target(): { doc: DocInfo; frame: number; key: string } | null {
   return { doc, frame, key: `${doc.id}:${doc.rev}:${frame}` };
 }
 
+/** Texto que abre como link (QR code): http(s), e-mail ou telefone. */
+export const isLink = (s: string) => /^(https?:\/\/|mailto:|tel:)/i.test(s);
+
 /** `null` = ainda não consultado. */
 let modelsInstalled: boolean | null = null;
 
 function clear(status: LiveStatus, key: string | null) {
-  set({ status, key, model: null, data: [], codes: [], sel: null, highlight: false, find: { ...get().find, matches: [], index: 0 } });
+  set({ status, key, model: null, data: [], codes: [], links: {}, sel: null, highlight: false, find: { ...get().find, matches: [], index: 0 } });
 }
 
 /** Alinha o estado ao documento ativo: pede o OCR, usa o cache do Rust ou cancela. */
@@ -92,10 +98,19 @@ export async function sync(): Promise<void> {
     const lines = await ipc.recognizeText(t.doc.id, t.frame);
     if (get().key !== t.key) return;
     const model = buildModel(lines);
-    set({ status: "ready", model, data: detectData(model), sel: null });
+    const data = detectData(model);
+    set({ status: "ready", model, data, sel: null });
     refreshFind();
-    const codes = lines.length || get().highlight ? await ipc.detectCodes(t.doc.id, t.frame) : [];
-    if (get().key === t.key) set({ codes });
+    // QR code é extra: se falhar, o texto reconhecido continua valendo.
+    const codes = await ipc.detectCodes(t.doc.id, t.frame).catch((e) => (console.error(e), [] as DetectedCode[]));
+    if (get().key !== t.key) return;
+    set({ codes });
+    const hrefs = [...data.filter((d) => d.kind === "link").map((d) => d.href), ...codes.map((c) => c.text).filter(isLink)];
+    const infos = await Promise.allSettled(hrefs.map((h) => ipc.inspectLink(h)));
+    if (get().key !== t.key) return;
+    const links: Record<string, LinkInfo> = {};
+    infos.forEach((r, i) => r.status === "fulfilled" && (links[hrefs[i]] = r.value));
+    set({ links });
   } catch (e) {
     // Pedido obsoleto (cancelado ou de outra imagem): o mais novo cuida do estado.
     if (get().key !== t.key) return;

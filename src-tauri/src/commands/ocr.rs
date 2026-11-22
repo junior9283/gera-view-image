@@ -19,6 +19,7 @@ use std::{
     collections::VecDeque,
     io::Write,
     path::{Path, PathBuf},
+    time::Duration,
     sync::{
         Arc, LazyLock, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -94,9 +95,15 @@ pub async fn download_ocr_models(app: AppHandle) -> AppResult<()> {
     if STATE.downloading.swap(true, Ordering::SeqCst) {
         return Err(AppError::Unsupported("ocr: download em andamento".into()));
     }
-    let result = download(&app).await;
-    STATE.downloading.store(false, Ordering::SeqCst);
-    result
+    // Limpa o estado mesmo com erro ou pânico no meio do download.
+    struct Busy;
+    impl Drop for Busy {
+        fn drop(&mut self) {
+            STATE.downloading.store(false, Ordering::SeqCst);
+        }
+    }
+    let _busy = Busy;
+    download(&app).await
 }
 
 async fn download(app: &AppHandle) -> AppResult<()> {
@@ -112,31 +119,49 @@ async fn download(app: &AppHandle) -> AppResult<()> {
     }
     let client = reqwest::Client::builder()
         .user_agent(concat!("gera-view-image/", env!("CARGO_PKG_VERSION")))
+        .https_only(true)
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(300))
         .build()
         .map_err(io)?;
     let mut done = 0;
     for spec in missing {
         let part = dir.join(format!("{}.part", spec.file));
-        let mut res = client.get(spec.url).send().await.map_err(io)?.error_for_status().map_err(io)?;
-        let mut file = std::fs::File::create(&part).map_err(io)?;
-        let mut hash = Sha256::new();
-        let mut len = 0u64;
-        while let Some(chunk) = res.chunk().await.map_err(io)? {
-            len += chunk.len() as u64;
-            if len > spec.size {
-                break;
-            }
-            hash.update(&chunk);
-            file.write_all(&chunk).map_err(io)?;
-            done += chunk.len() as u64;
-            let _ = app.emit(MODELS_PROGRESS_EVENT, Progress { done, total });
-        }
-        drop(file);
-        if len != spec.size || core::hex(&hash.finalize()) != spec.sha256 {
+        let fetched = fetch(app, &client, &spec, &part, &mut done, total).await;
+        if fetched.is_err() {
             let _ = std::fs::remove_file(&part);
-            return Err(AppError::Corrupt(format!("ocr: {} com tamanho ou hash inesperado", spec.file)));
         }
+        fetched?;
         std::fs::rename(&part, dir.join(spec.file)).map_err(io)?;
+    }
+    Ok(())
+}
+
+/// Baixa um modelo em `part`, conferindo tamanho e SHA-256.
+async fn fetch(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    spec: &ModelSpec,
+    part: &Path,
+    done: &mut u64,
+    total: u64,
+) -> AppResult<()> {
+    let mut res = client.get(spec.url).send().await.map_err(io)?.error_for_status().map_err(io)?;
+    let mut file = std::fs::File::create(part).map_err(io)?;
+    let mut hash = Sha256::new();
+    let mut len = 0u64;
+    while let Some(chunk) = res.chunk().await.map_err(io)? {
+        len += chunk.len() as u64;
+        if len > spec.size {
+            break;
+        }
+        hash.update(&chunk);
+        file.write_all(&chunk).map_err(io)?;
+        *done += chunk.len() as u64;
+        let _ = app.emit(MODELS_PROGRESS_EVENT, Progress { done: *done, total });
+    }
+    if len != spec.size || core::hex(&hash.finalize()) != spec.sha256 {
+        return Err(AppError::Corrupt(format!("ocr: {} com tamanho ou hash inesperado", spec.file)));
     }
     Ok(())
 }
@@ -305,7 +330,9 @@ fn safe_link(text: &str) -> AppResult<String> {
         "http" | "https" => {
             // `https:///etc` e `http:exemplo` viram hosts válidos no WHATWG: exige `//host`.
             let host_first = lower.split_once("://").is_some_and(|(_, r)| !r.starts_with(['/', '\\']));
-            if !host_first || url.host_str().is_none_or(str::is_empty) {
+            // `https://google.com@evil.example` engana quem lê: userinfo é sempre recusado.
+            let userinfo = !url.username().is_empty() || url.password().is_some() || rest_has_at(&lower);
+            if !host_first || userinfo || url.host_str().is_none_or(str::is_empty) {
                 return Err(bad());
             }
             Ok(url.to_string())
@@ -326,6 +353,39 @@ fn safe_link(text: &str) -> AppResult<String> {
         }
         _ => Err(bad()),
     }
+}
+
+/// `@` antes do fim da autoridade (`https://:@host` tem userinfo vazio, mas tem `@`).
+fn rest_has_at(lower: &str) -> bool {
+    let authority = lower.split_once("://").map_or("", |(_, r)| r.split(['/', '?', '#']).next().unwrap_or(""));
+    authority.contains('@')
+}
+
+/// Link reconstruído e o host em ASCII (punycode), para a interface mostrar e decidir se confirma.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkInfo {
+    pub href: String,
+    /// Só em `http(s)`.
+    pub host: Option<String>,
+    /// Host internacionalizado (pode imitar outro site): a interface pede confirmação.
+    pub idn: bool,
+}
+
+pub fn link_info(text: &str) -> AppResult<LinkInfo> {
+    let href = safe_link(text.trim())?;
+    let host = url::Url::parse(&href)
+        .ok()
+        .filter(|u| matches!(u.scheme(), "http" | "https"))
+        .and_then(|u| u.host_str().map(str::to_string));
+    let idn = host.as_deref().is_some_and(|h| h.split('.').any(|label| label.starts_with("xn--")));
+    Ok(LinkInfo { href, host, idn })
+}
+
+/// Destino normalizado de um link lido da imagem (o mesmo que `open_web` abriria).
+#[tauri::command]
+pub fn inspect_link(text: String) -> AppResult<LinkInfo> {
+    link_info(&text)
 }
 
 /// Abre Traduzir, Pesquisar Texto, Pesquisar Imagem (página de busca por imagem, sem enviar nada)
@@ -395,6 +455,29 @@ mod tests {
         for bad in ["https:///etc/passwd", "http://", "https://a b", "https://", "http:exemplo"] {
             assert!(link(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn http_com_userinfo_e_recusado() {
+        for bad in ["https://usuario@exemplo.com", "https://a:b@exemplo.com/x", "http://google.com@evil.example/", "https://:@exemplo.com"] {
+            assert!(web_url("link", bad, "").is_err(), "{bad}");
+            assert!(link_info(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn link_info_devolve_host_ascii_e_marca_idn() {
+        let ascii = link_info("https://Exemplo.com.br/a").unwrap();
+        assert_eq!((ascii.href.as_str(), ascii.host.as_deref(), ascii.idn), ("https://exemplo.com.br/a", Some("exemplo.com.br"), false));
+        let idn = link_info("https://exémplo.com/a").unwrap();
+        assert_eq!(idn.host.as_deref(), Some("xn--exmplo-cva.com"));
+        assert!(idn.idn);
+        assert_eq!(idn.href, "https://xn--exmplo-cva.com/a");
+        // Punycode já escrito também é IDN (homógrafo disfarçado).
+        assert!(link_info("https://xn--pple-43d.com").unwrap().idn);
+        let mail = link_info("mailto:a@b.com?attach=/x").unwrap();
+        assert_eq!((mail.href.as_str(), mail.host, mail.idn), ("mailto:a@b.com", None, false));
+        assert!(link_info("file:///etc/passwd").is_err());
     }
 
     #[test]

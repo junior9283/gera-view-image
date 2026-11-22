@@ -4,7 +4,7 @@ import type {
   FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, Rect, RevertTarget, SaveOutcome, TextLine,
   ViewBuffer, WindowEntry,
 } from "./types";
-import type { OcrModels, WebKind } from "./types";
+import type { LinkInfo, OcrModels, WebKind } from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -124,6 +124,7 @@ export const ocrModels = () => invoke<OcrModels>("ocr_models");
 export const downloadOcrModels = () => invoke<void>("download_ocr_models");
 export const cancelTextRecognition = () => invoke<void>("cancel_text_recognition");
 export const copyText = (text: string) => invoke<void>("copy_text", { text });
+export const inspectLink = (text: string) => invoke<LinkInfo>("inspect_link", { text });
 export const openWeb = (kind: WebKind, text: string, lang: string) => invoke<void>("open_web", { kind, text, lang });
 
 // Lote 4: sujeito

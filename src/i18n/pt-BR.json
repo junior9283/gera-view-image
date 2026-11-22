@@ -577,6 +577,8 @@
     "linkEmailTitle": "Escrever um e-mail para este endereço?",
     "linkPhoneTitle": "Ligar para este número?",
     "linkBody": "O endereço foi lido da imagem. Confira antes de abrir:",
-    "linkOpen": "Abrir"
+    "linkOpen": "Abrir",
+    "linkWebTitle": "Abrir este site?",
+    "linkIdnBody": "O endereço foi lido da imagem e usa caracteres internacionais, que podem imitar outro site. Confira o domínio antes de abrir:"
   }
 }

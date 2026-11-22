@@ -160,6 +160,8 @@ export const OCR_MODELS_PROGRESS_EVENT = "ocr-models-progress";
 export interface OcrProgress { done: number; total: number }
 /** `images` abre a busca por imagem (sem enviar nada); `link` abre http(s), mailto: ou tel:. */
 export type WebKind = "translate" | "search" | "images" | "link";
+/** Link lido da imagem, reconstruído pelo Rust; `host` em ASCII (punycode), só em http(s). */
+export interface LinkInfo { href: string; host: string | null; idn: boolean }
 
 /** Lote 5 (`finder.rs`). `savedAt` em ISO 8601. */
 export interface FileVersion { id: string; savedAt: string; size: number }

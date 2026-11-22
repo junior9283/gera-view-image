@@ -102,10 +102,12 @@ describe("camada do Texto ao Vivo", () => {
     expect(screen.queryByTestId("livetext-data")).toBeNull();
     fireEvent.click(screen.getByTestId("livetext-button"));
     expect(useLiveText.getState().highlight).toBe(true);
-    invoke.mockResolvedValue(undefined);
+    invoke.mockImplementation(async (cmd: string) =>
+      cmd === "inspect_link" ? { href: "https://gera.dev/", host: "gera.dev", idn: false } : undefined,
+    );
     fireEvent.click(screen.getByTestId("livetext-data"));
     await act(async () => {});
-    expect(calls("open_web")).toEqual([["open_web", { kind: "link", text: "https://gera.dev", lang: "" }]]);
+    expect(calls("open_web")).toEqual([["open_web", { kind: "link", text: "https://gera.dev/", lang: "" }]]);
   });
 
   const withHost = () =>
@@ -117,16 +119,52 @@ describe("camada do Texto ao Vivo", () => {
     );
   const item = (kind: "link" | "email" | "phone", text: string, href: string) => ({ kind, text, href, start: 0, end: 0, words: [0] });
 
-  it("link http abre direto e passa o texto cru ao Rust, que faz a sanitização", async () => {
+  /** `inspect_link` como o Rust: host em punycode e `idn` quando há rótulo `xn--`. */
+  const inspect = (infos: Record<string, { href: string; host: string | null; idn: boolean }>) =>
+    invoke.mockImplementation(async (cmd: string, args?: { text?: string }) =>
+      cmd === "inspect_link" ? infos[args!.text!] : undefined,
+    );
+
+  it("link http abre direto: o texto cru vai ao Rust, que devolve o destino normalizado", async () => {
     ready();
-    const href = "https://gera.dev/a?b=1";
+    const href = "https://Gera.dev/a?b=1";
     useLiveText.setState({ highlight: true, data: [item("link", href, href)] });
-    invoke.mockResolvedValue(undefined);
+    inspect({ [href]: { href: "https://gera.dev/a?b=1", host: "gera.dev", idn: false } });
     withHost();
     fireEvent.click(screen.getByTestId("livetext-data"));
     await act(async () => {});
-    expect(calls("open_web")).toEqual([["open_web", { kind: "link", text: href, lang: "" }]]);
+    expect(calls("inspect_link")).toEqual([["inspect_link", { text: href }]]);
+    expect(calls("open_web")).toEqual([["open_web", { kind: "link", text: "https://gera.dev/a?b=1", lang: "" }]]);
     expect(screen.queryByTestId("link-confirm-dialog")).toBeNull();
+  });
+
+  it("host IDN em http(s) pede confirmação mostrando o host em punycode", async () => {
+    ready();
+    const href = "https://exémplo.com/a";
+    useLiveText.setState({ highlight: true, data: [item("link", href, href)] });
+    inspect({ [href]: { href: "https://xn--exmplo-cva.com/a", host: "xn--exmplo-cva.com", idn: true } });
+    withHost();
+    fireEvent.click(screen.getByTestId("livetext-data"));
+    await act(async () => {});
+    expect(calls("open_web")).toHaveLength(0);
+    expect(screen.getByTestId("link-confirm-dialog").textContent).toContain("xn--exmplo-cva.com");
+    fireEvent.click(screen.getByTestId("link-confirm-open"));
+    await act(async () => {});
+    expect(calls("open_web")).toEqual([["open_web", { kind: "link", text: "https://xn--exmplo-cva.com/a", lang: "" }]]);
+  });
+
+  it("o title do link mostra o host normalizado devolvido pelo Rust", () => {
+    ready();
+    const href = "https://exémplo.com/a";
+    useLiveText.setState({
+      highlight: true,
+      data: [item("link", href, href)],
+      links: { [href]: { href: "https://xn--exmplo-cva.com/a", host: "xn--exmplo-cva.com", idn: true } },
+    });
+    render(<LiveTextLayer {...props} />);
+    const title = screen.getByTestId("livetext-data").getAttribute("title")!;
+    expect(title).toContain("xn--exmplo-cva.com");
+    expect(title).toContain("https://xn--exmplo-cva.com/a");
   });
 
   it("o botão mostra o destino completo no title (dados e QR code)", () => {
@@ -145,13 +183,14 @@ describe("camada do Texto ao Vivo", () => {
   it("mailto pede confirmação mostrando o endereço; Cancelar não abre", async () => {
     ready();
     useLiveText.setState({ highlight: true, data: [item("email", "ana@b.com", "mailto:ana@b.com?attach=/etc/passwd")] });
-    invoke.mockResolvedValue(undefined);
+    inspect({ "mailto:ana@b.com?attach=/etc/passwd": { href: "mailto:ana@b.com", host: null, idn: false } });
     withHost();
     fireEvent.click(screen.getByTestId("livetext-data"));
     await act(async () => {});
     expect(calls("open_web")).toHaveLength(0);
     const dialog = screen.getByTestId("link-confirm-dialog");
-    expect(dialog.textContent).toContain("mailto:ana@b.com?attach=/etc/passwd");
+    expect(dialog.textContent).toContain("mailto:ana@b.com");
+    expect(dialog.textContent).not.toContain("attach");
     fireEvent.click(screen.getByTestId("link-confirm-cancel"));
     expect(screen.queryByTestId("link-confirm-dialog")).toBeNull();
     expect(calls("open_web")).toHaveLength(0);
@@ -160,7 +199,7 @@ describe("camada do Texto ao Vivo", () => {
   it("tel de um QR code pede confirmação e só abre ao confirmar", async () => {
     ready();
     useLiveText.setState({ highlight: true, codes: [{ text: "tel:+5511987654321", bbox: { x: 0, y: 0, w: 10, h: 10 } }] });
-    invoke.mockResolvedValue(undefined);
+    inspect({ "tel:+5511987654321": { href: "tel:+5511987654321", host: null, idn: false } });
     withHost();
     fireEvent.click(screen.getByTestId("livetext-code"));
     await act(async () => {});
@@ -252,6 +291,19 @@ describe("controlador", () => {
     pending[1]([]);
     await second;
     expect(useLiveText.getState().status).toBe("ready");
+  });
+
+  it("falha ao ler QR codes mantém o texto e o status pronto", async () => {
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "ocr_models") return { installed: true, downloadBytes: 0 };
+      if (cmd === "recognize_text") return LINES;
+      if (cmd === "detect_codes") throw { code: "io" };
+    });
+    useDocs.setState({ docs: [doc(1)], activeId: 1 });
+    await sync();
+    expect(useLiveText.getState().status).toBe("ready");
+    expect(useLiveText.getState().model?.text).toContain("coração");
+    expect(useLiveText.getState().codes).toEqual([]);
   });
 
   it("desligar o Texto ao Vivo cancela e limpa", async () => {

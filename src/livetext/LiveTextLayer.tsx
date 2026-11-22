@@ -7,9 +7,9 @@ import { notifyError } from "../chrome/notify";
 import { useMarkup } from "../markup/store";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
-import { copySelected, openLink } from "./actions";
+import { copySelected, linkTitle, openLink } from "./actions";
 import { LiveTextMenu, type MenuAt } from "./LiveTextMenu";
-import { downloadModels, setSelection, toggleHighlight, useLiveText } from "./store";
+import { downloadModels, isLink, setSelection, toggleHighlight, useLiveText } from "./store";
 import { wordAt, type TextModel } from "./text";
 import "./livetext.css";
 
@@ -42,6 +42,7 @@ const range = (a: number, b: number) => {
 export function LiveTextLayer({ scale, panX, panY }: OverlayProps) {
   const { t } = useTranslation();
   const { status, model, data, codes, highlight, sel, find, progress } = useLiveText();
+  useLiveText((s) => s.links); // o `title` dos links muda quando o Rust responde
   const markupOn = useMarkup((s) => s.visible);
   const selectionTool = useSelection((s) => s.selectionTool);
   const slideshow = useUi((s) => s.slideshow);
@@ -207,8 +208,8 @@ export function LiveTextLayer({ scale, panX, panY }: OverlayProps) {
               type="button"
               className="livetext-data"
               data-testid="livetext-data"
-              title={t(`livetext.open.${d.kind}`, { text: d.href })}
-              aria-label={t(`livetext.open.${d.kind}`, { text: d.href })}
+              title={t(`livetext.open.${d.kind}`, { text: linkTitle(d.href) })}
+              aria-label={t(`livetext.open.${d.kind}`, { text: linkTitle(d.href) })}
               style={box(r)}
               data-livetext-stop
               onClick={() => void openLink(d.href).catch(notifyError)}
@@ -217,7 +218,7 @@ export function LiveTextLayer({ scale, panX, panY }: OverlayProps) {
         )}
       {highlight &&
         codes.map((c, k) => {
-          const link = /^(https?:\/\/|mailto:|tel:)/i.test(c.text);
+          const link = isLink(c.text);
           return (
             <div key={k} className="livetext-code" style={box(c.bbox)}>
               <button
@@ -225,7 +226,7 @@ export function LiveTextLayer({ scale, panX, panY }: OverlayProps) {
                 className="livetext-chip"
                 data-testid="livetext-code"
                 data-livetext-stop
-                title={c.text}
+                title={link ? linkTitle(c.text) : c.text}
                 onClick={() => void (link ? openLink(c.text) : ipc.copyText(c.text)).catch(notifyError)}
               >
                 {t(link ? "livetext.qrOpen" : "livetext.qrCopy")}

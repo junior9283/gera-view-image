@@ -24,32 +24,43 @@ Base: 49bd354 (Lote 0). Commits: 8bd5ea7 (motor Rust), e88b647 (interface), 8909
 
 ## Decisões
 
-- **ocrs descartado.** O alfabeto dele é só ASCII (sem acentos) e os pesos são CC-BY-SA-4.0, que não é permissiva. Testei no protótipo antes de decidir.
+- **ocrs descartado.** O alfabeto dele é só ASCII (sem acentos) e os pesos são CC-BY-SA-4.0, que não é permissiva. O alfabeto foi lido no código-fonte e a licença na página dos modelos; no protótipo só a detecção do `ocrs` rodou.
 - **Modelos baixados sob demanda, não no pacote nem no Git.** São 12,7 MB a mais em cada pacote para um recurso opcional.
   - **Origem:** conversões ONNX oficiais do RapidOCR (Apache-2.0) no ModelScope, com SHA-256 fixo.
   - **Download:** grava em `.part`, confere e renomeia. Só começa depois que o usuário confirma no botão do canto, então não há rede automática.
   - Origem, licença e hashes estão em `docs/arquitetura/ocr.md`.
-- **Dependências novas:** `rten`/`rten-tensor`, `rqrr`, `sha2`, `url`, `reqwest` (rustls-no-provider) e `rustls`/ring. São os mesmos do atualizador; a única parte em C é o ring, estático. Nada novo no NEEDED (o `check-needed.sh` não rodou porque não houve build release; ver pendências).
+- **Dependências novas:** `rten`/`rten-tensor`, `rqrr`, `sha2`, `url`, `reqwest` (rustls-no-provider) e `rustls`/ring. `reqwest` e `rustls`/ring são os do atualizador; o resto é Rust puro, e a única parte em C é o ring, estático. O `check-needed.sh` rodou só no binário debug (resultado em Testes).
 - **Segurança (pedido do coordenador):**
   - `open_web("link")` reconstrói o link com a crate `url`: `http(s)` exige `//host` válido; `mailto:` leva só o endereço e subject/body/cc/bcc, descartando `attach`; `tel:` aceita só dígitos e `+-() `; outros esquemas são recusados.
   - A interface mostra o destino completo no `title` e confirma `mailto:`/`tel:` antes de abrir.
   - Testes RED primeiro: 3 no Rust e 3 no frontend.
 
+## Ajustes pedidos depois da revisão
+
+- **Download:** `https_only`, `connect_timeout` de 15 s e `timeout` de 300 s. Uma guarda `Drop` libera o estado de download mesmo com erro, e o `.part` é apagado se o download ou a conferência falhar.
+- **Links:**
+  - `http(s)` com userinfo é recusado.
+  - O novo comando `inspect_link` devolve o link reconstruído e o host em punycode. A interface mostra esse host no `title`, e um host IDN pede confirmação também em `http(s)`.
+  - Testes: no vitest (IDN, `title`, delegação ao Rust e falha de QR) o RED veio antes. No Rust (`http_com_userinfo_e_recusado`, `link_info_devolve_host_ascii_e_marca_idn`) a implementação foi escrita antes da primeira execução; o RED foi provado depois, por mutação (sem a checagem de userinfo e sem a de `xn--`).
+- **QR:** se a detecção falhar, o texto do OCR continua e o status fica `ready` (há teste).
+
 ## Integração mínima fora dos exclusivos
 
-`Cargo.toml`/`Cargo.lock`, `image/mod.rs` (`pub mod ocr`), 5 linhas em `lib.rs`, linhas novas no bloco do Lote 3 em `ipc/commands.ts` e `ipc/types.ts`, bloco `livetext` no fim de `pt-BR.json`/`en.json`, `CHANGELOG.md` e `docs/arquitetura/ocr.md` (novo).
+`Cargo.toml`/`Cargo.lock`, `image/mod.rs` (`pub mod ocr`), 6 linhas em `lib.rs`, linhas novas no bloco do Lote 3 em `ipc/commands.ts` e `ipc/types.ts`, bloco `livetext` no fim de `pt-BR.json`/`en.json`, `CHANGELOG.md` e `docs/arquitetura/ocr.md` (novo).
 
 ## Testes
 
-- Rust: `cargo test --lib ocr` com 19 testes (DB, ordem, CTC, palavras, hash, QR, URLs, saneamento de links, cache). Os testes `#[ignore]` de `tests/ocr.rs` com os modelos reais passaram: as três frases em português saíram exatas e o cancelamento funcionou. No CI não há download.
-- Frontend: typecheck, lint e 23 testes do lote (`text`, camada, Localizar, controlador, registro, links). 
-- `cargo test` completo deu EXIT 0 (lib 93, core 24, file 20, robustez 10, salvar_fiel 11, etc.). Com `cargo clippy --all-targets`, os 9 avisos são todos preexistentes (color, metadata, theme); nenhum vem de `ocr`.
-- `npx vitest run` completo, depois da correção de links: 378/378.
+- Rust: `cargo test --lib ocr` com 21 testes (DB, ordem, CTC, palavras, hash, QR, URLs, saneamento de links, cache). Os testes `#[ignore]` de `tests/ocr.rs` com os modelos reais passaram: as três frases em português saíram exatas e o cancelamento funcionou. No CI não há download.
+- Frontend: typecheck, lint e 26 testes do lote (`text`, camada, Localizar, controlador, registro, links). 
+- `cargo test --no-fail-fast` completo, com os ajustes da revisão: EXIT 0 (lib 95, core 24, file 20, robustez 10, salvar_fiel 11, metadata 6, etc.; 170 no total e 3 `#[ignore]`). `cargo clippy --all-targets`: EXIT 0, e os avisos são todos preexistentes (color, metadata, theme); nenhum vem de `ocr`.
+- Mutação (sem as checagens de userinfo e de `xn--`): falharam só `http_com_userinfo_e_recusado` e `link_info_devolve_host_ascii_e_marca_idn`; código restaurado em seguida.
+- `check-needed.sh` no binário debug: EXIT 0. Os testes `#[ignore]` com modelos reais não foram repetidos depois dos ajustes, que não tocam o motor.
+- `npx vitest run` completo, com os ajustes da revisão: 381/381; typecheck e lint limpos.
 
 ## Pendências e limitações
 
 - Texto rotacionado ou vertical não é tratado (as caixas são alinhadas aos eixos).
 - Parar Fala usa `spd-say --cancel`, que também cancela outros clientes.
 - O Ctrl+C com texto selecionado é tratado por um ouvinte em captura na camada. O lugar certo é a linha `edit.copy` do Lote 2.
-- Não houve build release nem `check-needed.sh`, por causa da máquina sob carga (load 25).
+- Não houve build release; o `check-needed.sh` rodou só no binário debug. Timeouts, `https_only` e limpeza do estado do download não têm teste automatizado.
 - Não houve teste manual no app (GTK/WebKit).
