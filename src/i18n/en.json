@@ -90,7 +90,32 @@
     "label": "Thumbnails",
     "page": "Page {{n}}",
     "contactSheet": "Contact sheet",
-    "thumbSize": "Thumbnail size"
+    "thumbSize": "Thumbnail size",
+    "selectedCount": "{{count}} selected",
+    "itemMenu": "Thumbnail menu",
+    "menu": {
+      "open": "Open",
+      "rotateLeft": "Rotate Left",
+      "rotateRight": "Rotate Right",
+      "flipH": "Flip Horizontal",
+      "flipV": "Flip Vertical",
+      "adjustColor": "Adjust Color…",
+      "resize": "Adjust Size…",
+      "export": "Export…",
+      "exportMany": "Export {{count}} Images…",
+      "print": "Print…",
+      "printMany": "Print {{count}} Images…",
+      "reveal": "Show in Folder",
+      "trash": "Move to Trash",
+      "close": "Close",
+      "closeMany": "Close {{count}} Images"
+    },
+    "batch": {
+      "busy": "A batch action is already running.",
+      "done": "{{count}} images processed.",
+      "failed": "{{done}} of {{total}} images processed. Failed: {{names}}.",
+      "progress": "Processing {{done}} of {{total}}…"
+    }
   },
   "slideshow": {
     "label": "Slideshow",
@@ -131,7 +156,8 @@
     "cancel": "Cancel",
     "previewFailed": "Could not generate the preview.",
     "autoFailed": "Could not compute the automatic adjustment.",
-    "applyFailed": "Could not apply the adjustment."
+    "applyFailed": "Could not apply the adjustment.",
+    "batchHint": "Applies to the {{count}} selected images."
   },
   "resize": {
     "title": "Adjust Size",
@@ -152,7 +178,8 @@
     },
     "resultSize": "Resulting size: {{size}} MB",
     "tooBig": "Size is too large.",
-    "failed": "Could not resize the image."
+    "failed": "Could not resize the image.",
+    "batchHint": "Applies to the {{count}} selected images (proportional: fits the chosen size)."
   },
   "inspector": {
     "title": "Info",

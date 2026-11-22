@@ -14,6 +14,8 @@ interface DocsState {
   setActive: (id: DocId) => void;
   /** Move o documento `id` para a posição `to`. */
   reorder: (id: DocId, to: number) => void;
+  /** Reordena pela lista de ids (ordem de Ordenar Por); ids que faltam ficam no fim, como estão. */
+  applyOrder: (ids: DocId[]) => void;
   /** Fecha no Rust e remove; se era o ativo, ativa o seguinte (ou o anterior). Não pergunta nada. */
   close: (id: DocId) => Promise<void>;
   applyOp: (id: DocId, op: Op) => Promise<DocInfo>;
@@ -68,6 +70,12 @@ export const useDocs = create<DocsState>((set, get) => {
         const [moved] = docs.splice(from, 1);
         docs.splice(Math.max(0, Math.min(to, docs.length)), 0, moved);
         return { docs };
+      }),
+    applyOrder: (ids) =>
+      set((s) => {
+        const rank = new Map(ids.map((id, i) => [id, i]));
+        const docs = [...s.docs].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+        return docs.every((d, i) => d === s.docs[i]) ? s : { docs };
       }),
     close: async (id) => {
       await ipc.closeDocument(id);

@@ -6,6 +6,8 @@ import * as ipc from "../ipc/commands";
 import type { DocInfo, ExportFormat, ExportOptions } from "../ipc/types";
 import { useModal } from "../lib/modal";
 import { useDocs } from "../store/docs";
+import { reportBatch, type BatchFailure } from "../sidebar/batch";
+import { batchTargets } from "../sidebar/selection";
 import { addRecent } from "../store/prefs";
 import { viewable } from "../viewer/actions";
 import {
@@ -254,7 +256,11 @@ async function freeName(dir: string, base: string, ext: string): Promise<string>
 export function ExportSelectedDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const docs = useDocs((s) => s.docs).filter(viewable);
-  const [chosen, setChosen] = useState<Set<number>>(() => new Set(docs.map((d) => d.id)));
+  // Com várias miniaturas selecionadas na barra lateral, só elas vêm marcadas; senão, todas.
+  const [chosen, setChosen] = useState<Set<number>>(() => {
+    const picked = batchTargets();
+    return new Set(picked.length > 1 ? picked : docs.map((d) => d.id));
+  });
   const [opts, setOpts] = useState<ExportOptions>(() => optionsFor("jpeg"));
   const [folder, setFolder] = useState(lastFolder || (docs[0]?.path ? dirname(docs[0].path) : ""));
   const [longest, setLongest] = useState("");
@@ -274,6 +280,7 @@ export function ExportSelectedDialog({ onClose }: { onClose: () => void }) {
     const list = docs.filter((d) => chosen.has(d.id));
     setProgress({ done: 0, total: list.length });
     let ok = 0;
+    const failed: BatchFailure[] = [];
     for (const [i, d] of list.entries()) {
       try {
         const dest = await freeName(folder.trim(), stem(d.name), EXTENSIONS[opts.format]);
@@ -281,12 +288,14 @@ export function ExportSelectedDialog({ onClose }: { onClose: () => void }) {
         ok++;
       } catch (e) {
         console.error(e);
-        notify(t("file.export.failed", { name: d.name }));
+        failed.push({ id: d.id, name: d.name, error: String((e as { message?: unknown } | null)?.message ?? e) });
       }
       setProgress({ done: i + 1, total: list.length });
     }
     lastFolder = folder.trim();
-    notify(t("file.exportedMany", { count: ok }));
+    // Uma falha não interrompe as demais; no fim, um só aviso diz quais arquivos falharam.
+    if (failed.length) reportBatch({ total: list.length, done: ok, failed });
+    else notify(t("file.exportedMany", { count: ok }));
     onClose();
   };
 
