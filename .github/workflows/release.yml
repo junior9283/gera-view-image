@@ -114,10 +114,10 @@ jobs:
             # --version sai antes de iniciar GTK/WebKit: não precisa de display,
             # mas exige que todas as bibliotecas dinâmicas do pacote estejam instaladas.
             $app --version | grep -E "^gera-view-image [0-9]+\.[0-9]+\.[0-9]+"
-            # O WebKitGTK do Fedora é o mais novo da matriz: foi com ele que a janela sumia (0.3.0).
+            # O WebKitGTK do Fedora é o mais novo da matriz: com ele a janela da 0.4.0 sumia.
             if [ "${{ matrix.name }}" = rpm ]; then
               dnf install -y xorg-x11-server-Xvfb dbus-daemon xdotool ImageMagick
-              /scripts/render-check.sh $app
+              timeout 180 /scripts/render-check.sh $app
             fi
           '
 

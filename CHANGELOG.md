@@ -6,7 +6,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 ## [Não lançado]
 
 ### Corrigido
-- A janela sumia ao abrir uma imagem ou um menu e só a última região clicada ficava visível (WebKitGTK recente). O desenho acelerado volta a ser o padrão, com o ajuste que evita o fechamento com "Error 71" em placas Nvidia.
+- A janela sumia ao abrir uma imagem ou um menu e só a última região clicada ficava visível (WebKitGTK recente). O desenho acelerado volta a ser o padrão, com um ajuste para a Nvidia que evitou o fechamento com "Error 71" na placa testada. `GVI_GPU_ACCEL` deixou de existir; se a tela falhar com a sua placa, abra com `GVI_SAFE_RENDER=1`.
 
 ## [0.4.0] - 2026-11-22
 
