@@ -151,13 +151,15 @@ Itens de funções ainda em desenvolvimento aparecem desabilitados nos menus, e 
 
 | | Formatos |
 |---|---|
-| **Abrir** | JPEG, PNG, GIF (animado), BMP, TIFF (várias páginas), WebP, HEIC/HEIF, AVIF, ICO, SVG, PSD (achatado), TGA e RAW (DNG, CR2/CR3, NEF, ARW, ORF, RW2) como prévia revelada |
-| **Salvar no próprio arquivo** | JPEG, PNG, TIFF, WebP, AVIF e BMP |
-| **Exportar** | JPEG, PNG, TIFF, WebP, AVIF, OpenEXR e BMP |
+| **Abrir** | JPEG, PNG, GIF (animado), BMP, TIFF (várias páginas), WebP, HEIC/HEIF, AVIF, JPEG 2000, ICO, SVG, PSD (achatado), TGA e RAW (DNG, CR2/CR3, NEF, ARW, ORF, RW2) como prévia revelada |
+| **Salvar no próprio arquivo** | JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000 e BMP |
+| **Exportar** | JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000, OpenEXR e BMP |
 
-HEIC e JPEG 2000 ainda não podem ser gravados. **HEIC precisa da `libde265`**: no Fedora ela vem do
-[RPM Fusion](https://rpmfusion.org/) (`sudo dnf install libde265`); no Ubuntu/Debian, do pacote `libde265-0`.
-Sem ela o app abre normalmente e avisa ao tentar abrir um HEIC.
+**Abrir HEIC precisa da `libde265`**: no Fedora ela vem do [RPM Fusion](https://rpmfusion.org/)
+(`sudo dnf install libde265`); no Ubuntu/Debian, do pacote `libde265-0`. Sem ela o app abre normalmente e
+avisa ao tentar abrir um HEIC. **Gravar HEIC precisa da `libkvazaar`** (`libkvazaar7` no Debian 13+/Ubuntu 26.04+;
+`kvazaar-libs` no Fedora, pelo RPM Fusion); sem ela o HEIC some do Exportar e o Salvar de um HEIC leva ao Exportar.
+Os pacotes .deb/.rpm recomendam as duas bibliotecas.
 
 ## Instalação
 

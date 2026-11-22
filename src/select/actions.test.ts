@@ -3,11 +3,12 @@ import type { DocInfo, Mask } from "../ipc/types";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
+const annotationsPng = vi.fn(async (): Promise<Uint8Array | null> => null);
+vi.mock("../markup/flatten", () => ({ annotationsPng: () => annotationsPng() }));
 
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import {
-  canPaste,
   copySelection,
   cropToSelection,
   cutSelection,
@@ -72,6 +73,19 @@ describe("ações de seleção", () => {
     expect(invoke).toHaveBeenCalledWith("copy_region", { id: 1, mask: rect });
   });
 
+  it("copySelection sem seleção copia a imagem inteira (como o Pré-Visualização)", async () => {
+    await copySelection();
+    expect(invoke).toHaveBeenCalledWith("copy_region", { id: 1, mask: null });
+  });
+
+  it("copySelection com anotações copia o que se vê: as anotações compostas por cima", async () => {
+    annotationsPng.mockResolvedValueOnce(new Uint8Array([7, 8]));
+    useSelection.setState({ selection: rect });
+    await copySelection();
+    expect(invoke).toHaveBeenCalledWith("copy_image", { id: 1, mask: rect, png: [7, 8] });
+    expect(invoke.mock.calls.map((c) => c[0])).toEqual(["copy_image"]);
+  });
+
   it("cutSelection copia e depois apaga; sem seleção não faz nada", async () => {
     await cutSelection();
     expect(invoke).not.toHaveBeenCalled();
@@ -87,16 +101,16 @@ describe("ações de seleção", () => {
     expect(ops()).toEqual([{ type: "erase", data: ellipse }]);
   });
 
-  it("startInstantAlpha ativa a ferramenta; colar está desabilitado", () => {
+  it("startInstantAlpha ativa a ferramenta", () => {
     startInstantAlpha();
     expect(useSelection.getState().selectionTool).toBe("instantAlpha");
-    expect(canPaste()).toBe(false);
   });
 
   it("sem documento ativo nada acontece", async () => {
     useDocs.setState({ docs: [], activeId: null });
     useSelection.setState({ selection: rect });
     await cropToSelection();
+    await copySelection();
     selectAll();
     expect(invoke).not.toHaveBeenCalled();
   });

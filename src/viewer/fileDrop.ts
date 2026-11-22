@@ -12,6 +12,16 @@ export async function openDropped(paths: string[]): Promise<void> {
   if (first) activate(first.id);
 }
 
+/** Trata o drop no lugar de abrir (devolve `true`); `at` em px CSS da janela. */
+export type DropTarget = (paths: string[], at: { x: number; y: number }) => boolean;
+const targets = new Set<DropTarget>();
+
+/** Lote 2: soltar uma imagem sobre a imagem aberta vira camada colada. Devolve o desregistro. */
+export function registerDropTarget(t: DropTarget): () => void {
+  targets.add(t);
+  return () => targets.delete(t);
+}
+
 /** Arrastar e soltar arquivos na janela (`onDragDropEvent`); devolve se há arquivos sobre a janela. */
 export function useFileDrop(): boolean {
   const [over, setOver] = useState(false);
@@ -24,6 +34,9 @@ export function useFileDrop(): boolean {
         else if (payload.type === "leave") setOver(false);
         else if (payload.type === "drop") {
           setOver(false);
+          const k = window.devicePixelRatio || 1;
+          const at = { x: payload.position.x / k, y: payload.position.y / k };
+          if ([...targets].some((t) => t(payload.paths, at))) return;
           openDropped(payload.paths).catch((e) => console.error("falha ao abrir arquivos soltos:", e));
         }
       }),

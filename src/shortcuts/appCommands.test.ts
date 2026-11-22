@@ -68,11 +68,11 @@ describe("comandos do app", () => {
     ]);
   });
 
-  it("copiar exige seleção e a falha vira aviso traduzido", async () => {
-    useDocs.getState().add([info(1)]);
+  it("copiar só exige imagem aberta (sem seleção copia a imagem inteira) e a falha vira aviso traduzido", async () => {
     expect(isEnabled("edit.copy")).toBe(false);
-    useSelection.getState().setSelection({ type: "rect", data: { x: 0, y: 0, w: 10, h: 10 } });
+    useDocs.getState().add([info(1)]);
     expect(isEnabled("edit.copy")).toBe(true);
+    useSelection.getState().setSelection({ type: "rect", data: { x: 0, y: 0, w: 10, h: 10 } });
     vi.spyOn(console, "error").mockImplementation(() => {});
     invoke.mockRejectedValueOnce({ code: "empty_selection", message: "vazia" });
     runCommand("edit.copy");

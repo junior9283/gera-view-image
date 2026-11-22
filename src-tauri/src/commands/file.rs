@@ -60,6 +60,12 @@ pub async fn estimate_size(
     blocking(move || store.estimate_size(id, &opts)).await
 }
 
+/// Há codificador HEVC (libkvazaar carregada): sem ele o Exportar oculta HEIC.
+#[tauri::command]
+pub async fn heic_encoder_available() -> AppResult<bool> {
+    blocking(|| Ok(crate::image::encode_heic::hevc_encoder_available())).await
+}
+
 #[tauri::command]
 pub async fn revert(store: State<'_, DocStore>, id: DocId, to: RevertTarget) -> AppResult<DocInfo> {
     let store = store.inner().clone();

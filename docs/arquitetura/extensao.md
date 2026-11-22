@@ -76,8 +76,16 @@ registerSlot("viewport-overlay", "magnifier", Magnifier);
   `edit.copy` continua em `appCommands.ts`: para o Copiar sem seleção, o lote muda só aquela linha,
   porque um segundo registro no carregamento do módulo seria sobrescrito pelo `registerAppCommands`
   do App.
+  Feito: Colar como camada (`src/select/paste.ts`), menu de contexto da imagem (`ContextMenu.tsx`,
+  slot `viewport-overlay`) e soltar imagem sobre a imagem pelo gancho `registerDropTarget` de
+  `src/viewer/fileDrop.ts`, que outros lotes também podem usar (um alvo que devolve `true` impede a
+  abertura como documento).
 - **Lote 5.** O popover do título entra pelo slot `title-accessory` (props `{ title }`), renderizado
   pela `TitleBar` ao lado do nome. Salvar Como recebe `ExportOptions` (`image/encode.rs`).
+  Implementado: os diálogos (versões e confirmação do Lixo) entram pelo slot `above-content`;
+  comandos extras `file_locked`, `version_preview` e `set_versions_limit`; `set_file_tags`
+  devolve a lista gravada e `save_as` aceita `keywords`. O Salvar e o Exportar gravam por
+  `doc::finder::overwrite` (guarda a versão anterior e mantém os xattr `user.*`).
 - **Lote 6.** Alternar a barra de ferramentas é Ctrl+Shift+T, porque Ctrl+Alt+T abre o terminal no
   GNOME e no KDE. Os itens de Arquivo › Compartilhar são `file.shareEmail` e `file.shareDevice`.
   O campo Pesquisar do menu Ajuda é `help.search` (Ctrl+?) e fica no `MenuBar.tsx`.

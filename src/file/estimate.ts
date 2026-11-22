@@ -5,16 +5,41 @@ import type { DocId, ExportFormat, ExportOptions, SourceFormat } from "../ipc/ty
 /** Espera depois da última mudança antes de pedir a estimativa ao Rust. */
 export const ESTIMATE_DEBOUNCE_MS = 300;
 
-/** Formatos com codificador no binário (HEIC e JPEG 2000 ficam ocultos: ver CHANGELOG). */
-export const EXPORT_FORMATS: ExportFormat[] = ["jpeg", "png", "tiff", "webp", "avif", "exr", "bmp"];
+/** Formatos do Exportar. HEIC só com a libkvazaar (opcional): ver `exportFormats`. */
+export const EXPORT_FORMATS: ExportFormat[] = ["jpeg", "png", "tiff", "heic", "webp", "avif", "jp2", "exr", "bmp"];
+
+/** Formatos com codificador nesta máquina (`heic` depende da libkvazaar). */
+export const exportFormats = (heic: boolean): ExportFormat[] =>
+  heic ? EXPORT_FORMATS : EXPORT_FORMATS.filter((f) => f !== "heic");
+
+let heicProbe: Promise<boolean> | null = null;
+
+/** Consulta (uma vez por sessão) se há codificador HEIC. `null` enquanto não sabe. */
+export function useHeicEncoder(): boolean | null {
+  const [ok, setOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    heicProbe ??= ipc.heicEncoderAvailable().catch(() => false);
+    void heicProbe.then((v) => live && setOk(v));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return ok;
+}
+
+/** Só para testes: esquece a consulta anterior. */
+export const resetHeicProbeForTests = () => {
+  heicProbe = null;
+};
 
 export const EXTENSIONS: Record<ExportFormat, string> = {
   jpeg: "jpg", png: "png", tiff: "tiff", webp: "webp", avif: "avif", exr: "exr", bmp: "bmp", heic: "heic", jp2: "jp2",
 };
 
 /** Formato de exportação que corresponde ao do arquivo (para o tamanho resultante). */
-export function exportFormatOf(f: SourceFormat): ExportFormat {
-  return (EXPORT_FORMATS as string[]).includes(f) ? (f as ExportFormat) : "png";
+export function exportFormatOf(f: SourceFormat, formats: ExportFormat[] = EXPORT_FORMATS): ExportFormat {
+  return (formats as string[]).includes(f) ? (f as ExportFormat) : "png";
 }
 
 export const defaultOptions = (format: ExportFormat): ExportOptions => ({

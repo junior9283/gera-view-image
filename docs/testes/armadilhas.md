@@ -17,6 +17,14 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
   pode reter o mesmo cache: troque a `key` do cache se mexer nos codecs.
 - **Disco.** Cada binário de teste em debug tem ~850 MB e o target passa de 15 GB. Nunca use `/tmp` (tmpfs) nem
   `~/.cache` para o target numa máquina com o `/home` quase cheio.
+- **Gravar HEIC usa a libkvazaar por dlopen** (`native/heic/kvazaar_dl.cc`, soname `libkvazaar.so.7`, trocável
+  por `GVI_LIBKVAZAAR_SONAME`, só nome). O `include/kvazaar.h` é o da 2.3.2; da 2.2 para a 2.3 só entrou
+  `enable_logging_output` no fim do `kvz_config`, por isso `HAVE_KVAZAAR_ENABLE_LOGGING` fica **sem** definir
+  (escrever o campo numa 2.2 passaria do fim da struct). Os testes que gravam HEIC são `#[ignore]` (o runner
+  Ubuntu 22.04 não tem `libkvazaar7`). Para rodá-los sem root: `dnf download kvazaar-libs` (ou
+  `apt download libkvazaar7`), extraia (`rpm2cpio … | cpio -idm`) e rode
+  `LD_LIBRARY_PATH=<pasta>/usr/lib64 cargo test -- --include-ignored heic`. Sem a lib, o
+  `tests/kvazaar_ausente.rs` confere que HEIC não grava e o Salvar leva ao Exportar.
 - **Binário release sem `custom-protocol`.** `cargo build --release` sem `--features tauri/custom-protocol` tenta
   carregar o `devUrl` e nunca chega ao `render_view`. Use o `npm run tauri build` ou passe a feature.
 
@@ -58,3 +66,12 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
   temporários de `<cache>/drag/<pid>` ficam (a próxima abertura os apaga). Roteiro: uma janela Python/GTK3 com
   `drag_dest_add_uri_targets` que imprime as URIs, o app com duas imagens, `xdotool mousedown 1` na miniatura,
   `mousemove` em passos até a janela alvo e `mouseup 1`. O jsdom não cobre isso.
+
+## Remover Fundo (segmentação)
+
+- **O CI não baixa o U²-Netp.** Os testes de `image::segment` montam um ONNX mínimo (um `ReduceMean`, via
+  `prost`) com a mesma entrada `[1, 3, 320, 320]`, e o download é testado contra um servidor HTTP local em
+  `127.0.0.1`. O modelo real só roda no teste ignorado: baixe `u2netp.onnx` (URL e SHA-256 em
+  `image/segment.rs`) e rode `GVI_U2NETP=/caminho/u2netp.onnx cargo test u2netp_real -- --ignored`.
+- **O cancelamento é global** (`segment::cancel_all`): testes que cancelam usam `Job::on(&contador_próprio)`,
+  senão derrubam o trabalho de outro teste rodando em paralelo.

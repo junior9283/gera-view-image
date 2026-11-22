@@ -1,0 +1,141 @@
+/* Lote 5: botão do título, popover (nome, etiquetas, local, Bloqueado) e navegador de versões. */
+.finder-title-button {
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.finder-title-button:hover,
+.finder-title-button[aria-expanded="true"] {
+  opacity: 1;
+  background: rgb(127 127 127 / 0.2);
+}
+.finder-popover {
+  position: fixed;
+  z-index: 900;
+  width: 300px;
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #2b2b2b;
+  color: #eee;
+  font: 13px/1.4 system-ui, sans-serif;
+  text-align: left;
+  font-weight: normal;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.5);
+}
+.finder-row {
+  display: grid;
+  grid-template-columns: 5.5em 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.finder-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.finder-name input {
+  flex: 1;
+  min-width: 0;
+}
+.finder-ext,
+.finder-hint {
+  opacity: 0.7;
+}
+.finder-hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+.finder-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.finder-tags input {
+  flex: 1;
+  min-width: 6em;
+}
+.finder-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 8px;
+  border-radius: 10px;
+  background: rgb(127 127 127 / 0.3);
+}
+.finder-tag button {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.finder-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.finder-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  padding: 4px 0;
+}
+.finder-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+.file-dialog.finder-versions {
+  width: min(820px, calc(100% - 32px));
+}
+.finder-versions-body {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 12px;
+}
+.finder-version-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.finder-version-list button {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.finder-version-list button[aria-pressed="true"] {
+  background: rgb(80 140 255 / 0.35);
+}
+.finder-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.finder-preview {
+  margin: 0;
+  text-align: center;
+}
+.finder-preview canvas {
+  max-width: 100%;
+  max-height: 320px;
+  background: repeating-conic-gradient(#555 0 25%, #444 0 50%) 0 0 / 16px 16px;
+}

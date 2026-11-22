@@ -52,6 +52,7 @@
     "version": "Versão {{version}}",
     "license": "Licença MIT",
     "repository": "Repositório no GitHub",
+    "thirdParty": "Licenças de terceiros",
     "logoAlt": "Logo do Gera View Image",
     "close": "Fechar"
   },
@@ -104,7 +105,9 @@
     "layer": "Camada de seleção",
     "instantAlphaHint": "Arraste para ajustar a tolerância. Enter ou Delete torna transparente.",
     "noAlphaNotice": "Este formato não tem transparência: o resultado será salvo como PNG ou exportado.",
-    "pasteUnavailable": "Colar ainda não está disponível."
+    "pasteUnavailable": "Colar ainda não está disponível.",
+    "size": "{{w}} × {{h}} px",
+    "contextMenu": "Menu de contexto da imagem"
   },
   "adjust": {
     "title": "Ajustar Cor",
@@ -442,7 +445,28 @@
     "share": "Compartilhar",
     "markup": "Mostrar barra de marcação",
     "rotate": "Girar à esquerda (com Alt: à direita)",
-    "inspector": "Mostrar inspetor"
+    "inspector": "Mostrar inspetor",
+    "items": {
+      "sidebar": "Barra Lateral",
+      "zoom": "Zoom",
+      "share": "Compartilhar",
+      "markup": "Marcação",
+      "rotate": "Girar",
+      "inspector": "Inspetor",
+      "crop": "Recortar",
+      "adjustColor": "Ajustar Cor",
+      "resize": "Ajustar Tamanho",
+      "instantAlpha": "Alfa Instantâneo",
+      "flipH": "Espelhar Horizontalmente",
+      "flipV": "Espelhar Verticalmente",
+      "actualSize": "Tamanho Real",
+      "fit": "Ajustar à Janela",
+      "slideshow": "Apresentação de Slides",
+      "export": "Exportar",
+      "print": "Imprimir"
+    },
+    "openWith": "Abrir com",
+    "openWithOther": "Outro…"
   },
   "shortcuts": {
     "title": "Atalhos de Teclado",
@@ -503,6 +527,7 @@
       "failed": "Falha ao exportar “{{name}}”",
       "noFolder": "Escolha a pasta de destino.",
       "noName": "Digite um nome.",
+      "heicEncoderMissing": "Para gravar HEIC, instale a libkvazaar (Ubuntu/Debian: libkvazaar7; Fedora: kvazaar-libs, pelo RPM Fusion).",
       "formats": {
         "jpeg": "JPEG",
         "png": "PNG",
@@ -563,5 +588,76 @@
       "ok": "Atribuir",
       "failed": "Não foi possível atribuir o perfil."
     }
+  },
+  "customize": {
+    "title": "Personalizar Barra de Ferramentas",
+    "bar": "Barra de ferramentas",
+    "barHint": "Arraste para mudar de lugar ou para fora para tirar. Teclado: Delete tira, Ctrl+←/→ move.",
+    "palette": "Itens disponíveis",
+    "paletteHint": "Arraste os itens favoritos para a barra de ferramentas…",
+    "defaultHint": "…ou arraste o conjunto padrão para a barra de ferramentas.",
+    "restore": "Restaurar o conjunto padrão",
+    "show": "Mostrar:",
+    "modeIcon": "Ícone",
+    "modeIconText": "Ícone e Texto",
+    "modeText": "Somente Texto",
+    "done": "OK"
+  },
+  "share": {
+    "sent": "Enviado para {{name}}.",
+    "noDevice": "Nenhum aparelho do KDE Connect disponível.",
+    "pickDevice": "Enviar para qual aparelho?",
+    "cancel": "Cancelar"
+  },
+  "helpSearch": {
+    "noResults": "Nenhum item de menu encontrado"
+  },
+  "finder": {
+    "popover": {
+      "open": "Mostrar nome, etiquetas e local",
+      "label": "Informações do arquivo",
+      "name": "Nome",
+      "tags": "Etiquetas",
+      "tagsPlaceholder": "Adicionar etiqueta",
+      "removeTag": "Remover {{tag}}",
+      "where": "Local",
+      "move": "Mover Para…",
+      "reveal": "Mostrar na pasta",
+      "locked": "Bloqueado",
+      "lockedHint": "Sem permissão de escrita: Salvar vai para Exportar."
+    },
+    "lock": {
+      "locked": "{{name}} bloqueado",
+      "unlocked": "{{name}} desbloqueado"
+    },
+    "trash": {
+      "confirmUnsaved": "{{name}} tem alterações não salvas. Mover para o Lixo e descartá-las?",
+      "ok": "Mover para o Lixo",
+      "cancel": "Cancelar",
+      "done": "{{name}} foi para o Lixo"
+    },
+    "saveAs": {
+      "images": "Imagens",
+      "badFormat": "Use uma extensão que o Salvar grava: .jpg, .png, .tiff, .webp, .avif ou .bmp."
+    },
+    "versions": {
+      "title": "Versões de {{name}}",
+      "list": "Versões guardadas",
+      "current": "Atual",
+      "empty": "Nenhuma versão guardada ainda. Cada Salvar guarda a versão anterior do arquivo.",
+      "restore": "Restaurar",
+      "close": "Concluído",
+      "restored": "Versão restaurada. Salve para gravá-la no arquivo.",
+      "confirmUnsaved": "{{name}} tem alterações não salvas. Restaurar a versão e descartá-las?"
+    }
+  },
+  "subject": {
+    "none": "Nenhum objeto encontrado na imagem",
+    "busy": "Procurando o objeto…",
+    "downloading": "Baixando o modelo de recorte e procurando o objeto…",
+    "cancel": "Cancelar",
+    "askTitle": "Baixar o modelo de recorte?",
+    "askBody": "Remover Fundo e Copiar Objeto usam um modelo de IA (U²-Netp, licença Apache-2.0) que roda neste computador. Ele tem 4,4 MB e é baixado uma única vez do GitHub. Nenhuma imagem sai do computador.",
+    "download": "Baixar"
   }
 }

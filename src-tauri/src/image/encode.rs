@@ -1,9 +1,8 @@
 //! Codificação para Salvar/Exportar: formatos, metadados levados junto e escrita atômica.
-//!
-//! Formatos sem codificador no binário: HEIC (o x265 é proibido no NEEDED) e JPEG 2000
-//! (a única crate madura liga a libopenjp2). Ficam ocultos no diálogo e registrados no CHANGELOG.
+//! HEIC e JPEG 2000 ficam em `encode_heic.rs` e `encode_jp2.rs`.
 use super::{
     container::{self, TiffMeta},
+    encode_heic, encode_jp2,
     icc,
     raster::Raster,
 };
@@ -47,14 +46,9 @@ pub enum ExportFormat {
 }
 
 impl ExportFormat {
-    /// Há codificador no binário.
-    pub fn supported(self) -> bool {
-        !matches!(self, ExportFormat::Heic | ExportFormat::Jp2)
-    }
-
     fn keeps_alpha(self) -> bool {
         use ExportFormat::*;
-        matches!(self, Png | Tiff | Webp | Avif | Exr)
+        matches!(self, Png | Tiff | Webp | Avif | Exr | Heic | Jp2)
     }
 
     /// O codificador grava o perfil ICC no arquivo (no AVIF e no EXR, não).
@@ -71,6 +65,8 @@ impl ExportFormat {
             SourceFormat::Webp => ExportFormat::Webp,
             SourceFormat::Avif => ExportFormat::Avif,
             SourceFormat::Bmp => ExportFormat::Bmp,
+            SourceFormat::Heic => ExportFormat::Heic,
+            SourceFormat::Jp2 => ExportFormat::Jp2,
             _ => return None,
         })
     }
@@ -85,8 +81,9 @@ impl ExportFormat {
             ExportFormat::Webp => SourceFormat::Webp,
             ExportFormat::Avif => SourceFormat::Avif,
             ExportFormat::Bmp => SourceFormat::Bmp,
+            ExportFormat::Jp2 => SourceFormat::Jp2,
             // Sem leitura própria: o documento fica sem Salvar (vai para Exportar).
-            ExportFormat::Jp2 | ExportFormat::Exr => SourceFormat::Raw,
+            ExportFormat::Exr => SourceFormat::Raw,
         }
     }
 }
@@ -150,11 +147,6 @@ pub fn encode<'a>(
     meta: &MetaCarry,
 ) -> AppResult<Vec<u8>> {
     let fmt = opts.format;
-    if !fmt.supported() {
-        return Err(AppError::Unsupported(format!(
-            "sem codificador para {fmt:?} neste binário"
-        )));
-    }
     let img: Raster = match opts.resize {
         Some((w, h)) if w == 0 || h == 0 => {
             return Err(AppError::Unsupported("tamanho zero".into()));
@@ -308,7 +300,8 @@ pub fn encode<'a>(
                 .map_err(enc_err)?;
             out = c.into_inner();
         }
-        ExportFormat::Heic | ExportFormat::Jp2 => unreachable!("recusados acima"),
+        ExportFormat::Heic => out = encode_heic::encode(&pixels, opts.quality, &meta)?,
+        ExportFormat::Jp2 => out = encode_jp2::encode(&pixels, opts.quality, &meta)?,
     }
     Ok(out)
 }

@@ -4,6 +4,8 @@ import type {
   FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, Rect, RevertTarget, SaveOutcome, TextLine,
   ViewBuffer, WindowEntry,
 } from "./types";
+// Lote 6
+import type { Device } from "./types";
 
 /** Lê o formato de `render_view`/`thumbnail`: `u32 LE w`, `u32 LE h`, RGBA. */
 export function decodeViewBuffer(raw: ArrayBuffer | Uint8Array): ViewBuffer {
@@ -74,6 +76,9 @@ export const exportDoc = (id: DocId, dest: string, opts: ExportOptions, keywords
 
 export const estimateSize = (id: DocId, opts: ExportOptions) => invoke<number>("estimate_size", { id, opts });
 
+/** Há codificador HEVC (libkvazaar, opcional): sem ele o HEIC some do Exportar. */
+export const heicEncoderAvailable = () => invoke<boolean>("heic_encoder_available");
+
 export const revert = (id: DocId, to: RevertTarget) => invoke<DocInfo>("revert", { id, to });
 
 export const renameDoc = (id: DocId, name: string) => invoke<DocInfo>("rename", { id, name });
@@ -116,6 +121,11 @@ export const setColorManagement = (enabled: boolean) => invoke<void>("set_color_
 
 // Lote 2: PNG da área de transferência, para colar como camada
 export const clipboardImage = async () => new Uint8Array(await invoke<ArrayBuffer>("clipboard_image"));
+/** PNG do primeiro quadro de um arquivo solto sobre a imagem aberta. */
+export const imageFilePng = async (path: string) => new Uint8Array(await invoke<ArrayBuffer>("image_file_png", { path }));
+/** Copiar com as anotações (`png` no tamanho da imagem) compostas por cima; `mask` nula = imagem inteira. */
+export const copyImage = (id: DocId, mask: Mask | null, png: Uint8Array) =>
+  invoke<void>("copy_image", { id, mask, png: Array.from(png) });
 
 // Lote 3: Texto ao Vivo e fala
 export const recognizeText = (id: DocId, frame: number) => invoke<TextLine[]>("recognize_text", { id, frame });
@@ -125,19 +135,31 @@ export const stopSpeaking = () => invoke<void>("stop_speaking");
 
 // Lote 4: sujeito
 export const segmentSubject = (id: DocId) => invoke<Mask>("segment_subject", { id });
+/** O modelo de segmentação já está no disco? Falso = `segmentSubject` vai baixá-lo (4,4 MB). */
+export const segmentModelReady = () => invoke<boolean>("segment_model_ready");
+export const segmentCancel = () => invoke<void>("segment_cancel");
 
 // Lote 5: Finder
 export const fileTags = (id: DocId) => invoke<string[]>("file_tags", { id });
-export const setFileTags = (id: DocId, tags: string[]) => invoke<void>("set_file_tags", { id, tags });
+/** Devolve a lista gravada (sem vazias nem repetidas). */
+export const setFileTags = (id: DocId, tags: string[]) => invoke<string[]>("set_file_tags", { id, tags });
 export const setLocked = (id: DocId, locked: boolean) => invoke<DocInfo>("set_locked", { id, locked });
 export const moveToTrash = (id: DocId) => invoke<void>("move_to_trash", { id });
 export const listVersions = (id: DocId) => invoke<FileVersion[]>("list_versions", { id });
 export const restoreVersion = (id: DocId, version: string) => invoke<DocInfo>("restore_version", { id, version });
-export const saveAs = (id: DocId, dest: string, opts: ExportOptions) => invoke<DocInfo>("save_as", { id, dest, opts });
+export const saveAs = (id: DocId, dest: string, opts: ExportOptions, keywords: string[] | null = null) =>
+  invoke<DocInfo>("save_as", { id, dest, opts, keywords });
+export const fileLocked = (id: DocId) => invoke<boolean>("file_locked", { id });
+export const versionPreview = async (id: DocId, version: string, size: number) =>
+  decodeViewBuffer(await invoke<ArrayBuffer>("version_preview", { id, version, size }));
+/** `prefs.versionsMaxMb` (0 desliga as versões novas). */
+export const setVersionsLimit = (mb: number) => invoke<void>("set_versions_limit", { mb });
 
 // Lote 6: Compartilhar
 export const shareEmail = (ids: DocId[]) => invoke<void>("share_email", { ids });
-export const shareDevice = (ids: DocId[]) => invoke<void>("share_device", { ids });
+export const shareDevice = (ids: DocId[], device: string) => invoke<void>("share_device", { ids, device });
+export const shareDevices = () => invoke<Device[]>("share_devices");
+export const shareDeviceAvailable = () => invoke<boolean>("share_device_available");
 export const openWithApps = (id: DocId) => invoke<AppEntry[]>("open_with_apps", { id });
 export const openWithApp = (id: DocId, app: string) => invoke<void>("open_with_app", { id, app });
 

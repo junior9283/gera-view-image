@@ -52,7 +52,7 @@ export const dirname = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/"))
 export const stem = (name: string) => (name.lastIndexOf(".") > 0 ? name.slice(0, name.lastIndexOf(".")) : name);
 
 /**
- * Salvar: grava no próprio arquivo. Formatos que não dá para regravar (RAW, PSD, HEIC, sem
+ * Salvar: grava no próprio arquivo. Formatos que não dá para regravar (RAW, PSD, GIF, sem
  * caminho...) abrem Exportar. `true` se gravou.
  */
 export async function saveDoc(d: DocInfo): Promise<boolean> {
@@ -88,7 +88,7 @@ const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "tiff", "png", "we
  * Depois de gravar no próprio arquivo: palavras-chave pendentes saem da fila só se o formato as
  * grava; senão continuam pendentes e o usuário é avisado (`format` nulo = metadados removidos).
  */
-function settleKeywords(id: DocId, format: string | null): void {
+export function settleKeywords(id: DocId, format: string | null): void {
   if (!getPendingKeywords(id)) return;
   if (format && KEYWORD_FORMATS.has(format)) clearKeywords(id);
   else notify(t("file.keywordsNotSaved"));

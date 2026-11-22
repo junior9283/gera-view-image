@@ -8,6 +8,7 @@ const ipc = vi.hoisted(() => ({
   exportDoc: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   estimateSize: vi.fn(async () => 2048),
   pathExists: vi.fn(async () => false),
+  heicEncoderAvailable: vi.fn(async () => true),
 }));
 vi.mock("../ipc/commands", () => ipc);
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
@@ -18,6 +19,7 @@ import { addKeyword, getPendingKeywords, resetKeywordsForTests } from "../inspec
 import { registerBeforeSave } from "./beforeSave";
 import { saveDoc, useFileUi } from "./fileActions";
 import { ExportDialog, ExportSelectedDialog } from "./ExportDialog";
+import { resetHeicProbeForTests } from "./estimate";
 
 const doc: DocInfo = {
   id: 1, path: "/fotos/Ação 1.jpg", name: "Ação 1.jpg", format: "jpeg", width: 40, height: 20, frames: 1,
@@ -29,6 +31,7 @@ beforeEach(() => {
   // O addRecent do Exportar emite prefs; fixa o idioma para o i18n não voltar ao do sistema (en).
   setPrefs({ language: "pt-BR" });
   resetKeywordsForTests();
+  resetHeicProbeForTests();
   useDocs.setState({ docs: [doc], activeId: 1 });
   useFileUi.setState({ dialog: null, changed: {} });
 });
@@ -115,6 +118,42 @@ describe("ExportDialog", () => {
     expect(ipc.exportDoc).not.toHaveBeenCalled();
     await act(async () => fireEvent.click(await screen.findByText("Substituir")));
     expect(ipc.exportDoc).toHaveBeenCalledWith(1, "/fotos/Ação 1.jpg", expect.anything(), null);
+  });
+
+  it("oferece HEIC (com qualidade) e JPEG 2000 (sem perdas ou com qualidade)", async () => {
+    ipc.exportDoc.mockResolvedValue(doc);
+    ipc.pathExists.mockResolvedValue(false);
+    const onClose = vi.fn();
+    render(createElement(ExportDialog, { doc, mode: "export", onClose }));
+    fireEvent.change(screen.getByLabelText("Formato"), { target: { value: "heic" } });
+    expect((screen.getByTestId("export-name") as HTMLInputElement).value).toBe("Ação 1.heic");
+    expect(screen.getByRole("slider")).toHaveProperty("value", "80");
+    expect(screen.getByLabelText("Manter transparência (alfa)")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Formato"), { target: { value: "jp2" } });
+    expect((screen.getByTestId("export-name") as HTMLInputElement).value).toBe("Ação 1.jp2");
+    expect(screen.getByRole("slider")).toHaveProperty("value", "90");
+    fireEvent.click(screen.getByLabelText("Sem perdas"));
+    expect(screen.queryByRole("slider")).toBeNull();
+    await act(async () => fireEvent.click(screen.getByTestId("export-ok")));
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(ipc.exportDoc).toHaveBeenCalledWith(
+      1, "/fotos/Ação 1.jp2", expect.objectContaining({ format: "jp2", quality: null }), null,
+    );
+  });
+
+  it("sem libkvazaar, HEIC some da lista, vira PNG e explica o que instalar", async () => {
+    ipc.heicEncoderAvailable.mockResolvedValueOnce(false);
+    render(createElement(ExportDialog, { doc: { ...doc, name: "a.heic", format: "heic" }, mode: "save", onClose: () => {} }));
+    const select = screen.getByLabelText("Formato") as HTMLSelectElement;
+    await vi.waitFor(() => expect(select.value).toBe("png"));
+    expect([...select.options].map((o) => o.value)).not.toContain("heic");
+    expect((screen.getByTestId("export-name") as HTMLInputElement).value).toBe("a.png");
+    expect(screen.getByText(/instale a libkvazaar/)).toBeTruthy();
+  });
+
+  it("abre com o formato do arquivo HEIC/JPEG 2000", () => {
+    render(createElement(ExportDialog, { doc: { ...doc, name: "a.jp2", format: "jp2" }, mode: "export", onClose: () => {} }));
+    expect((screen.getByLabelText("Formato") as HTMLSelectElement).value).toBe("jp2");
   });
 
   it("mostra o tamanho estimado (debounce)", async () => {

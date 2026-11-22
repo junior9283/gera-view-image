@@ -34,6 +34,17 @@ describe("SelectionLayer", () => {
     expect(useSelection.getState().selection).toEqual({ type: "rect", data: { x: 10, y: 10, w: 40, h: 30 } });
   });
 
+  it("mostra a largura × altura ao vivo durante o arraste e esconde ao soltar", () => {
+    useSelection.setState({ selectionTool: "ellipse" });
+    render(<SelectionLayer {...props} />);
+    fireEvent.pointerDown(layer(), { clientX: 30, clientY: 30, button: 0, pointerId: 1 });
+    expect(screen.queryByTestId("selection-size")).toBeNull();
+    fireEvent.pointerMove(layer(), { clientX: 110, clientY: 90, pointerId: 1 });
+    expect(screen.getByTestId("selection-size").textContent).toBe("40 × 30 px");
+    fireEvent.pointerUp(layer(), { clientX: 110, clientY: 90, pointerId: 1 });
+    expect(screen.queryByTestId("selection-size")).toBeNull();
+  });
+
   it("sem ferramenta a camada não captura o ponteiro", () => {
     render(<SelectionLayer {...props} />);
     expect(layer().style.pointerEvents).toBe("none");

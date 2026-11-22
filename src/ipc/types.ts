@@ -4,7 +4,7 @@ export type DocId = number;
 
 export type SourceFormat =
   | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "webp" | "heic"
-  | "avif" | "ico" | "svg" | "psd" | "tga" | "raw";
+  | "avif" | "ico" | "svg" | "psd" | "tga" | "raw" | "jp2";
 
 export type ErrorCode =
   | "not_found"
@@ -164,6 +164,8 @@ export interface FileVersion { id: string; savedAt: string; size: number }
 
 /** Lote 6 (`share.rs`): `id` = nome do .desktop. */
 export interface AppEntry { id: string; name: string; icon: string | null }
+/** Lote 6 (`share.rs`): aparelho alcançável no KDE Connect. */
+export interface Device { id: string; name: string }
 
 /** Lote 7 (`sidebar.rs`): `null` sem arquivo. */
 export interface FileStat { id: DocId; modifiedMs: number | null; size: number | null }

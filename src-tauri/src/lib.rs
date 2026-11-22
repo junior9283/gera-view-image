@@ -55,6 +55,7 @@ pub fn run() {
             commands::file::save,
             commands::file::export,
             commands::file::estimate_size,
+            commands::file::heic_encoder_available,
             commands::file::revert,
             commands::file::rename,
             commands::file::move_to,
@@ -80,11 +81,15 @@ pub fn run() {
             commands::color::set_color_management,
             commands::color::document_profile,
             commands::paste::clipboard_image,
+            commands::paste::image_file_png,
+            commands::paste::copy_image,
             commands::ocr::recognize_text,
             commands::ocr::detect_codes,
             commands::ocr::speak,
             commands::ocr::stop_speaking,
             commands::segment::segment_subject,
+            commands::segment::segment_model_ready,
+            commands::segment::segment_cancel,
             commands::finder::file_tags,
             commands::finder::set_file_tags,
             commands::finder::set_locked,
@@ -92,10 +97,15 @@ pub fn run() {
             commands::finder::list_versions,
             commands::finder::restore_version,
             commands::finder::save_as,
+            commands::finder::file_locked,
+            commands::finder::version_preview,
+            commands::finder::set_versions_limit,
             commands::share::share_email,
             commands::share::share_device,
             commands::share::open_with_apps,
             commands::share::open_with_app,
+            commands::share::share_devices,
+            commands::share::share_device_available,
             commands::sidebar::file_stats,
             commands::describe::edit_metadata,
             commands::fonts::system_fonts,
@@ -121,6 +131,8 @@ pub fn run() {
             app.manage(commands::drag::DragTemp(
                 drag_root.join(std::process::id().to_string()),
             ));
+            // Lote 5: versões guardadas a cada Salvar (~/.local/share/gera-view-image/versions).
+            doc::versions::configure(app.path().data_dir()?.join("gera-view-image").join("versions"));
             theme::watch::start(app.handle().clone());
             commands::file::start_watch(
                 app.handle().clone(),

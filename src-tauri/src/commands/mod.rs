@@ -55,14 +55,12 @@ pub fn log_timing(event: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::doc::model::DocId;
 
     #[test]
     fn stubs_dos_lotes_devolvem_unsupported() {
         let e = fonts::system_fonts().unwrap_err();
         assert_eq!(e.code(), "unsupported");
         assert!(e.to_string().contains("system_fonts"));
-        assert_eq!(segment::segment_subject(DocId(1)).unwrap_err().code(), "unsupported");
         assert_eq!(window::list_windows().unwrap_err().code(), "unsupported");
     }
 }

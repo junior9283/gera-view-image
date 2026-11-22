@@ -1,6 +1,6 @@
 [package]
 name = "gera-view-image"
-version = "0.2.1"
+version = "0.3.0"
 description = "Visualizador de imagens para Linux"
 authors = ["junior9283"]
 license = "MIT"
@@ -28,9 +28,10 @@ jpeg-decoder = "0.3.2"
 rayon = "1.12.0"
 fast_image_resize = { version = "6.1.0", features = ["image", "rayon"] }
 # libheif 1.23 compilada estática (embedded-libheif): o Ubuntu 22.04 tem só a 1.12.
-# AVIF: aom ligado dinamicamente (depends). HEIC: libde265 OPCIONAL, carregada com dlopen
-# pelo plugin de native/heic (build.rs); o binário não pode ter libde265 como NEEDED
-# (o CI confere com readelf). Não instalar libde265-dev no build: o cmake a ligaria.
+# AVIF: aom ligado dinamicamente (depends). HEIC: libde265 (abrir) e libkvazaar (gravar)
+# OPCIONAIS, carregadas com dlopen pelos plugins de native/heic (build.rs); o binário não
+# pode tê-las como NEEDED (o CI confere com readelf). Não instalar libde265-dev nem
+# libkvazaar-dev no build: o cmake da libheif as ligaria.
 libheif-rs = { version = "3.0.0", default-features = false, features = ["v1_17", "embedded-libheif"] }
 # Direto só para o build.rs receber DEP_HEIF_ROOT; versão fixa porque o plugin HEIC
 # é compilado da fonte que esta versão embute.
@@ -61,9 +62,21 @@ crc32fast = "1"
 md5 = "0.8"
 # Gerência de cor (Lote 1): Rust puro, já vinha pela crate `image`; nada novo no NEEDED.
 moxcms = "0.8.1"
+# JPEG 2000 (abrir e gravar): porta em Rust puro do OpenJPEG (BSD-2), sem libopenjp2.
+openjp2 = { version = "0.7.2", default-features = false, features = ["image", "rayon"] }
+xattr = "1"
 libc = "0.2"
+trash = "5"
+# Lote 4 (Remover Fundo): inferência ONNX em Rust puro, download do modelo com SHA-256.
+# reqwest/rustls já vêm pelo updater (rustls + ring); aqui não se liga nada novo no NEEDED.
+tract-onnx = "0.23"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+sha2 = "0.10"
 
 [dev-dependencies]
+# Monta o ONNX mínimo dos testes de segmentação (mesma versão do tract-onnx).
+prost = "0.14"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tga", "tiff", "webp"] }
 
 # Dependências otimizadas também em dev/test: os testes decodificam imagens grandes.

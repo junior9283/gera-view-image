@@ -1,7 +1,7 @@
 {
   "name": "gera-view-image",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "licenses": "node scripts/third-party-licenses.mjs",
     "release": "node scripts/release.mjs",
     "test:release": "node --test scripts/release.test.mjs",
     "test:e2e": "wdio run wdio.conf.ts"

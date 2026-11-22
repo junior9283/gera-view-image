@@ -615,7 +615,7 @@ mod tests {
                 let mut px = [200u8, 100, 50, 77, 1, 2, 3, 4];
                 let _ = convert_rgba8(&mut px, b, srgb_icc());
                 assert_eq!((px[3], px[7]), (77, 4));
-                if i % 8 != 0 {
+                if !i.is_multiple_of(8) {
                     return;
                 }
                 let mut px = [60000u16, 100, 50, 777];

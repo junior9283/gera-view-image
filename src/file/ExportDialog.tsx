@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { notify, notifyError } from "../chrome/notify";
@@ -8,14 +8,18 @@ import { useModal } from "../lib/modal";
 import { useDocs } from "../store/docs";
 import { addRecent } from "../store/prefs";
 import { viewable } from "../viewer/actions";
-import { EXPORT_FORMATS, EXTENSIONS, defaultOptions, exportFormatOf, formatBytes, useEstimate } from "./estimate";
+import {
+  EXTENSIONS, defaultOptions, exportFormatOf, exportFormats, formatBytes, useEstimate, useHeicEncoder,
+} from "./estimate";
 import { dirname, exportDoc, stem } from "./fileActions";
 import "./file.css";
 
-const LOSSY: ExportFormat[] = ["jpeg", "webp", "avif"];
+const LOSSY: ExportFormat[] = ["jpeg", "heic", "webp", "avif", "jp2"];
+/** Com perdas ou sem perdas (`quality: null`). */
+const LOSSLESS_OPTION: ExportFormat[] = ["webp", "jp2"];
 const DEEP: ExportFormat[] = ["png", "tiff"];
-const ALPHA: ExportFormat[] = ["png", "tiff", "webp", "avif", "exr"];
-const DEFAULT_QUALITY: Partial<Record<ExportFormat, number>> = { jpeg: 90, webp: 90, avif: 80 };
+const ALPHA: ExportFormat[] = ["png", "tiff", "heic", "webp", "avif", "jp2", "exr"];
+const DEFAULT_QUALITY: Partial<Record<ExportFormat, number>> = { jpeg: 90, heic: 80, webp: 90, avif: 80, jp2: 90 };
 /** Perfil de saída (Lote 1): "keep" mantém o da imagem; os outros são ids de `ColorProfile`. */
 const OUTPUT_PROFILES = ["keep", "srgb", "display-p3", "adobe-rgb"] as const;
 /** Formatos que não levam perfil: só manter (o Rust grava em sRGB) ou sRGB. */
@@ -27,12 +31,30 @@ const profileFor = (f: ExportFormat, p: string | null | undefined) =>
 /** Pasta da última exportação (padrão para documentos sem caminho). */
 let lastFolder = "";
 
+const optionsFor = (format: ExportFormat): ExportOptions => ({
+  ...defaultOptions(format), quality: DEFAULT_QUALITY[format] ?? null,
+});
+
+/**
+ * Formatos com codificador. Enquanto a consulta não volta, HEIC aparece; se faltar a libkvazaar,
+ * sai da lista e uma escolha HEIC vira PNG.
+ */
+function useFormats(opts: ExportOptions, onChange: (o: ExportOptions) => void): ExportFormat[] {
+  const heic = useHeicEncoder();
+  const missing = heic === false && opts.format === "heic";
+  useEffect(() => {
+    if (missing) onChange(optionsFor("png"));
+  }, [missing, onChange]);
+  return exportFormats(heic !== false);
+}
+
 /** Campos de formato/qualidade/profundidade/alfa/metadados, comuns aos dois diálogos. */
 function OptionsFields({ opts, onChange }: { opts: ExportOptions; onChange: (o: ExportOptions) => void }) {
   const { t } = useTranslation();
+  const formats = useFormats(opts, onChange);
   const f = opts.format;
   const set = (patch: Partial<ExportOptions>) => onChange({ ...opts, ...patch });
-  const lossless = f === "webp" && opts.quality === null;
+  const lossless = LOSSLESS_OPTION.includes(f) && opts.quality === null;
   return (
     <>
       <label className="file-row">
@@ -45,16 +67,16 @@ function OptionsFields({ opts, onChange }: { opts: ExportOptions; onChange: (o: 
               colorProfile: profileFor(format, opts.colorProfile) });
           }}
         >
-          {EXPORT_FORMATS.map((x) => (
+          {formats.map((x) => (
             <option key={x} value={x}>{t(`file.export.formats.${x}`)}</option>
           ))}
         </select>
       </label>
-      {f === "webp" && (
+      {LOSSLESS_OPTION.includes(f) && (
         <label className="file-check">
           <input
             type="checkbox" checked={lossless}
-            onChange={(e) => set({ quality: e.target.checked ? null : DEFAULT_QUALITY.webp! })}
+            onChange={(e) => set({ quality: e.target.checked ? null : DEFAULT_QUALITY[f]! })}
           />
           {t("file.export.lossless")}
         </label>
@@ -101,10 +123,7 @@ function OptionsFields({ opts, onChange }: { opts: ExportOptions; onChange: (o: 
   );
 }
 
-function initialOptions(doc: DocInfo): ExportOptions {
-  const format = exportFormatOf(doc.format);
-  return { ...defaultOptions(format), quality: DEFAULT_QUALITY[format] ?? null };
-}
+const initialOptions = (doc: DocInfo): ExportOptions => optionsFor(exportFormatOf(doc.format));
 
 const withExt = (name: string, f: ExportFormat) => `${stem(name)}.${EXTENSIONS[f]}`;
 const join = (dir: string, name: string) => `${dir.replace(/\/+$/, "")}/${name}`;
@@ -151,6 +170,7 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const bytes = useEstimate(doc.id, opts);
+  const heic = useHeicEncoder();
 
   const changeOpts = (o: ExportOptions) => {
     if (o.format !== opts.format) setName((n) => withExt(n, o.format));
@@ -193,6 +213,7 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
       </label>
       <FolderField folder={folder} setFolder={setFolder} />
       <OptionsFields opts={opts} onChange={changeOpts} />
+      {doc.format === "heic" && heic === false && <p className="file-hint">{t("file.export.heicEncoderMissing")}</p>}
       <p className="file-hint" data-testid="export-estimate">
         {bytes === null ? t("file.export.estimating") : t("file.export.estimate", { size: formatBytes(bytes, i18n.language) })}
       </p>
@@ -234,7 +255,7 @@ export function ExportSelectedDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const docs = useDocs((s) => s.docs).filter(viewable);
   const [chosen, setChosen] = useState<Set<number>>(() => new Set(docs.map((d) => d.id)));
-  const [opts, setOpts] = useState<ExportOptions>(() => ({ ...defaultOptions("jpeg"), quality: DEFAULT_QUALITY.jpeg! }));
+  const [opts, setOpts] = useState<ExportOptions>(() => optionsFor("jpeg"));
   const [folder, setFolder] = useState(lastFolder || (docs[0]?.path ? dirname(docs[0].path) : ""));
   const [longest, setLongest] = useState("");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);

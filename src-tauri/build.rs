@@ -1,11 +1,12 @@
 fn main() {
-    compile_heic_plugin();
+    compile_heic_plugins();
     tauri_build::build()
 }
 
-/// Compila o plugin libde265 da libheif embutida (fonte copiada pelo `libheif-sys` em
-/// `OUT/libheif`, ao lado de `DEP_HEIF_ROOT`) com o shim `native/heic/de265_dl.cc`.
-fn compile_heic_plugin() {
+/// Compila os plugins HEVC da libheif embutida (fonte copiada pelo `libheif-sys` em
+/// `OUT/libheif`, ao lado de `DEP_HEIF_ROOT`) com os shims de `native/heic`, que carregam
+/// as bibliotecas com dlopen: libde265 (abrir) e libkvazaar (gravar).
+fn compile_heic_plugins() {
     use std::path::PathBuf;
     let root = PathBuf::from(std::env::var("DEP_HEIF_ROOT").expect("libheif-sys embutida"));
     let src = root
@@ -20,8 +21,13 @@ fn compile_heic_plugin() {
         .include(&src)
         .include(src.join("api"))
         .include("native/heic/include")
+        // A libheif é compilada com threads. HAVE_KVAZAAR_ENABLE_LOGGING fica de fora de
+        // propósito: ver native/heic/kvazaar_dl.cc.
+        .define("ENABLE_MULTITHREADING_SUPPORT", "1")
         .file(src.join("plugins/decoder_libde265.cc"))
+        .file(src.join("plugins/encoder_kvazaar.cc"))
         .file("native/heic/de265_dl.cc")
+        .file("native/heic/kvazaar_dl.cc")
         .compile("gvi_heic");
     println!("cargo:rustc-link-lib=dl");
     println!("cargo:rerun-if-changed=native/heic");

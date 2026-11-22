@@ -56,7 +56,7 @@ jobs:
           includeUpdaterJson: true
           releaseDraft: true
           args: --bundles deb,rpm,appimage
-      - name: Bibliotecas NEEDED do binário (allowlist; sem libde265/libjpeg/libopenjp2)
+      - name: Bibliotecas NEEDED do binário (allowlist; sem libde265/libkvazaar/libjpeg/libopenjp2)
         run: scripts/check-needed.sh src-tauri/target/release/gera-view-image
       # O smoke usa os pacotes do próprio build (baixar assets de rascunho exigiria contents: write).
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
