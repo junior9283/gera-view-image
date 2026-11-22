@@ -132,14 +132,21 @@ Cada janela é um WebView próprio, com a sua loja `useDocs`. No Rust há um `Do
   recusarem o documento, para nada se perder.
 - **Comando demorado que só lê** entra em `READ_ONLY` (`src/ipc/inflight.ts`); os demais são
   esperados antes de o documento mudar de janela.
-- **Abrir arquivos a pedido do usuário** passa por `openHere` (`src/tabs/open.ts`).
+- **Abrir arquivos a pedido do usuário** passa por `openHere` (`src/tabs/open.ts`); navegar usa
+  `notElsewhere`, que pula os abertos em outra janela sem mexer no foco.
+- **Seletor de arquivos do sistema** vem de `src/lib/dialogs.ts`, não direto do plugin: com um aberto,
+  nenhum documento muda de janela.
+- **Véu** vem de `putVeil(tipo)` (`src/tabs/store.ts`), que devolve a função que tira só o véu posto.
 - **Cancelamento** (OCR, segmentação) e **consentimento** (câmera) são por rótulo de janela.
 
 Mover um documento é atômico: `new_window`/`move_documents` trocam a posse e deixam a entrega (com o
 estado, opaco) na caixa do destino; `take_documents` a retira. Se o destino for destruído antes, a
 entrega volta para uma janela viva. Fechar tem duas fases: a janela pergunta, sela-se
 (`seal_window`; selada, não dá nem recebe documentos) e só então `close_window` a destrói. Sair
-(`confirm_quit`) sela todas, uma a uma, e qualquer Cancelar desfaz os selos.
+(`confirm_quit`) sela todas, uma a uma, e qualquer Cancelar desfaz os selos. Cada saída é uma rodada
+numerada: respostas e cancelamentos de uma rodada não valem para outra, e cancelar não solta uma
+janela que está fechando por si (`Seal::Close`). Antes de perguntar, um ping (`ping-window`/`pong`)
+acha as que não respondem; sair sem elas é escolha explícita (`skip`).
 
 ## Testes do Lote 0
 
