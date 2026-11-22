@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppEntry, CaptureMode, ColorAdjust, ColorProfile, DetectedCode, DocId, DocInfo, DragSource, ExportOptions, FileStat,
-  FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, Rect, RevertTarget, SaveOutcome, TextLine,
+  FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, PrintPreview, Rect, RevertTarget, SaveOutcome, TaggedExport, TextLine,
   ViewBuffer, WindowEntry,
 } from "./types";
 // Lote 6
@@ -102,7 +102,6 @@ export const reveal = (id: DocId) => invoke<void>("reveal", { id });
 /** Arraste nativo para fora da janela; resolve quando ele termina. */
 export const startDrag = (items: DragSource[]) => invoke<void>("start_drag", { items });
 
-export const printDocument = (id: DocId, title: string) => invoke<void>("print_document", { id, title });
 
 export const newFromClipboard = (name: string) => invoke<DocInfo>("new_from_clipboard", { name });
 
@@ -181,7 +180,12 @@ export const systemFonts = () => invoke<string[]>("system_fonts");
 
 // Lote 11: PDF e impressão nativa
 export const exportPdf = (ids: DocId[], dest: string) => invoke<void>("export_pdf", { ids, dest });
-export const printNative = (ids: DocId[], opts: PrintOptions) => invoke<void>("print_native", { ids, opts });
+/** `true` = entregue à impressora (ou gravado em arquivo); `false` = cancelado. */
+export const printNative = (ids: DocId[], opts: PrintOptions, title: string) =>
+  invoke<boolean>("print_native", { ids, opts, title });
+export const printPreview = (ids: DocId[], opts: PrintOptions) => invoke<PrintPreview>("print_preview", { ids, opts });
+export const exportTagged = (id: DocId, dest: string, opts: ExportOptions, keywords: string[] | null, tags: string[]) =>
+  invoke<TaggedExport>("export_tagged", { id, dest, opts, keywords, tags });
 
 // Lote 12: janelas e scanner
 export const newWindow = (ids: DocId[]) => invoke<string>("new_window", { ids });

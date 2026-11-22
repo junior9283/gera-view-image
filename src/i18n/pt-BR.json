@@ -537,7 +537,12 @@
         "exr": "OpenEXR",
         "bmp": "BMP",
         "heic": "HEIC",
-        "jp2": "JPEG 2000"
+        "jp2": "JPEG 2000",
+        "pdf": "PDF",
+        "gif": "GIF",
+        "ico": "ICO",
+        "tga": "TGA",
+        "psd": "Photoshop"
       },
       "profile": "Perfil de cor",
       "profiles": {
@@ -545,6 +550,23 @@
         "srgb": "Converter para sRGB",
         "display-p3": "Converter para Display P3",
         "adobe-rgb": "Converter para Adobe RGB (1998)"
+      },
+      "altFormats": "Pressione Alt para ver mais formatos (GIF, ICO, TGA e Photoshop)",
+      "resolution": "Resolução",
+      "keepResolution": "Manter",
+      "ppi": "ppp",
+      "compression": "Compressão",
+      "depth": "Profundidade",
+      "tagsNotSaved": "O arquivo foi exportado, mas o sistema de arquivos não guarda as etiquetas.",
+      "compressions": {
+        "none": "Nenhuma",
+        "lzw": "LZW",
+        "packbits": "PackBits",
+        "deflate": "Deflate (ZIP)"
+      },
+      "depths": {
+        "half": "16 bits (half)",
+        "float": "32 bits (float)"
       }
     },
     "rename": {
@@ -567,13 +589,40 @@
     },
     "print": {
       "title": "Imprimir",
-      "fit": "Ajustar à página",
+      "titleMany": "Imprimir {{count}} imagens",
+      "copies": "Cópias",
+      "paper": "Papel",
+      "papers": {
+        "iso_a4": "A4",
+        "na_letter": "Carta",
+        "na_legal": "Ofício (Legal)",
+        "iso_a3": "A3",
+        "iso_a5": "A5",
+        "iso_a6": "A6",
+        "iso_b5": "B5",
+        "na_index-4x6": "Foto 10 × 15 cm (4 × 6 pol.)",
+        "na_5x7": "Foto 13 × 18 cm (5 × 7 pol.)"
+      },
       "orientation": "Orientação",
-      "auto": "Automática",
       "portrait": "Retrato",
       "landscape": "Paisagem",
+      "autoRotate": "Girar automaticamente",
+      "scale": "Escala",
+      "fit": "Ajustar ao papel",
+      "whole": "Imprimir imagem inteira",
+      "fill": "Preencher o papel",
+      "perPage": "Imagens por página",
+      "showMarkup": "Mostrar marcações",
+      "page": "Página {{page}} de {{total}}",
+      "prev": "Página anterior",
+      "next": "Próxima página",
+      "preview": "Prévia da impressão",
       "print": "Imprimir…",
-      "close": "Fechar"
+      "printing": "Imprimindo…",
+      "cancel": "Cancelar",
+      "sent": "Impressão enviada.",
+      "jobMany": "{{count}} imagens",
+      "pdfSaved": "PDF “{{name}}” exportado."
     }
   },
   "color": {

@@ -125,11 +125,16 @@ export interface Metadata {
 
 // ---------- Arquivo (Task 11): espelho de `image/encode.rs` e `doc/file.rs` ----------
 
-export type ExportFormat = "jpeg" | "png" | "tiff" | "heic" | "webp" | "avif" | "jp2" | "exr" | "bmp";
+export type ExportFormat =
+  | "jpeg" | "png" | "tiff" | "heic" | "webp" | "avif" | "jp2" | "exr" | "bmp"
+  // Lote 11; os quatro últimos só aparecem com Alt.
+  | "pdf" | "gif" | "ico" | "tga" | "psd";
+
+export type TiffCompression = "none" | "lzw" | "packbits" | "deflate";
 
 export interface ExportOptions {
   format: ExportFormat;
-  /** 1..100; `null`: JPEG 90, WebP sem perdas, AVIF 80. */
+  /** 1..100; `null`: JPEG 90, WebP e PDF sem perdas, AVIF 80. */
   quality: number | null;
   alpha: boolean;
   depth16: boolean;
@@ -137,6 +142,18 @@ export interface ExportOptions {
   resize: [number, number] | null;
   /** Lote 1: perfil de saída (id de `ColorProfile`); ausente/`null` mantém o da imagem. */
   colorProfile?: string | null;
+  /** Lote 11: compressão do TIFF (padrão `none`). */
+  tiffCompression?: TiffCompression;
+  /** Lote 11: OpenEXR em half (16 bits) em vez de float (32 bits). */
+  exrHalf?: boolean;
+  /** Lote 11: resolução gravada (ppp); ausente/`null` mantém a do documento. */
+  dpi?: number | null;
+}
+
+/** Exportar com etiquetas: `tagsError` diz por que elas não foram gravadas (o arquivo foi). */
+export interface TaggedExport {
+  info: DocInfo;
+  tagsError: { code: string; message: string } | null;
 }
 
 export type SaveOutcome = { type: "saved"; data: DocInfo } | { type: "needsExport" };
@@ -193,8 +210,28 @@ export interface PrintOptions {
   scalePercent: number | null;
   fit: "whole" | "fill";
   autoRotate: boolean;
+  /** 1, 2, 4, 6, 9 ou 16. */
   perPage: number;
-  showMarkup: boolean;
+  /** Nome PWG do papel (`iso_a4`, `na_letter`…). */
+  paper: string;
+  orientation: "portrait" | "landscape";
+}
+
+export interface RectF { x: number; y: number; w: number; h: number }
+
+/** Uma imagem na página, em pontos: `rect` é ela inteira (já girada) e `clip` a área que a corta. */
+export interface PrintPreviewItem {
+  id: DocId;
+  frame: number;
+  rotated: boolean;
+  rect: RectF;
+  clip: RectF;
+}
+
+export interface PrintPreview {
+  paperW: number;
+  paperH: number;
+  pages: PrintPreviewItem[][];
 }
 
 /** Lote 12 (`window.rs`). */

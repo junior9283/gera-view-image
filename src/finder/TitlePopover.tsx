@@ -1,6 +1,6 @@
 // Popover do título (como o do Pré-Visualização): nome, etiquetas, local e Bloqueado.
 // O botão entra pelo slot `title-accessory`, ao lado do nome na barra de título.
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../chrome/notify";
@@ -8,8 +8,9 @@ import { dirname, moveActive, renameDoc, showInFolder } from "../file/fileAction
 import * as ipc from "../ipc/commands";
 import type { DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
-import { addTags, refreshLocked, setLocked } from "./actions";
+import { refreshLocked, setLocked } from "./actions";
 import { closePopover, openPopover, useFinderUi } from "./store";
+import { TagsInput } from "./TagsInput";
 import "./finder.css";
 
 const splitName = (name: string): [string, string] => {
@@ -47,7 +48,6 @@ function NameField({ doc }: { doc: DocInfo }) {
 function TagsField({ doc, autoFocus }: { doc: DocInfo; autoFocus: boolean }) {
   const { t } = useTranslation();
   const [tags, setTags] = useState<string[] | null>(null);
-  const [draft, setDraft] = useState("");
   useEffect(() => {
     let live = true;
     ipc.fileTags(doc.id).then((v) => live && setTags(v), (e) => {
@@ -67,41 +67,10 @@ function TagsField({ doc, autoFocus }: { doc: DocInfo; autoFocus: boolean }) {
       notifyError(e);
     });
   };
-  const add = () => {
-    if (!tags || !draft.trim()) return;
-    const next = addTags(tags, draft);
-    setDraft("");
-    if (next.length !== tags.length) save(next);
-  };
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      add();
-    } else if (e.key === "Backspace" && !draft && tags?.length) {
-      save(tags.slice(0, -1));
-    }
-  };
   return (
     <div className="finder-row">
       <span>{t("finder.popover.tags")}</span>
-      <div className="finder-tags" role="group" aria-label={t("finder.popover.tags")}>
-        {tags?.map((tag) => (
-          <span key={tag} className="finder-tag">
-            {tag}
-            <button
-              type="button" aria-label={t("finder.popover.removeTag", { tag })}
-              onClick={() => save(tags.filter((x) => x !== tag))}
-            >
-              ×
-            </button>
-          </span>
-        ))}
-        <input
-          type="text" value={draft} disabled={!tags} autoFocus={autoFocus}
-          placeholder={t("finder.popover.tagsPlaceholder")} aria-label={t("finder.popover.tagsPlaceholder")}
-          onChange={(e) => setDraft(e.target.value.replace(/,/g, ""))} onKeyDown={onKey} onBlur={add}
-        />
-      </div>
+      <TagsInput tags={tags} onChange={save} autoFocus={autoFocus} />
     </div>
   );
 }
@@ -135,7 +104,7 @@ export function TitlePopover({ doc, anchor, focusTags }: { doc: DocInfo; anchor:
       const el = e.target as Element | null;
       if (!ref.current?.contains(el) && !el?.closest?.(".finder-title-button")) closePopover();
     };
-    const onKey = (e: globalThis.KeyboardEvent) => e.key === "Escape" && closePopover();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closePopover();
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {

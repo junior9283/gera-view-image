@@ -1,29 +1,37 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { notify, notifyError } from "../chrome/notify";
+import { TagsInput } from "../finder/TagsInput";
 import * as ipc from "../ipc/commands";
-import type { DocInfo, ExportFormat, ExportOptions } from "../ipc/types";
+import type { DocInfo, ExportFormat, ExportOptions, TiffCompression } from "../ipc/types";
 import { useModal } from "../lib/modal";
 import { useDocs } from "../store/docs";
 import { addRecent } from "../store/prefs";
 import { viewable } from "../viewer/actions";
 import {
-  EXTENSIONS, defaultOptions, exportFormatOf, exportFormats, formatBytes, useEstimate, useHeicEncoder,
+  ALT_FORMATS, EXTENSIONS, defaultOptions, exportFormatOf, exportFormats, formatBytes, useEstimate, useHeicEncoder,
 } from "./estimate";
 import { dirname, exportDoc, stem } from "./fileActions";
 import "./file.css";
 
-const LOSSY: ExportFormat[] = ["jpeg", "heic", "webp", "avif", "jp2"];
+const LOSSY: ExportFormat[] = ["jpeg", "heic", "webp", "avif", "jp2", "pdf"];
 /** Com perdas ou sem perdas (`quality: null`). */
-const LOSSLESS_OPTION: ExportFormat[] = ["webp", "jp2"];
+const LOSSLESS_OPTION: ExportFormat[] = ["webp", "jp2", "pdf"];
 const DEEP: ExportFormat[] = ["png", "tiff"];
-const ALPHA: ExportFormat[] = ["png", "tiff", "heic", "webp", "avif", "jp2", "exr"];
-const DEFAULT_QUALITY: Partial<Record<ExportFormat, number>> = { jpeg: 90, heic: 80, webp: 90, avif: 80, jp2: 90 };
+const ALPHA: ExportFormat[] = ["png", "tiff", "heic", "webp", "avif", "jp2", "exr", "pdf", "gif", "ico", "tga", "psd"];
+/** Formatos que guardam a resolução (ppp); no PDF, ela define o tamanho da página. */
+const RESOLUTION: ExportFormat[] = ["jpeg", "png", "tiff", "heic", "webp", "avif", "exr", "bmp", "pdf", "psd"];
+const TIFF_COMPRESSIONS: TiffCompression[] = ["none", "lzw", "packbits", "deflate"];
+const MAX_DPI = 10000;
+const DEFAULT_QUALITY: Partial<Record<ExportFormat, number>> = { jpeg: 90, heic: 80, webp: 90, avif: 80, jp2: 90, pdf: 90 };
+/** Qualidade ao escolher o formato (o PDF começa sem perdas). */
+const initialQuality = (f: ExportFormat) => (f === "pdf" ? null : (DEFAULT_QUALITY[f] ?? null));
 /** Perfil de saída (Lote 1): "keep" mantém o da imagem; os outros são ids de `ColorProfile`. */
 const OUTPUT_PROFILES = ["keep", "srgb", "display-p3", "adobe-rgb"] as const;
 /** Formatos que não levam perfil: só manter (o Rust grava em sRGB) ou sRGB. */
-const NO_PROFILE: ExportFormat[] = ["avif", "exr"];
+const NO_PROFILE: ExportFormat[] = ["avif", "exr", "pdf", "gif", "ico", "tga"];
 const outputProfiles = (f: ExportFormat) => (NO_PROFILE.includes(f) ? OUTPUT_PROFILES.slice(0, 2) : OUTPUT_PROFILES);
 const profileFor = (f: ExportFormat, p: string | null | undefined) =>
   outputProfiles(f).some((x) => x === p) ? p : null;
@@ -32,26 +40,67 @@ const profileFor = (f: ExportFormat, p: string | null | undefined) =>
 let lastFolder = "";
 
 const optionsFor = (format: ExportFormat): ExportOptions => ({
-  ...defaultOptions(format), quality: DEFAULT_QUALITY[format] ?? null,
+  ...defaultOptions(format), quality: initialQuality(format),
 });
 
 /**
  * Formatos com codificador. Enquanto a consulta não volta, HEIC aparece; se faltar a libkvazaar,
  * sai da lista e uma escolha HEIC vira PNG.
  */
-function useFormats(opts: ExportOptions, onChange: (o: ExportOptions) => void): ExportFormat[] {
+function useFormats(opts: ExportOptions, onChange: (o: ExportOptions) => void, alt: boolean): ExportFormat[] {
   const heic = useHeicEncoder();
   const missing = heic === false && opts.format === "heic";
   useEffect(() => {
     if (missing) onChange(optionsFor("png"));
   }, [missing, onChange]);
-  return exportFormats(heic !== false);
+  return exportFormats(heic !== false, alt || ALT_FORMATS.includes(opts.format));
+}
+
+/** A tecla Alt mostra os formatos extras enquanto o diálogo estiver aberto. */
+function useAltFormats(): [boolean, () => void] {
+  const [alt, setAlt] = useState(false);
+  useEffect(() => {
+    // Na captura e sem propagar: o Alt sozinho abriria a barra de menus atrás do diálogo.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Alt") return;
+      e.stopPropagation();
+      setAlt(true);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
+  return [alt, () => setAlt(true)];
+}
+
+/** Resolução (ppp). Vazio mantém a do documento, mostrada como sugestão. */
+function ResolutionField({ dpi, current, onChange }: { dpi: number | null; current: number | null; onChange: (d: number | null) => void }) {
+  const { t } = useTranslation();
+  return (
+    <label className="file-row">
+      <span>{t("file.export.resolution")}</span>
+      <input
+        type="number" min={1} max={MAX_DPI} value={dpi ?? ""} data-testid="export-dpi"
+        placeholder={current === null ? t("file.export.keepResolution") : String(Math.round(current * 100) / 100)}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          onChange(v > 0 ? Math.min(v, MAX_DPI) : null);
+        }}
+      />
+      <span>{t("file.export.ppi")}</span>
+    </label>
+  );
 }
 
 /** Campos de formato/qualidade/profundidade/alfa/metadados, comuns aos dois diálogos. */
-function OptionsFields({ opts, onChange }: { opts: ExportOptions; onChange: (o: ExportOptions) => void }) {
+function OptionsFields({ opts, onChange, currentDpi = null }: {
+  opts: ExportOptions;
+  onChange: (o: ExportOptions) => void;
+  /** Resolução do documento (nenhuma se são vários). */
+  currentDpi?: number | null;
+}) {
   const { t } = useTranslation();
-  const formats = useFormats(opts, onChange);
+  const [alt, showAlt] = useAltFormats();
+  const formats = useFormats(opts, onChange, alt);
   const f = opts.format;
   const set = (patch: Partial<ExportOptions>) => onChange({ ...opts, ...patch });
   const lossless = LOSSLESS_OPTION.includes(f) && opts.quality === null;
@@ -60,11 +109,13 @@ function OptionsFields({ opts, onChange }: { opts: ExportOptions; onChange: (o: 
       <label className="file-row">
         <span>{t("file.export.format")}</span>
         <select
-          value={f}
+          value={f} title={t("file.export.altFormats")}
+          // Alt+clique: a lista precisa estar completa antes de o menu abrir.
+          onPointerDown={(e) => e.altKey && flushSync(showAlt)}
           onChange={(e) => {
             const format = e.target.value as ExportFormat;
-            set({ format, quality: DEFAULT_QUALITY[format] ?? null, depth16: opts.depth16 && DEEP.includes(format),
-              colorProfile: profileFor(format, opts.colorProfile) });
+            set({ format, quality: initialQuality(format), depth16: opts.depth16 && DEEP.includes(format),
+              colorProfile: profileFor(format, opts.colorProfile), dpi: RESOLUTION.includes(format) ? opts.dpi : null });
           }}
         >
           {formats.map((x) => (
@@ -96,6 +147,31 @@ function OptionsFields({ opts, onChange }: { opts: ExportOptions; onChange: (o: 
           <input type="checkbox" checked={opts.depth16} onChange={(e) => set({ depth16: e.target.checked })} />
           {t("file.export.depth16")}
         </label>
+      )}
+      {f === "tiff" && (
+        <label className="file-row">
+          <span>{t("file.export.compression")}</span>
+          <select
+            value={opts.tiffCompression ?? "none"}
+            onChange={(e) => set({ tiffCompression: e.target.value as TiffCompression })}
+          >
+            {TIFF_COMPRESSIONS.map((c) => (
+              <option key={c} value={c}>{t(`file.export.compressions.${c}`)}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {f === "exr" && (
+        <label className="file-row">
+          <span>{t("file.export.depth")}</span>
+          <select value={opts.exrHalf ? "half" : "float"} onChange={(e) => set({ exrHalf: e.target.value === "half" })}>
+            <option value="half">{t("file.export.depths.half")}</option>
+            <option value="float">{t("file.export.depths.float")}</option>
+          </select>
+        </label>
+      )}
+      {RESOLUTION.includes(f) && (
+        <ResolutionField dpi={opts.dpi ?? null} current={currentDpi} onChange={(dpi) => set({ dpi })} />
       )}
       {ALPHA.includes(f) && (
         <label className="file-check">
@@ -169,6 +245,15 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
   const [overwrite, setOverwrite] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [dpi, setDpi] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    ipc.documentDpi(doc.id).then((d) => live && setDpi(d), () => {});
+    return () => {
+      live = false;
+    };
+  }, [doc.id]);
   const bytes = useEstimate(doc.id, opts);
   const heic = useHeicEncoder();
 
@@ -193,7 +278,7 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
     if (!force && confirmed !== dest && (await ipc.pathExists(dest))) return setOverwrite(dest);
     setBusy(true);
     try {
-      const info = await exportDoc(doc.id, dest, opts);
+      const info = await exportDoc(doc.id, dest, opts, tags);
       lastFolder = folder.trim();
       if (info.path === dest) addRecent(dest);
       notify(t("file.exported", { name: name.trim() }));
@@ -211,8 +296,12 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} data-testid="export-name" autoFocus />
         <button type="button" onClick={() => void pick().catch(notifyError)}>{t("file.export.choose")}</button>
       </label>
+      <div className="file-row">
+        <span>{t("finder.popover.tags")}</span>
+        <TagsInput tags={tags} onChange={setTags} />
+      </div>
       <FolderField folder={folder} setFolder={setFolder} />
-      <OptionsFields opts={opts} onChange={changeOpts} />
+      <OptionsFields opts={opts} onChange={changeOpts} currentDpi={dpi} />
       {doc.format === "heic" && heic === false && <p className="file-hint">{t("file.export.heicEncoderMissing")}</p>}
       <p className="file-hint" data-testid="export-estimate">
         {bytes === null ? t("file.export.estimating") : t("file.export.estimate", { size: formatBytes(bytes, i18n.language) })}

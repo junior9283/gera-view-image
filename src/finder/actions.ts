@@ -16,6 +16,8 @@ import { addRecent } from "../store/prefs";
 import { activeDoc } from "../viewer/actions";
 import { askDiscard, closePopover, setLockedState } from "./store";
 
+export { addTags, splitTags } from "./tags";
+
 const t = (k: string, o: Record<string, unknown> = {}) => i18n.t(k, o);
 const update = (info: DocInfo) => useDocs.getState().update(info);
 
@@ -88,15 +90,6 @@ export async function toggleLockActive(): Promise<void> {
   const d = activeFile();
   if (d) await setLocked(d.id, !(await refreshLocked(d.id)));
 }
-
-/**
- * Divide o texto digitado em etiquetas: a vírgula separa (é o separador do `user.xdg.tags`,
- * então nunca entra numa etiqueta).
- */
-export const splitTags = (raw: string): string[] => raw.split(",").map((s) => s.trim()).filter(Boolean);
-
-/** Acrescenta etiquetas sem repetir, na ordem. */
-export const addTags = (tags: string[], raw: string): string[] => [...new Set([...tags, ...splitTags(raw)])];
 
 /**
  * Restaurar uma versão: vira o conteúdo do documento, que fica com alterações (o Salvar grava).

@@ -50,7 +50,6 @@ const ENTRIES: Entry[] = [
   ["file.captureSelection", file.capture("selection")],
   ["file.captureWindow", file.capture("window")],
   ["file.captureScreen", file.capture("screen")],
-  ["file.print", file.printActive, hasDoc],
 ];
 
 /** Documentos já vistos (para pôr nos Recentes só os recém-abertos). */

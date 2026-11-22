@@ -7,7 +7,7 @@ import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
 import * as ipc from "../ipc/commands";
 import { annotationsPng } from "../markup/flatten";
 import { forgetHistory } from "../markup/history";
-import { getItems, useMarkup } from "../markup/store";
+import { useMarkup } from "../markup/store";
 import type { CaptureMode, DocId, DocInfo, ExportOptions, RevertTarget } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { addRecent, getPrefs, setPrefs } from "../store/prefs";
@@ -69,10 +69,18 @@ export async function saveDoc(d: DocInfo): Promise<boolean> {
   return true;
 }
 
-/** Exporta um documento (achata anotações antes). Devolve o `DocInfo` atualizado. */
-export async function exportDoc(id: DocId, dest: string, opts: ExportOptions): Promise<DocInfo> {
+/** Exporta um documento (achata anotações antes), com etiquetas. Devolve o `DocInfo` atualizado. */
+export async function exportDoc(id: DocId, dest: string, opts: ExportOptions, tags: string[] = []): Promise<DocInfo> {
   await runBeforeSave(id);
-  const info = await ipc.exportDoc(id, dest, opts, getPendingKeywords(id));
+  const keywords = getPendingKeywords(id);
+  let info: DocInfo;
+  if (tags.length) {
+    const out = await ipc.exportTagged(id, dest, opts, keywords, tags);
+    info = out.info;
+    if (out.tagsError) notify(t("file.export.tagsNotSaved"));
+  } else {
+    info = await ipc.exportDoc(id, dest, opts, keywords);
+  }
   update(info);
   if (info.path === dest) settleKeywords(id, opts.stripMetadata ? null : opts.format);
   return info;
@@ -148,7 +156,7 @@ async function addAndShow(info: DocInfo | null): Promise<void> {
  * Cópia em memória de `id` com as anotações não salvas achatadas nela. O original não muda: as
  * anotações continuam editáveis e o estado de "sujo" fica igual. Se o achatamento falhar, a cópia é fechada.
  */
-async function flattenedCopy(id: DocId, name: string): Promise<DocInfo> {
+export async function flattenedCopy(id: DocId, name: string): Promise<DocInfo> {
   const png = await annotationsPng(id);
   const copy = await ipc.duplicate(id, name);
   if (!png) return copy;
@@ -169,20 +177,6 @@ export async function duplicateActive(): Promise<void> {
 export const newFromClipboard = async () => addAndShow(await ipc.newFromClipboard(t("file.untitled")));
 
 export const capture = (mode: CaptureMode) => async () => addAndShow(await ipc.captureScreen(mode, t("file.capture")));
-
-export async function printActive(): Promise<void> {
-  const d = current();
-  if (!d) return;
-  const title = t("file.print.title");
-  if (!getItems(d.id).length) return ipc.printDocument(d.id, title);
-  // Imprime uma cópia temporária achatada (o `print_document` renderiza o PNG antes de voltar).
-  const copy = await flattenedCopy(d.id, d.name);
-  try {
-    await ipc.printDocument(copy.id, title);
-  } finally {
-    await ipc.closeDocument(copy.id).catch(() => {});
-  }
-}
 
 export const showInFolder = async () => {
   const d = current();
