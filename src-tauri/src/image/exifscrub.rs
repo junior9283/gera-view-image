@@ -170,21 +170,37 @@ pub fn scrub_with(tiff: &[u8], tags: &Tags, drop_thumb: bool) -> Option<Vec<u8>>
     let all = [exif.as_mut(), gps.as_mut(), interop.as_mut(), t1.as_mut()];
     check_slots(&mut std::iter::once(&mut t0).chain(all.into_iter().flatten()).collect::<Vec<_>>(), thumb.clone());
     // Sem miniatura: o IFD1 e o que ele aponta viram bytes zerados, e o IFD0 passa a ser o último.
+    // Tudo que um leitor seguiria e a limpeza não entende falha fechado.
     let mut dead: Vec<Range<usize>> = Vec::new();
+    let mut dead_text: Vec<Range<usize>> = Vec::new();
+    if drop_thumb {
+        let hidden = !t0.has_slot
+            && r.u32(t0.end).filter(|&at| at != 0).is_some_and(|at| table(&r, at as usize, &[], &mut budget).is_some());
+        if (t0.next != 0 && t1.is_none()) || hidden {
+            return None;
+        }
+    }
     if drop_thumb && let Some(t) = t1.take() {
+        if t.next != 0 || t.entries.iter().any(|e| e.unknown_type) {
+            return None;
+        }
         dead.push(t.at..t.end + if t.has_slot { 4 } else { 0 });
         dead.extend(t.entries.iter().filter_map(|e| e.value.clone()));
-        dead.extend(thumb.take().map(|r| r.start.min(tiff.len())..r.end.min(tiff.len())));
-        let kept: Vec<Range<usize>> = [Some(&t0), exif.as_ref(), gps.as_ref(), interop.as_ref()]
-            .into_iter()
-            .flatten()
-            .flat_map(|t| {
-                let table = t.at..t.end + if t.has_slot { 4 } else { 0 };
-                std::iter::once(table).chain(t.entries.iter().filter(|e| !e.drop).filter_map(|e| e.value.clone()))
-            })
-            .chain(std::iter::once(0..8))
-            .collect();
-        if dead.iter().any(|d| kept.iter().any(|k| overlaps(k, d))) {
+        dead.extend(image_data(&r, &t)?);
+        dead_text.extend(t.entries.iter().filter(|e| e.drop).filter_map(|e| e.value.clone()));
+        thumb = None;
+        let kept = merged(
+            [Some(&t0), exif.as_ref(), gps.as_ref(), interop.as_ref()]
+                .into_iter()
+                .flatten()
+                .flat_map(|t| {
+                    let table = t.at..t.end + if t.has_slot { 4 } else { 0 };
+                    std::iter::once(table).chain(t.entries.iter().filter(|e| !e.drop).filter_map(|e| e.value.clone()))
+                })
+                .chain(std::iter::once(0..8))
+                .collect(),
+        );
+        if dead.iter().any(|d| touch(&kept, d).is_some()) {
             return None;
         }
         if t0.has_slot {
@@ -216,7 +232,7 @@ pub fn scrub_with(tiff: &[u8], tags: &Tags, drop_thumb: bool) -> Option<Vec<u8>>
     for d in dead {
         out[d].fill(0);
     }
-    if !tables.iter().any(|t| t.entries.iter().any(|e| e.drop)) {
+    if dead_text.is_empty() && !tables.iter().any(|t| t.entries.iter().any(|e| e.drop)) {
         return Some(out);
     }
     // Faixas que não podem ser zeradas: cabeçalho, tabelas, valores mantidos e miniatura.
@@ -229,7 +245,8 @@ pub fn scrub_with(tiff: &[u8], tags: &Tags, drop_thumb: bool) -> Option<Vec<u8>>
     protected.extend(thumb);
     // Ordenadas e fundidas uma vez: cada consulta é uma busca binária, não uma volta por todas.
     let protected = merged(protected);
-    let mut zero: Vec<Range<usize>> = Vec::new();
+    // Os textos do IFD1 descartado já estão em `dead`; aqui só para as cópias deles sumirem também.
+    let mut zero: Vec<Range<usize>> = dead_text;
     for e in tables.iter().flat_map(|t| &t.entries).filter(|e| e.drop) {
         if e.unknown_type {
             return None; // não dá para saber quantos bytes o valor ocupa
@@ -254,6 +271,46 @@ pub fn scrub_with(tiff: &[u8], tags: &Tags, drop_thumb: bool) -> Option<Vec<u8>>
     }
     for t in tables {
         compact(&mut out, t, le);
+    }
+    Some(out)
+}
+
+/// Teto de tiras ou tiles de uma miniatura.
+const MAX_THUMB_PARTS: usize = 4096;
+
+/// Faixas dos dados da imagem do IFD `t` (miniatura JPEG, tiras ou tiles), recortadas no bloco.
+/// `None` se os deslocamentos não tiverem comprimentos correspondentes ou forem de tipo inesperado.
+fn image_data(r: &Reader, t: &Table) -> Option<Vec<Range<usize>>> {
+    let values = |tag: u16| -> Option<Option<Vec<usize>>> {
+        let Some(e) = t.entries.iter().find(|e| e.tag == tag) else {
+            return Some(None);
+        };
+        let (ty, count) = (r.u16(e.at + 2)?, r.u32(e.at + 4)? as usize);
+        let size = match ty {
+            3 => 2,
+            4 => 4,
+            _ => return None,
+        };
+        if count > MAX_THUMB_PARTS {
+            return None;
+        }
+        let at = if count * size <= 4 { e.at + 8 } else { r.u32(e.at + 8)? as usize };
+        let read = |i: usize| match size {
+            2 => r.u16(at + 2 * i).map(usize::from),
+            _ => r.u32(at + 4 * i).map(|v| v as usize),
+        };
+        (0..count).map(read).collect::<Option<Vec<_>>>().map(Some)
+    };
+    let mut out = Vec::new();
+    for (off, len) in [(TAG_THUMB_OFFSET, TAG_THUMB_LENGTH), (0x0111, 0x0117), (0x0144, 0x0145)] {
+        match (values(off)?, values(len)?) {
+            (None, None) => {}
+            (Some(o), Some(l)) if o.len() == l.len() => {
+                let n = r.b.len();
+                out.extend(o.into_iter().zip(l).map(|(o, l)| o.min(n)..o.saturating_add(l).min(n)));
+            }
+            _ => return None,
+        }
     }
     Some(out)
 }
@@ -389,6 +446,102 @@ mod tests {
         let mut f = tiff_le(&[ent(0x013B, ascii("SEGREDO!"))]);
         f.extend(b"SEGREDO!SEGREDO!");
         assert!(!tem(&scrub(&f, &T).unwrap(), "SEGREDO"));
+    }
+
+    /// `ifd0` com um IFD1 `ifd1` (ponteiro do próximo = `next`) depois de `tail`, que começa em `base`.
+    fn com_ifd1(ifd0: &[(u16, u16, u32, Vec<u8>)], tail: &[u8], ifd1: &[(u16, u16, u32, Vec<u8>)], next: u32) -> (Vec<u8>, usize) {
+        let mut f = tiff_le(ifd0);
+        let slot = 8 + 2 + 12 * ifd0.len();
+        if f.len() % 2 == 1 {
+            f.push(0);
+        }
+        let base = f.len();
+        f.extend_from_slice(tail);
+        if f.len() % 2 == 1 {
+            f.push(0);
+        }
+        let at = f.len();
+        f[slot..slot + 4].copy_from_slice(&(at as u32).to_le_bytes());
+        let values = at + 2 + 12 * ifd1.len() + 4;
+        let mut extra = Vec::new();
+        f.extend((ifd1.len() as u16).to_le_bytes());
+        for (tag, ty, count, data) in ifd1 {
+            f.extend(tag.to_le_bytes());
+            f.extend(ty.to_le_bytes());
+            f.extend(count.to_le_bytes());
+            if data.len() <= 4 {
+                let mut d = data.clone();
+                d.resize(4, 0);
+                f.extend(d);
+            } else {
+                f.extend(((values + extra.len()) as u32).to_le_bytes());
+                extra.extend_from_slice(data);
+            }
+        }
+        f.extend(next.to_le_bytes());
+        f.extend(extra);
+        (f, base)
+    }
+
+    fn longs(v: &[u32]) -> (u16, u32, Vec<u8>) {
+        (4, v.len() as u32, v.iter().flat_map(|x| x.to_le_bytes()).collect())
+    }
+
+    const SEM: Tags = Tags { tiff: &[], exif: &[] };
+
+    /// Miniatura em tiras (e em tiles): os dados de cada uma somem com o IFD1.
+    #[test]
+    fn miniatura_em_tiras_ou_tiles_some_inteira() {
+        let make = ent(0x010F, ascii("Gera Marca"));
+        let tail = b"TIRA-ANTIGA-UM..TIRA-ANTIGA-DOIS";
+        for (off, len) in [(0x0111, 0x0117), (0x0144, 0x0145)] {
+            let ifd1 = |base: u32| vec![ent(off, longs(&[base, base + 16])), ent(len, longs(&[16, 16]))];
+            let (_, base) = com_ifd1(&[make.clone()], tail, &[], 0);
+            let (f, _) = com_ifd1(&[make.clone()], tail, &ifd1(base as u32), 0);
+            let out = scrub_with(&f, &SEM, true).unwrap();
+            assert!(!tem(&out, "TIRA-ANTIGA"), "tag {off:#x}");
+            assert!(tem(&out, "Gera Marca"));
+            // Offsets sem comprimentos, ou em número diferente: não dá para saber o que zerar.
+            let (f, _) = com_ifd1(&[make.clone()], tail, &[ent(off, longs(&[base as u32]))], 0);
+            assert_eq!(scrub_with(&f, &SEM, true), None);
+            let bad = [ent(off, longs(&[base as u32])), ent(len, longs(&[16, 16]))];
+            assert_eq!(scrub_with(&com_ifd1(&[make.clone()], tail, &bad, 0).0, &SEM, true), None);
+        }
+        // Miniatura JPEG com o comprimento em SHORT.
+        let (_, base) = com_ifd1(&[make.clone()], tail, &[], 0);
+        let jpeg = [ent(0x0201, longs(&[base as u32])), ent(0x0202, (3, 1, 32u16.to_le_bytes().to_vec()))];
+        let out = scrub_with(&com_ifd1(&[make], tail, &jpeg, 0).0, &SEM, true).unwrap();
+        assert!(!tem(&out, "TIRA-ANTIGA"));
+    }
+
+    /// Texto tirado também no IFD1: as cópias dele em outros lugares somem.
+    #[test]
+    fn texto_do_ifd1_descartado_leva_as_copias() {
+        let make = ent(0x010F, ascii("Gera Marca"));
+        let (f, _) = com_ifd1(&[make.clone()], b"..SEGREDO-NO-IFD1..", &[ent(0x013B, ascii("SEGREDO-NO-IFD1"))], 0);
+        let out = scrub_with(&f, &T, true).unwrap();
+        assert!(!tem(&out, "SEGREDO"));
+        // Tipo desconhecido no IFD1: não dá para saber o tamanho do valor.
+        let mut odd = ent(0x9999, ascii("x"));
+        odd.1 = 200;
+        let (f, _) = com_ifd1(&[make], b"", &[odd], 0);
+        assert_eq!(scrub_with(&f, &SEM, true), None);
+    }
+
+    /// Cadeia que um leitor seguiria e a limpeza não entende: falha fechada.
+    #[test]
+    fn cadeia_do_ifd1_ambigua_falha_fechada() {
+        let make = ent(0x010F, ascii("Gera Marca"));
+        // IFD2 depois do IFD1.
+        let (f, _) = com_ifd1(&[make.clone()], b"", &[ent(0x0103, (3, 1, vec![6, 0]))], 8);
+        assert_eq!(scrub_with(&f, &SEM, true), None);
+        // Ponteiro para um IFD1 ilegível.
+        let mut f = tiff_le(&[make]);
+        let slot = 8 + 2 + 12;
+        let broken = f.len() as u32 - 1;
+        f[slot..slot + 4].copy_from_slice(&broken.to_le_bytes());
+        assert_eq!(scrub_with(&f, &SEM, true), None);
+        assert!(scrub(&f, &SEM).is_some(), "sem tirar a miniatura, como antes");
     }
 
     #[test]

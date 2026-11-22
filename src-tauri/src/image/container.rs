@@ -433,8 +433,8 @@ impl TiffJoin {
         let longs = |tag| -> Option<Vec<usize>> {
             let e = entries.iter().find(|e| e.tag == tag)?;
             Some(match e.ty {
-                3 => e.data.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]]) as usize).collect(),
-                4 => e.data.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]) as usize).collect(),
+                3 => e.data.as_chunks::<2>().0.iter().map(|&c| u16::from_le_bytes(c) as usize).collect(),
+                4 => e.data.as_chunks::<4>().0.iter().map(|&c| u32::from_le_bytes(c) as usize).collect(),
                 _ => return None,
             })
         };
