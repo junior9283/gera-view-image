@@ -71,10 +71,18 @@ tract-onnx = "0.23"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 sha2 = "0.10"
+# Lote 3 (Texto ao Vivo): OCR em Rust puro (rten roda os ONNX do PP-OCRv5), QR code (rqrr) e
+# download dos modelos sob demanda (reqwest/rustls com ring, os mesmos do atualizador; sha2 confere).
+rten = { version = "0.28", default-features = false, features = ["onnx_format"] }
+rten-tensor = "0.28"
+rqrr = { version = "0.11", default-features = false }
+# Reconstrói os links lidos da imagem antes de abrir (já vem pelo reqwest).
+url = "2"
 
 [dev-dependencies]
 # Monta o ONNX mínimo dos testes de segmentação (mesma versão do tract-onnx).
 prost = "0.14"
+qrcode = { version = "0.14", default-features = false }
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tga", "tiff", "webp"] }
 
 # Dependências otimizadas também em dev/test: os testes decodificam imagens grandes.
