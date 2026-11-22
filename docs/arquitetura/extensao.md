@@ -103,6 +103,36 @@ registerSlot("viewport-overlay", "magnifier", Magnifier);
 - **Lote 12.** A barra de abas entra pelo slot `above-content`, que fica entre a barra de título e
   o corpo da janela e também é renderizado em tela cheia. `file.closeWindow` é Ctrl+Shift+W;
   `window.nextTab`/`prevTab` são Ctrl+Tab/Ctrl+Shift+Tab.
+  Implementado (o scanner, `file.importScanner`/`scan_image`, ainda não): ver "Várias janelas" abaixo.
+
+## Várias janelas (Lote 12)
+
+Cada janela é um WebView próprio, com a sua loja `useDocs`. No Rust há um `DocStore` só, e
+`doc::windows::WindowRegistry` diz de qual janela é cada documento. Ao escrever código novo:
+
+- **Comando que cria documento** recebe `window: WebviewWindow` e devolve por `window::claimed` (ou
+  `claimed_one`). Sem isso, o documento fica com a primeira janela que o usar.
+- **Comando que recebe documento** usa os nomes `id`, `ids` ou `items[].id`: `window::guard` lê esses
+  argumentos antes de qualquer comando e recusa documentos de outra janela. Um nome novo precisa
+  entrar em `doc_ids`.
+- **Evento de um documento** sai por `window::emit_to_owner`, nunca por `emit` (que vai a todas). No
+  JS, ouça com `listenHere` (`src/lib/window.ts`): o `listen` sem alvo recebe também os das outras.
+- **Rótulo vindo da interface** só vale depois de `registry.check`. Não presuma a janela `main`: ela
+  pode ter sido fechada ou juntada a outra.
+- **Estado de interface por documento** (edição pendente, desfazer) registra-se em `registerDocState`
+  (`src/lib/docState.ts`: `dump`, `load`, `drop`, `settle`), com a mesma chave no terceiro argumento de
+  `registerDirtySource`. Uma fonte de "não salvo" sem essa chave faz Mover Aba e Juntar Janelas
+  recusarem o documento, para nada se perder.
+- **Comando demorado que só lê** entra em `READ_ONLY` (`src/ipc/inflight.ts`); os demais são
+  esperados antes de o documento mudar de janela.
+- **Abrir arquivos a pedido do usuário** passa por `openHere` (`src/tabs/open.ts`).
+- **Cancelamento** (OCR, segmentação) e **consentimento** (câmera) são por rótulo de janela.
+
+Mover um documento é atômico: `new_window`/`move_documents` trocam a posse e deixam a entrega (com o
+estado, opaco) na caixa do destino; `take_documents` a retira. Se o destino for destruído antes, a
+entrega volta para uma janela viva. Fechar tem duas fases: a janela pergunta, sela-se
+(`seal_window`; selada, não dá nem recebe documentos) e só então `close_window` a destrói. Sair
+(`confirm_quit`) sela todas, uma a uma, e qualquer Cancelar desfaz os selos.
 
 ## Testes do Lote 0
 
