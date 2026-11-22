@@ -2,6 +2,13 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Texto editado no Inspetor voltava ao arquivo (Lote 9)
+- **Sintoma (revisões):** o autor, a descrição ou o título apagados ou trocados reapareciam no EXIF a partir do 2º Salvar, no Exportar, no Salvar Como e no Duplicar, e a aba mostrava o valor antigo depois de salvar. Em AVIF/HEIC o autor já apagado voltava quando havia um autor novo pendente. Apagar um título sem `x-default` não apagava nada, e o XMP era editado por busca de texto (quebrava com `dc:ti<dc:title/>tle`, tab antes do atributo e outro prefixo).
+- **Causa:** o EXIF guardado na abertura (`source.exif`) nunca muda, e a limpeza só rodava com edição pendente; o marcador de "já apagado" era encoberto pelo valor pendente; a edição do XMP não escolhia o mesmo item que a leitura exibe.
+- **Correção:** o `DocStore` guarda por documento os campos já gravados e os aplica em toda gravação e na leitura dos metadados (copia no Duplicar, mantém ao Reverter, esquece ao fechar); o conjunto a limpar do EXIF é marcador mais pendente por formato; `exifscrub.rs` limpa o EXIF sem mover nada e sem zerar o que é mantido (ou descarta o EXIF e avisa); `xmpedit.rs` usa tokenizador, o mesmo seletor de item na leitura e na edição, pós-condição relendo o pacote e pacote novo com aviso quando não dá.
+- **Teste:** `texto_apagado_nao_volta_ao_exif_*`, `autor_ja_apagado_nao_volta_ao_exif_do_avif_*`, `reverter_descarta_so_a_pendencia_*`, `edicao_que_cai_no_pacote_novo_*` (`src-tauri/tests/inspetor.rs`); `apagar_sem_x_default_*`, `bom_no_comeco_*`, `teto_de_*` e a mutação de bytes (`metaedit.rs`); `exifscrub.rs` (sub-IFD, IFD1, ponteiro omitido, valor que passa do fim).
+- **Lição:** estado derivado do arquivo de abertura precisa ser reaplicado a cada gravação, não só quando há edição pendente; leitura e edição de um formato usam o mesmo seletor e o mesmo tokenizador; limpeza que falha tem que falhar fechada e avisar.
+
 ## Janela toda branca no app instalado (Wayland)
 - **Sintoma:** no app instalado (KDE Plasma Wayland, Intel + Nvidia), a janela ficava toda branca; só a região sob o mouse era redesenhada.
 - **Causa:** janela transparente e sem decoração (`decorations:false`, `transparent:true`) com o WebKitGTK em modo compositing. Com `GVI_SAFE_RENDER=1` (`WEBKIT_DISABLE_COMPOSITING_MODE=1`) tudo renderizava.

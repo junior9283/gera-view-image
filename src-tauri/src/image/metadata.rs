@@ -120,6 +120,17 @@ pub fn read_metadata_with(path: &Path, decoded: &Decoded, cleared: &MetadataEdit
     })
 }
 
+/// Textos (título, descrição, autor, texto alternativo) que o IPTC e o EXIF dizem, sem o XMP: o que
+/// um pacote XMP novo deve levar dos campos que o usuário não editou.
+pub fn known_texts(iim: Option<&[u8]>, exif_tiff: Option<&[u8]>) -> [Option<String>; 4] {
+    let mut iptc = Vec::new();
+    if let Some(d) = iim {
+        parse_iim(d, &mut iptc, &mut Vec::new());
+    }
+    let t = metaedit::texts_of(None, &iptc, &parse_blocks(&[], exif_tiff).exif);
+    [t.title, t.description, t.author, t.alt_text]
+}
+
 /// Extrai EXIF (bloco TIFF cru), GPS, IPTC e palavras-chave (IPTC + XMP `dc:subject`).
 pub fn parse_blocks(file: &[u8], exif_tiff: Option<&[u8]>) -> Blocks {
     let mut out = Blocks::default();

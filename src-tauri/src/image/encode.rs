@@ -136,8 +136,8 @@ pub struct MetaCarry {
     pub iptc_keywords: Option<Vec<String>>,
     /// Título, descrição, autor e texto alternativo editados no inspetor (Lote 9): vão para XMP e IPTC.
     pub text_edits: Option<MetadataEdits>,
-    /// Campos de texto cujo valor antigo não pode ficar no EXIF: os editados agora e os já gravados
-    /// antes neste documento (o EXIF de origem não muda depois de um Salvar).
+    /// Campos de texto já gravados antes neste documento (marcados com valor vazio): o EXIF de origem
+    /// não muda depois de um Salvar, então o texto antigo sai dele de novo a cada gravação.
     pub exif_cleared: Option<MetadataEdits>,
     pub dpi: Option<(f32, f32)>,
 }
@@ -202,13 +202,8 @@ pub fn encode<'a>(
             // `None` também quando o EXIF não pôde ser limpo com segurança: sem EXIF, nunca com o texto antigo.
             exif: meta.exif.as_deref().and_then(|e| {
                 let e = container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions());
-                match meta.exif_cleared.as_ref().map(|c| {
-                    // Formatos sem XMP/IPTC (AVIF, HEIC) não guardam o texto novo: só apagar vale.
-                    if fmt.carries_text() { c.clone() } else { c.only_clearing() }
-                }) {
-                    Some(c) if !c.is_empty() => metaedit::exif_without_text(&e, &c),
-                    _ => Some(e),
-                }
+                let clear = metaedit::exif_clear_set(meta.text_edits.as_ref(), meta.exif_cleared.as_ref(), fmt.carries_text());
+                if clear.is_empty() { Some(e) } else { metaedit::exif_without_text(&e, &clear) }
             }),
             icc: out_icc,
             ..meta.clone()
@@ -421,7 +416,9 @@ fn edited_blocks(meta: &MetaCarry) -> (Option<String>, Option<Vec<u8>>) {
     let (mut xmp, mut iptc) = (meta.xmp.clone(), meta.iptc.clone());
     // Textos primeiro: se o pacote XMP original não puder ser editado, o novo ainda recebe as palavras-chave.
     if let Some(e) = meta.text_edits.as_ref().filter(|e| !e.is_empty()) {
-        xmp = Some(metaedit::xmp_with_edits(xmp.as_deref(), e));
+        xmp = Some(metaedit::xmp_edited(xmp.as_deref(), e, || {
+            super::metadata::known_texts(meta.iptc.as_deref(), meta.exif.as_deref())
+        }));
         iptc = Some(metaedit::iim_with_edits(iptc.as_deref(), e));
     }
     if let Some(k) = &meta.iptc_keywords {

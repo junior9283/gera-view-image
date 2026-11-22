@@ -30,3 +30,9 @@ pub fn edit_metadata(
     store.set_meta_edits(id, &edits);
     Ok(())
 }
+
+/// Avisos da última gravação (`xmpRebuilt`, `exifDropped`, `textNotSaved`); o front os traduz e mostra.
+#[tauri::command]
+pub fn take_meta_notes(store: State<'_, DocStore>, id: DocId) -> Vec<&'static str> {
+    store.take_meta_notes(id)
+}

@@ -1,12 +1,13 @@
 //! Leitura e troca de título, descrição, autor e texto alternativo num pacote XMP, com tokenizador
 //! XML (`quick-xml`) e resolução de namespace: vale o nome local e o endereço do namespace, não o
 //! prefixo (`dc1:title` conta), e texto livre, comentário e CDATA nunca são tocados. O pacote é
-//! de um arquivo não confiável: tamanho e número de eventos têm teto, e o tokenizador não expande
-//! entidades. Pacote que não dá para ler ou editar com segurança volta `None`, e quem chama monta
-//! um pacote novo só com os campos editados.
+//! de um arquivo não confiável: tamanho, eventos, itens e atributos têm teto, e o tokenizador não
+//! expande entidades. Na leitura um teto só trunca; na edição, qualquer teto atingido, pacote
+//! ilegível ou resultado que não confira com o pedido volta `None`, e quem chama monta um pacote
+//! novo (e avisa o usuário).
 use super::metaedit::{clean, xml_unescape};
 use crate::image::encode::xml_escape;
-use quick_xml::{NsReader, events::Event, name::ResolveResult};
+use quick_xml::{NsReader, events::Event, name::QName, name::ResolveResult};
 use std::ops::Range;
 
 const NS_RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
@@ -17,6 +18,8 @@ pub const MAX_XMP: usize = 8 << 20;
 const MAX_EVENTS: usize = 400_000;
 /// Teto de itens `rdf:li` guardados por propriedade.
 const MAX_ITEMS: usize = 64;
+/// Teto de atributos lidos por tag.
+const MAX_ATTRS: usize = 256;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Kind {
@@ -51,6 +54,7 @@ pub const PROPS: [Prop; 4] = [
 struct Item {
     span: Range<usize>,
     inner: Range<usize>,
+    /// Sem `xml:lang` ou com `x-default` (sem diferenciar maiúsculas): o item "padrão".
     default_lang: bool,
     /// Nome qualificado da tag (`rdf:li`).
     qname: String,
@@ -64,6 +68,8 @@ struct Elem {
     items: Vec<Item>,
     /// Onde começa o conteúdo de `rdf:Alt` e o nome da tag, para acrescentar um item.
     alt: Option<(usize, String)>,
+    /// Itens ou atributos além do teto ficaram sem ler.
+    truncated: bool,
 }
 
 #[derive(Default)]
@@ -79,10 +85,14 @@ struct Scan {
     /// Início da tag `</rdf:RDF>` (última) e o prefixo de `rdf` nela.
     rdf_end: Option<usize>,
     rdf_prefix: Option<String>,
+    /// Algum teto cortou a leitura: serve para ler, não para editar.
+    truncated: bool,
 }
 
-/// `(nome, valor, trecho do atributo)` de cada atributo de uma tag; os trechos são relativos a `tag`.
-fn attributes(tag: &str) -> Vec<(&str, &str, Range<usize>)> {
+type Attr<'a> = (&'a str, &'a str, Range<usize>);
+
+/// Atributos de uma tag (nome, valor, trecho relativo à tag) e se a leitura foi até o fim da tag.
+fn attributes(tag: &str) -> (Vec<Attr<'_>>, bool) {
     let b = tag.as_bytes();
     let mut out = Vec::new();
     let skip_ws = |mut i: usize| {
@@ -96,7 +106,7 @@ fn attributes(tag: &str) -> Vec<(&str, &str, Range<usize>)> {
     while b.get(i).is_some_and(|c| !c.is_ascii_whitespace() && !matches!(c, b'/' | b'>')) {
         i += 1;
     }
-    while out.len() < 256 {
+    while out.len() < MAX_ATTRS {
         i = skip_ws(i);
         let start = i;
         while b.get(i).is_some_and(|c| !c.is_ascii_whitespace() && !matches!(c, b'=' | b'/' | b'>')) {
@@ -104,16 +114,18 @@ fn attributes(tag: &str) -> Vec<(&str, &str, Range<usize>)> {
         }
         let name_end = i;
         if name_end == start {
-            break;
+            return (out, matches!(b.get(i), None | Some(b'/' | b'>')));
         }
         i = skip_ws(i);
         if b.get(i) != Some(&b'=') {
-            break;
+            return (out, false);
         }
         i = skip_ws(i + 1);
-        let Some(&q @ (b'"' | b'\'')) = b.get(i) else { break };
+        let Some(&q @ (b'"' | b'\'')) = b.get(i) else {
+            return (out, false);
+        };
         let Some(len) = b.get(i + 1..).and_then(|r| r.iter().position(|&c| c == q)) else {
-            break;
+            return (out, false);
         };
         let (vs, ve) = (i + 1, i + 1 + len);
         if let (Some(n), Some(v)) = (tag.get(start..name_end), tag.get(vs..ve)) {
@@ -121,7 +133,15 @@ fn attributes(tag: &str) -> Vec<(&str, &str, Range<usize>)> {
         }
         i = ve + 1;
     }
-    out
+    (out, false)
+}
+
+/// O item é o "padrão": sem `xml:lang`, ou `x-default` em qualquer caixa (valor desescapado).
+fn is_default(attrs: &[Attr]) -> bool {
+    attrs
+        .iter()
+        .find(|(n, ..)| *n == NS_XML_LANG)
+        .is_none_or(|(_, v, _)| xml_unescape(v).trim().eq_ignore_ascii_case("x-default"))
 }
 
 fn prop_of(uri: Option<&str>, local: &str) -> Option<usize> {
@@ -129,9 +149,9 @@ fn prop_of(uri: Option<&str>, local: &str) -> Option<usize> {
     PROPS.iter().position(|p| p.ns == uri && p.local == local)
 }
 
-fn bound(r: &ResolveResult) -> Option<String> {
+fn ns_of<'a>(r: &'a ResolveResult) -> Option<&'a str> {
     match r {
-        ResolveResult::Bound(ns) => Some(ns.as_ref().to_string()),
+        ResolveResult::Bound(ns) => Some(ns.as_ref()),
         _ => None,
     }
 }
@@ -140,7 +160,7 @@ fn prefix_of(qname: &str) -> Option<&str> {
     qname.split_once(':').map(|(p, _)| p)
 }
 
-/// Percorre o pacote. `None` se não for XML bem formado, passar do teto ou não couber no tamanho.
+/// Percorre o pacote. `None` se não for XML bem formado, passar do teto de tamanho ou de eventos.
 fn scan(xmp: &str) -> Option<Scan> {
     if xmp.len() > MAX_XMP {
         return None;
@@ -155,33 +175,38 @@ fn scan(xmp: &str) -> Option<Scan> {
         }
         let before = r.buffer_position() as usize;
         let (res, ev) = r.read_resolved_event().ok()?;
-        let uri = bound(&res);
+        let is_rdf = ns_of(&res) == Some(NS_RDF);
+        let prop = match &ev {
+            Event::Start(e) | Event::Empty(e) => prop_of(ns_of(&res), e.local_name().as_ref()),
+            _ => None,
+        };
         let after = r.buffer_position() as usize;
         let empty = matches!(ev, Event::Empty(_));
         match ev {
             Event::Eof => return Some(s),
             Event::End(e) => {
-                if uri.as_deref() == Some(NS_RDF) && e.local_name().as_ref() == "RDF" {
+                if is_rdf && e.local_name().as_ref() == "RDF" {
                     s.rdf_end = Some(before);
                     s.rdf_prefix = prefix_of(e.name().as_ref()).map(str::to_string);
                 }
             }
             Event::Start(e) | Event::Empty(e) => {
-                let local = e.local_name().as_ref().to_string();
-                let qname = e.name().as_ref().to_string();
-                if let Some(i) = prop_of(uri.as_deref(), &local) {
+                if let Some(i) = prop {
+                    let qname = e.name().as_ref().to_string();
                     let elem = if empty {
                         Elem { span: before..after, inner: after..after, qname, ..Elem::default() }
                     } else {
                         read_element(&mut r, xmp, before, after, qname)?
                     };
+                    s.truncated |= elem.truncated;
                     s.props[i].elements.push(elem);
                     continue;
                 }
-                let tag = xmp.get(before..after)?;
-                for (name, value, span) in attributes(tag) {
-                    let (res, local) = r.resolver().resolve_attribute(quick_xml::name::QName(name));
-                    if let Some(i) = prop_of(bound(&res).as_deref(), local.as_ref()) {
+                let (attrs, complete) = attributes(xmp.get(before..after)?);
+                s.truncated |= !complete;
+                for (name, value, span) in attrs {
+                    let (res, local) = r.resolver().resolve_attribute(QName(name));
+                    if let Some(i) = prop_of(ns_of(&res), local.as_ref()) {
                         let abs = before + span.start..before + span.end;
                         s.props[i].attrs.push((abs, xml_unescape(value)));
                     }
@@ -196,7 +221,7 @@ fn scan(xmp: &str) -> Option<Scan> {
 fn read_element(r: &mut NsReader<&[u8]>, xmp: &str, start: usize, content: usize, qname: String) -> Option<Elem> {
     let mut elem = Elem { qname, ..Elem::default() };
     let mut depth = 1usize;
-    // Item aberto: início, conteúdo, x-default, nome e profundidade em que abriu.
+    // Item aberto: início, conteúdo, padrão, nome e profundidade em que abriu.
     let mut open: Option<(usize, usize, bool, String, usize)> = None;
     let mut events = 0usize;
     loop {
@@ -206,25 +231,29 @@ fn read_element(r: &mut NsReader<&[u8]>, xmp: &str, start: usize, content: usize
         }
         let before = r.buffer_position() as usize;
         let (res, ev) = r.read_resolved_event().ok()?;
-        let in_rdf = matches!(&res, ResolveResult::Bound(ns) if ns.as_ref() == NS_RDF);
+        let in_rdf = ns_of(&res) == Some(NS_RDF);
         let after = r.buffer_position() as usize;
         let is_empty = matches!(ev, Event::Empty(_));
         match ev {
             Event::Start(e) | Event::Empty(e) => {
-                let local = e.local_name().as_ref().to_string();
-                let qn = e.name().as_ref().to_string();
-                if in_rdf && local == "Alt" && !is_empty && elem.alt.is_none() {
-                    elem.alt = Some((after, qn.clone()));
+                let local = e.local_name();
+                if in_rdf && local.as_ref() == "Alt" && !is_empty && elem.alt.is_none() {
+                    elem.alt = Some((after, e.name().as_ref().to_string()));
                 }
-                if in_rdf && local == "li" && open.is_none() && elem.items.len() < MAX_ITEMS {
-                    let default_lang = attributes(xmp.get(before..after)?)
-                        .iter()
-                        .any(|(n, v, _)| *n == NS_XML_LANG && *v == "x-default");
-                    if is_empty {
-                        elem.items.push(Item { span: before..after, inner: after..after, default_lang, qname: qn });
-                        continue;
+                if in_rdf && local.as_ref() == "li" && open.is_none() {
+                    if elem.items.len() >= MAX_ITEMS {
+                        elem.truncated = true;
+                    } else {
+                        let (attrs, complete) = attributes(xmp.get(before..after)?);
+                        elem.truncated |= !complete;
+                        let default_lang = is_default(&attrs);
+                        let qn = e.name().as_ref().to_string();
+                        if is_empty {
+                            elem.items.push(Item { span: before..after, inner: after..after, default_lang, qname: qn });
+                            continue;
+                        }
+                        open = Some((before, after, default_lang, qn, depth));
                     }
-                    open = Some((before, after, default_lang, qn, depth));
                 }
                 if !is_empty {
                     depth += 1;
@@ -249,6 +278,11 @@ fn read_element(r: &mut NsReader<&[u8]>, xmp: &str, start: usize, content: usize
     }
 }
 
+/// O item que a leitura mostra e que a edição troca: o primeiro padrão, ou o primeiro item.
+fn shown(items: &[Item]) -> Option<&Item> {
+    items.iter().find(|i| i.default_lang).or(items.first())
+}
+
 /// Texto do conteúdo: sem marcação dentro (CDATA e elementos aninhados não valem), sem entidades.
 fn text_of(xmp: &str, r: &Range<usize>) -> Option<String> {
     let t = xmp.get(r.clone())?;
@@ -260,8 +294,7 @@ fn value_of(xmp: &str, prop: &Prop, found: &Found) -> Option<String> {
         if e.items.is_empty() {
             text_of(xmp, &e.inner)?
         } else if prop.kind == Kind::LangAlt {
-            let it = e.items.iter().find(|i| i.default_lang).unwrap_or(&e.items[0]);
-            text_of(xmp, &it.inner)?
+            text_of(xmp, &shown(&e.items)?.inner)?
         } else {
             let parts: Vec<String> = e.items.iter().filter_map(|i| text_of(xmp, &i.inner)).filter(|t| !t.is_empty()).collect();
             parts.join(", ")
@@ -272,13 +305,20 @@ fn value_of(xmp: &str, prop: &Prop, found: &Found) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-/// Os quatro textos do pacote (título, descrição, autor, texto alternativo); tudo `None` se o
-/// pacote não for XML legível.
-pub fn read(xmp: &str) -> [Option<String>; 4] {
-    let Some(s) = scan(xmp) else {
-        return Default::default();
-    };
+fn values_of(xmp: &str, s: &Scan) -> [Option<String>; 4] {
     std::array::from_fn(|i| value_of(xmp, &PROPS[i], &s.props[i]))
+}
+
+/// Um BOM no começo do pacote sai antes de ler ou editar (os deslocamentos valem para o texto sem ele).
+fn no_bom(xmp: &str) -> &str {
+    xmp.strip_prefix('\u{FEFF}').unwrap_or(xmp)
+}
+
+/// Os quatro textos do pacote (título, descrição, autor, texto alternativo); tudo `None` se o
+/// pacote não for XML legível. Na leitura os tetos só truncam.
+pub fn read(xmp: &str) -> [Option<String>; 4] {
+    let xmp = no_bom(xmp);
+    scan(xmp).map_or_else(Default::default, |s| values_of(xmp, &s))
 }
 
 fn item(prefix: &str, text: &str) -> String {
@@ -312,11 +352,17 @@ pub fn fresh(values: &[Option<String>; 4]) -> String {
     )
 }
 
-/// Troca os campos de `values` (`Some("")` remove) e devolve o pacote editado, com o resto intacto.
-/// Elementos e atributos da propriedade, em qualquer prefixo e quantidade, saem; em listas de
-/// idioma só o `x-default` muda e as outras línguas ficam. `None` se o pacote não puder ser editado.
+/// Troca os campos de `values` (`Some("")` apaga o item exibido) e devolve o pacote editado, com o
+/// resto intacto. Elementos e atributos da propriedade, em qualquer prefixo e quantidade, saem; em
+/// listas de idioma só o item padrão muda (sem `xml:lang` ou `x-default`) e as outras línguas
+/// ficam. `None` se o pacote não puder ser editado com segurança: ilegível, grande demais, lido
+/// só em parte ou com resultado diferente do pedido.
 pub fn edit(xmp: &str, values: &[Option<String>; 4]) -> Option<String> {
+    let xmp = no_bom(xmp);
     let s = scan(xmp)?;
+    if s.truncated {
+        return None;
+    }
     let rdf = s.rdf_prefix.as_deref().unwrap_or("rdf");
     let mut ops: Vec<(Range<usize>, String)> = Vec::new();
     let mut missing = String::new();
@@ -343,14 +389,15 @@ pub fn edit(xmp: &str, values: &[Option<String>; 4]) -> Option<String> {
             ops.push(whole(if v.is_empty() { String::new() } else { element(p, &first.qname, rdf, &v) }));
             continue;
         }
-        // Lista de idiomas: só o `x-default` muda.
         let defaults: Vec<&Item> = first.items.iter().filter(|it| it.default_lang).collect();
-        let others = first.items.len() - defaults.len();
         if v.is_empty() {
-            if others == 0 {
+            // Apaga o item exibido (todos os padrão, ou o primeiro se não houver padrão); sem
+            // item nenhum depois, a propriedade inteira sai.
+            let gone: Vec<&Item> = if defaults.is_empty() { shown(&first.items).into_iter().collect() } else { defaults };
+            if gone.len() == first.items.len() {
                 ops.push(whole(String::new()));
             } else {
-                ops.extend(defaults.iter().map(|it| (it.span.clone(), String::new())));
+                ops.extend(gone.iter().map(|it| (it.span.clone(), String::new())));
             }
         } else if let Some((head, rest)) = defaults.split_first() {
             ops.push((head.span.clone(), item(prefix_of(&head.qname).unwrap_or(rdf), &v)));
@@ -377,6 +424,13 @@ pub fn edit(xmp: &str, values: &[Option<String>; 4]) -> Option<String> {
         pos = r.end;
     }
     out.push_str(xmp.get(pos..)?);
-    // O resultado precisa continuar sendo XML legível e dentro do teto.
-    scan(&out).map(|_| out)
+    // Pós-condição: o resultado é XML legível e relido dá o que foi pedido (e só isso).
+    let after = scan(&out)?;
+    let (was, now) = (values_of(xmp, &s), values_of(&out, &after));
+    let ok = (0..4).all(|i| match values[i].as_deref().map(clean) {
+        None => now[i] == was[i],
+        Some(v) if v.is_empty() => now[i].is_none() || now[i] != was[i],
+        Some(v) => now[i].as_deref() == Some(v.as_str()),
+    });
+    ok.then_some(out)
 }

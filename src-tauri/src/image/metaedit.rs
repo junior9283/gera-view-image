@@ -6,6 +6,7 @@ use super::{
     exifscrub::{self, Tags},
     xmpedit::{self, PROPS},
 };
+use super::encode::{ExportOptions, MetaCarry};
 use crate::commands::describe::MetadataEdits;
 
 /// Teto de caracteres de cada campo (uma edição maior é cortada, nunca recusada).
@@ -106,9 +107,23 @@ impl MetadataEdits {
 /// Pacote XMP com os campos de `e` trocados, apagados (`Some("")`) ou acrescentados. Se o pacote
 /// original não puder ser editado com segurança, sai um pacote novo só com os campos editados.
 pub fn xmp_with_edits(orig: Option<&str>, e: &MetadataEdits) -> String {
+    xmp_edited(orig, e, Default::default)
+}
+
+/// Como `xmp_with_edits`; no pacote novo, os campos que `e` não edita vêm de `known` (os textos já
+/// conhecidos do arquivo), para a edição não apagar o que o usuário não tocou.
+pub fn xmp_edited(orig: Option<&str>, e: &MetadataEdits, known: impl FnOnce() -> [Option<String>; 4]) -> String {
     let values = e.values();
-    orig.and_then(|x| xmpedit::edit(x, &values))
-        .unwrap_or_else(|| xmpedit::fresh(&values))
+    if let Some(x) = orig.and_then(|x| xmpedit::edit(x, &values)) {
+        return x;
+    }
+    let mut seeded = known();
+    for (s, v) in seeded.iter_mut().zip(values) {
+        if v.is_some() {
+            *s = v;
+        }
+    }
+    xmpedit::fresh(&seeded)
 }
 
 /// Texto de uma propriedade do XMP (`dc:title`, `dc:description`, `dc:creator`,
@@ -120,13 +135,21 @@ pub fn xmp_text(xmp: &str, name: &str) -> Option<String> {
 }
 
 pub fn xml_unescape(s: &str) -> String {
+    unescape_counted(s).0
+}
+
+/// `xml_unescape` e o trabalho feito (bytes examinados à procura de `;`), para provar que é linear.
+fn unescape_counted(s: &str) -> (String, usize) {
     let s = cap_str(s, MAX_UNESCAPE);
+    let mut work = 0usize;
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         rest = &rest[i..];
-        let decoded = rest.as_bytes().iter().take(11).position(|&b| b == b';').and_then(|e| {
+        let mut window = rest.as_bytes().iter().take(11);
+        work += window.len();
+        let decoded = window.position(|&b| b == b';').and_then(|e| {
             let ent = &rest[1..e];
             let ch = match ent {
                 "lt" => Some('<'),
@@ -156,7 +179,7 @@ pub fn xml_unescape(s: &str) -> String {
         }
     }
     out.push_str(rest);
-    out
+    (out, work)
 }
 
 
@@ -218,15 +241,55 @@ pub fn exif_without_text(tiff: &[u8], e: &MetadataEdits) -> Option<Vec<u8>> {
     exifscrub::scrub(tiff, &Tags { tiff: &tiff_tags, exif: &exif_tags })
 }
 
+/// Campos cujo texto antigo sai do EXIF numa gravação: os já gravados antes (`cleared`) e os editados
+/// agora (`pending`). Formato sem XMP/IPTC não guarda o texto novo, então dele só vale apagar.
+pub fn exif_clear_set(pending: Option<&MetadataEdits>, cleared: Option<&MetadataEdits>, carries_text: bool) -> MetadataEdits {
+    let base = cleared.cloned().unwrap_or_default();
+    match pending {
+        Some(p) if carries_text => p.over(&base),
+        Some(p) => p.only_clearing().over(&base),
+        None => base,
+    }
+}
+
+/// Avisos para o usuário sobre uma gravação com `meta` e `opts` (códigos para o front traduzir):
+/// `xmpRebuilt` (o XMP foi refeito e perdeu o resto), `exifDropped` (o EXIF inteiro saiu) e
+/// `textNotSaved` (o formato não guarda o texto novo).
+pub fn notes(meta: &MetaCarry, opts: &ExportOptions) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if opts.strip_metadata {
+        return out;
+    }
+    let carries = opts.format.carries_text();
+    if let Some(p) = meta.text_edits.as_ref().filter(|p| !p.is_empty()) {
+        if !carries {
+            if *p != p.only_clearing() {
+                out.push("textNotSaved");
+            }
+        } else if let Some(x) = meta.xmp.as_deref().filter(|x| !x.trim().is_empty())
+            && xmpedit::edit(x, &p.values()).is_none()
+        {
+            out.push("xmpRebuilt");
+        }
+    }
+    let set = exif_clear_set(meta.text_edits.as_ref(), meta.exif_cleared.as_ref(), carries);
+    if !set.is_empty() && meta.exif.as_deref().is_some_and(|e| exif_without_text(e, &set).is_none()) {
+        out.push("exifDropped");
+    }
+    out
+}
+
 // ---------- IPTC-IIM ----------
 
 /// Texto de um registro 2:xx em UTF-8: o que já é UTF-8 válido fica, o resto é lido como Latin-1
 /// (o conjunto antigo mais comum), porque o IIM gravado passa a declarar UTF-8 (1:90).
 fn utf8_record(r: u8, n: u8, v: &[u8]) -> Vec<u8> {
-    if r != 2 || n == 0 || std::str::from_utf8(v).is_ok() {
+    // Só os textos (2:05 a 2:199); a conversão pode crescer até o dobro e o IIM acaba em 0x7FFF bytes.
+    if r != 2 || !(5..=199).contains(&n) || std::str::from_utf8(v).is_ok() {
         return v.to_vec();
     }
-    v.iter().map(|&b| char::from(b)).collect::<String>().into_bytes()
+    let text: String = v.iter().map(|&b| char::from(b)).collect();
+    cap_str(&text, 0x7FFF).as_bytes().to_vec()
 }
 
 /// IIM com os registros 2:05 (título), 2:120 (legenda) e 2:80 (autor) trocados conforme `e`
@@ -271,6 +334,7 @@ pub fn iim_with_edits(orig: Option<&[u8]>, e: &MetadataEdits) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::image::encode::ExportFormat;
 
     fn edits(t: &str, d: &str, a: &str, alt: &str) -> MetadataEdits {
         MetadataEdits {
@@ -621,6 +685,184 @@ mod tests {
         let m = e.over(&base);
         assert_eq!((m.title.as_deref(), m.description.as_deref()), (Some("novo"), Some("")));
         assert_eq!(e.as_cleared().title.as_deref(), Some(""));
+    }
+
+    fn alt_en_fr(extra: &str) -> String {
+        format!(
+            "<rdf:RDF {NS_DECL}><rdf:Description><dc:title><rdf:Alt><rdf:li xml:lang=\"en\">English</rdf:li><rdf:li xml:lang=\"fr\">Français</rdf:li>{extra}</rdf:Alt></dc:title></rdf:Description></rdf:RDF>"
+        )
+    }
+
+    #[test]
+    fn apagar_sem_x_default_apaga_o_item_exibido_e_mantem_as_outras_linguas() {
+        let orig = alt_en_fr("");
+        assert_eq!(xmp_text(&orig, "dc:title").as_deref(), Some("English")); // o exibido é o primeiro
+        let x = xmp_with_edits(Some(&orig), &so_titulo(""));
+        assert!(!x.contains("English") && x.contains("Français"), "{x}");
+        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("Français"));
+        // um único item e sem padrão: a propriedade inteira sai
+        let so_um = orig.replace("<rdf:li xml:lang=\"fr\">Français</rdf:li>", "");
+        let y = xmp_with_edits(Some(&so_um), &so_titulo(""));
+        assert_eq!(xmp_text(&y, "dc:title"), None);
+        assert!(!y.contains("English") && !y.contains("dc:title"));
+    }
+
+    #[test]
+    fn item_sem_idioma_ou_x_default_em_qualquer_caixa_e_o_padrao() {
+        let sem = format!(
+            "<rdf:RDF {NS_DECL}><rdf:Description><dc:title><rdf:Alt><rdf:li xml:lang=\"en\">E</rdf:li><rdf:li>Sem idioma</rdf:li></rdf:Alt></dc:title></rdf:Description></rdf:RDF>"
+        );
+        assert_eq!(xmp_text(&sem, "dc:title").as_deref(), Some("Sem idioma"));
+        let x = xmp_with_edits(Some(&sem), &so_titulo("Novo"));
+        assert!(!x.contains("Sem idioma") && x.contains(">E<"), "{x}");
+        assert_eq!(x.matches("<rdf:li").count(), 2, "troca no lugar, sem acrescentar");
+        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("Novo"));
+        let maiuscula = alt_en_fr("<rdf:li xml:lang=\"X-Default\">Padrão</rdf:li>");
+        assert_eq!(xmp_text(&maiuscula, "dc:title").as_deref(), Some("Padrão"));
+        let z = xmp_with_edits(Some(&maiuscula), &so_titulo(""));
+        assert!(!z.contains("Padrão") && z.contains("English"));
+        let escapado = alt_en_fr("<rdf:li xml:lang=\"x&#45;default\">Esc</rdf:li>");
+        assert_eq!(xmp_text(&escapado, "dc:title").as_deref(), Some("Esc"));
+    }
+
+    #[test]
+    fn bom_no_comeco_do_pacote_nao_desalinha_nada() {
+        let orig = format!("\u{FEFF}{}", alt_en_fr("<rdf:li xml:lang=\"x-default\">Velho</rdf:li>"));
+        assert_eq!(xmp_text(&orig, "dc:title").as_deref(), Some("Velho"));
+        let x = xmp_with_edits(Some(&orig), &so_titulo("Novo"));
+        assert!(x.contains("English") && !x.contains("Velho"));
+        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("Novo"));
+    }
+
+    #[test]
+    fn teto_de_itens_ou_atributos_le_truncado_mas_nao_edita() {
+        let itens: String = (0..70).map(|i| format!("<rdf:li>a{i}</rdf:li>")).collect();
+        let orig = format!(
+            "<rdf:RDF {NS_DECL} xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"><rdf:Description xmp:Rating=\"4\"><dc:creator><rdf:Seq>{itens}</rdf:Seq></dc:creator></rdf:Description></rdf:RDF>"
+        );
+        let lido = xmp_text(&orig, "dc:creator").unwrap();
+        assert!(lido.starts_with("a0, a1") && lido.contains("a63") && !lido.contains("a64"));
+        let e = MetadataEdits { author: Some("Ana".into()), ..Default::default() };
+        let x = xmp_with_edits(Some(&orig), &e);
+        assert!(!x.contains("Rating") && xmp_text(&x, "dc:creator").as_deref() == Some("Ana"), "pacote novo, sem o resto");
+        let attrs: String = (0..300).map(|i| format!(" a{i}=\"v\"")).collect();
+        let muitos = format!("<rdf:RDF {NS_DECL}><rdf:Description xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmp:Rating=\"4\"{attrs}/></rdf:RDF>");
+        let y = xmp_with_edits(Some(&muitos), &so_titulo("T"));
+        assert!(!y.contains("Rating") && xmp_text(&y, "dc:title").as_deref() == Some("T"));
+    }
+
+    #[test]
+    fn teto_de_eventos_le_nada_e_edita_com_pacote_novo() {
+        let t = std::time::Instant::now();
+        let grande = format!("<rdf:RDF {NS_DECL}><rdf:Description>{}</rdf:Description></rdf:RDF>", "<a/>".repeat(410_000));
+        assert_eq!(xmp_text(&grande, "dc:title"), None);
+        let x = xmp_with_edits(Some(&grande), &so_titulo("Novo"));
+        assert!(x.len() < 2000 && xmp_text(&x, "dc:title").as_deref() == Some("Novo"));
+        assert!(t.elapsed() < std::time::Duration::from_secs(20));
+    }
+
+    #[test]
+    fn pacote_novo_leva_os_textos_conhecidos_que_nao_foram_editados() {
+        let x = xmp_edited(Some("<<lixo"), &so_titulo("Novo"), || {
+            [Some("Velho".into()), Some("Desc conhecida".into()), Some("Autor conhecido".into()), None]
+        });
+        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("Novo"));
+        assert_eq!(xmp_text(&x, "dc:description").as_deref(), Some("Desc conhecida"));
+        assert_eq!(xmp_text(&x, "dc:creator").as_deref(), Some("Autor conhecido"));
+        // apagar um campo editado não o ressuscita com o valor conhecido
+        let apaga = MetadataEdits { description: Some(String::new()), ..Default::default() };
+        let y = xmp_edited(Some("<<lixo"), &apaga, || [None, Some("Desc conhecida".into()), None, None]);
+        assert_eq!(xmp_text(&y, "dc:description"), None);
+    }
+
+    #[test]
+    fn mutacao_de_bytes_no_xmp_nunca_entra_em_panico_e_so_devolve_xml_legivel() {
+        let base = xmp_with_edits(None, &edits("Título", "Descrição", "Ana", "Alt"));
+        let mut st = 0x2545_F491_4F6C_DD1Du64;
+        for _ in 0..1500 {
+            let mut b = base.clone().into_bytes();
+            for _ in 0..1 + st % 4 {
+                st ^= st << 13;
+                st ^= st >> 7;
+                st ^= st << 17;
+                let i = (st as usize) % b.len();
+                b[i] = (st >> 24) as u8;
+            }
+            let Ok(txt) = String::from_utf8(b) else { continue };
+            let _ = xmpedit::read(&txt);
+            if let Some(out) = xmpedit::edit(&txt, &edits("T2", "", "A2", "X2").values()) {
+                assert!(xmpedit::read(&out)[0].as_deref() == Some("T2"), "{out}");
+            }
+            let _ = xmp_with_edits(Some(&txt), &edits("T2", "D2", "A2", "X2"));
+        }
+    }
+
+    #[test]
+    fn unescape_e_linear_por_contagem_de_trabalho() {
+        let (_, work) = unescape_counted(&"&".repeat(1 << 20));
+        assert!(work <= 11 * MAX_UNESCAPE, "trabalho {work}");
+        let (out, _) = unescape_counted("a&amp;b&#233;&lt;&semponto");
+        assert_eq!(out, "a&bé<&semponto");
+    }
+
+    #[test]
+    fn conjunto_do_exif_junta_marcador_e_pendente_por_formato() {
+        let pend = MetadataEdits { author: Some("Ana".into()), ..Default::default() };
+        let marc = MetadataEdits { author: Some(String::new()), description: Some(String::new()), ..Default::default() };
+        // formato sem texto: o autor novo não encobre o marcador de "já apagado"
+        let sem = exif_clear_set(Some(&pend), Some(&marc), false);
+        assert_eq!((sem.author.as_deref(), sem.description.as_deref()), (Some(""), Some("")));
+        // formato com texto: o pendente entra por inteiro
+        let com = exif_clear_set(Some(&pend), Some(&marc), true);
+        assert_eq!((com.author.as_deref(), com.description.as_deref()), (Some("Ana"), Some("")));
+        assert!(exif_clear_set(None, None, true).is_empty());
+    }
+
+    fn opcoes(format: ExportFormat) -> ExportOptions {
+        ExportOptions { format, quality: None, alpha: true, depth16: false, strip_metadata: false, resize: None, color_profile: None }
+    }
+
+    #[test]
+    fn avisos_de_gravacao() {
+        let exif_ruim = {
+            let mut e = exif_com_textos();
+            e[8..10].copy_from_slice(&u16::MAX.to_le_bytes());
+            e
+        };
+        let meta = MetaCarry {
+            xmp: Some("<<lixo".into()),
+            exif: Some(exif_ruim),
+            text_edits: Some(so_titulo("Novo")),
+            ..MetaCarry::default()
+        };
+        assert_eq!(notes(&meta, &opcoes(ExportFormat::Jpeg)), ["xmpRebuilt", "exifDropped"]);
+        // formato sem texto: o texto novo não é gravado
+        let avif = MetaCarry { exif: None, ..meta.clone() };
+        assert_eq!(notes(&avif, &opcoes(ExportFormat::Avif)), ["textNotSaved"]);
+        // só apagar vale em qualquer formato: sem aviso
+        let apaga = MetaCarry { text_edits: Some(so_titulo("")), exif: None, ..meta.clone() };
+        assert!(notes(&apaga, &opcoes(ExportFormat::Avif)).is_empty());
+        // remover metadados: nada é gravado, nada a avisar
+        let mut o = opcoes(ExportFormat::Jpeg);
+        o.strip_metadata = true;
+        assert!(notes(&meta, &o).is_empty());
+        // pacote legível e EXIF bom: sem aviso
+        let bom = MetaCarry { xmp: Some(xmp_with_edits(None, &so_titulo("A"))), exif: Some(exif_com_textos()), ..meta };
+        assert!(notes(&bom, &opcoes(ExportFormat::Jpeg)).is_empty());
+    }
+
+    #[test]
+    fn iim_conversao_so_nos_textos_e_dentro_do_limite() {
+        // 2:00 (versão do registro) fica como está; texto Latin-1 enorme é cortado em 0x7FFF bytes.
+        let mut orig = vec![0x1C, 2, 0, 0, 2, 0xE7, 0xE7];
+        orig.extend_from_slice(&[0x1C, 2, 120, 0x4E, 0x20]); // 20 000 bytes
+        orig.extend(std::iter::repeat_n(0xE7u8, 20_000));
+        let out = iim_with_edits(Some(&orig), &so_titulo("T"));
+        let recs = records(&out);
+        let versao = recs.iter().find(|r| r.1 == 0).unwrap();
+        assert_eq!(versao.2, "\u{FFFD}\u{FFFD}", "2:00 é binário: não passa pela conversão Latin-1");
+        let longo = recs.iter().find(|r| r.1 == 120).unwrap();
+        assert!(longo.2.len() <= 0x7FFF && longo.2.starts_with("çç"));
     }
 
     fn iim(v: &[(u8, u8, &str)]) -> Vec<u8> {

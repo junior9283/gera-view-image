@@ -302,6 +302,8 @@ struct TextMeta {
     /// Campos (valor vazio) já gravados no arquivo do documento: o EXIF de origem continua com o
     /// texto antigo, então toda gravação e a leitura dos metadados o limpam de novo.
     cleared: MetadataEdits,
+    /// Avisos da última gravação (códigos de `metaedit::notes`), à espera do front.
+    notes: Vec<&'static str>,
 }
 
 /// Documentos abertos (`Mutex<HashMap<DocId, Document>>`), compartilhável entre threads.
@@ -427,7 +429,37 @@ impl DocStore {
         });
     }
 
-    /// Esquece os textos do documento (fechar, reverter, restaurar versão).
+    /// Guarda os avisos de uma gravação (sem repetir) para o front pegar com `take_meta_notes`.
+    pub fn add_meta_notes(&self, id: DocId, notes: &[&'static str]) {
+        if notes.is_empty() {
+            return;
+        }
+        self.meta_text(|m| {
+            let t = m.entry(id).or_default();
+            for n in notes {
+                if !t.notes.contains(n) {
+                    t.notes.push(n);
+                }
+            }
+        });
+    }
+
+    /// Entrega e esquece os avisos pendentes do documento.
+    pub fn take_meta_notes(&self, id: DocId) -> Vec<&'static str> {
+        self.meta_text(|m| m.get_mut(&id).map(|t| std::mem::take(&mut t.notes)).unwrap_or_default())
+    }
+
+    /// Reverter: descarta as edições ainda não gravadas e os avisos, e mantém o que já foi gravado.
+    pub fn drop_meta_pending(&self, id: DocId) {
+        self.meta_text(|m| {
+            if let Some(t) = m.get_mut(&id) {
+                t.pending = None;
+                t.notes.clear();
+            }
+        });
+    }
+
+    /// Esquece os textos do documento (fechar, restaurar versão).
     pub fn forget_meta(&self, id: DocId) {
         self.meta_text(|m| m.remove(&id));
     }

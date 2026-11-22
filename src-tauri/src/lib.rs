@@ -114,6 +114,7 @@ pub fn run() {
             commands::share::share_device_available,
             commands::sidebar::file_stats,
             commands::describe::edit_metadata,
+            commands::describe::take_meta_notes,
             commands::fonts::system_fonts,
             commands::print::export_pdf,
             commands::print::print_native,

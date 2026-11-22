@@ -11,7 +11,7 @@ use crate::{
     image::{
         decode::{self, Decoded},
         encode::{self, ExportFormat, ExportOptions, MetaCarry},
-        metadata,
+        metadata, metaedit,
         raster::{self, Rgba16Image},
     },
 };
@@ -197,12 +197,7 @@ impl DocStore {
             .map(metadata::file_iim_xmp)
             .unwrap_or_default();
         let text_edits = self.meta_edits(id);
-        let cleared = self.meta_cleared(id);
-        let exif_cleared = Some(match &text_edits {
-            Some(p) => p.over(&cleared),
-            None => cleared,
-        })
-        .filter(|c| !c.is_empty());
+        let exif_cleared = Some(self.meta_cleared(id)).filter(|c| !c.is_empty());
         let meta = MetaCarry {
             exif: source.exif.clone(),
             icc,
@@ -299,6 +294,7 @@ impl DocStore {
         };
         // Lote 5: guarda a versão atual e mantém as etiquetas (xattr `user.*`).
         super::finder::overwrite(Path::new(&path), &bytes)?;
+        self.add_meta_notes(id, &metaedit::notes(&meta, &opts));
         self.meta_written(id, fmt.carries_text());
         let (_, info) = self.with_doc_mut(id, |d| {
             d.disk = DiskStamp::of(Path::new(&path));
@@ -344,6 +340,7 @@ impl DocStore {
             None => encode::encode(&*px, opts, &meta)?,
         };
         super::finder::overwrite(&dest_path, &bytes)?;
+        self.add_meta_notes(id, &metaedit::notes(&meta, opts));
         let adopt = path.is_empty()
             && opts.resize.is_none()
             && ExportFormat::for_save(opts.format.source_format()).is_some();
@@ -436,7 +433,8 @@ impl DocStore {
             d.generation += 1;
             d.error = None;
         })?;
-        self.forget_meta(id);
+        // O que já foi gravado continua gravado: só a pendência (e os avisos) saem.
+        self.drop_meta_pending(id);
         self.invalidate(id);
         Ok(info)
     }

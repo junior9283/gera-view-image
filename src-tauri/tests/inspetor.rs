@@ -417,7 +417,7 @@ fn texto_apagado_nao_volta_ao_exif_em_salvar_exportar_salvar_como_e_duplicar() {
 }
 
 #[test]
-fn reverter_esquece_o_que_ja_foi_gravado() {
+fn reverter_descarta_so_a_pendencia_e_mantem_o_que_ja_foi_gravado() {
     let dir = tmp("insp-reverter");
     let src = jpeg_com_exif_antigo(&dir);
     let store = DocStore::new();
@@ -426,9 +426,14 @@ fn reverter_esquece_o_que_ja_foi_gravado() {
     store.set_meta_edits(id, &edicao_autor_e_descricao());
     store.save(id, None).unwrap();
     assert!(!store.meta_cleared(id).is_empty());
+    store.set_meta_edits(id, &MetadataEdits { title: Some("pendente".into()), ..Default::default() });
     store.revert(id, RevertTarget::Original).unwrap();
-    assert!(store.meta_cleared(id).is_empty());
+    // O EXIF da abertura continua com o texto antigo: os marcadores ficam para limpá-lo de novo.
+    assert!(!store.meta_cleared(id).is_empty());
     assert_eq!(store.meta_edits(id), None);
+    let fora = dir.join("depois-de-reverter.jpg");
+    store.export(id, &s(&fora), &opts(ExportFormat::Jpeg), None).unwrap();
+    sem_texto_antigo(&fora, "Exportar depois de Reverter");
     store.close(id).unwrap();
     assert!(store.meta_cleared(id).is_empty());
 }
@@ -465,4 +470,53 @@ fn exif_ilegivel_com_edicao_pendente_e_descartado_em_vez_de_vazar() {
     };
     let out = encode(&rgba, &opts(ExportFormat::Jpeg), &meta).unwrap();
     assert!(!contem(&out, "Antigo Autor") && !contem(&out, "Descricao antiga"));
+}
+
+#[test]
+fn autor_ja_apagado_nao_volta_ao_exif_do_avif_quando_ha_autor_novo_pendente() {
+    let dir = tmp("insp-avif-marcador");
+    let src = jpeg_com_exif_antigo(&dir);
+    let store = DocStore::new();
+    let id = store.open_documents(&[s(&src)]).remove(0).id;
+    store.wait_ready(id).unwrap();
+    // 1º: apaga o autor e grava no arquivo (vira marcador).
+    store.set_meta_edits(id, &MetadataEdits { author: Some(String::new()), ..Default::default() });
+    store.save(id, None).unwrap();
+    // 2º: digita um autor novo (pendente) e exporta em AVIF, que não guarda o texto novo.
+    store.set_meta_edits(id, &MetadataEdits { author: Some("Ana".into()), ..Default::default() });
+    let avif = dir.join("b.avif");
+    store.export(id, &s(&avif), &opts(ExportFormat::Avif), None).unwrap();
+    let exif = decode(&avif).unwrap().exif.expect("EXIF no AVIF");
+    assert!(!contem(&exif, "Antigo Autor") && !contem(&exif, "Autor XP antigo"), "o autor apagado voltou");
+    assert_eq!(store.take_meta_notes(id), ["textNotSaved"]);
+    assert!(store.take_meta_notes(id).is_empty(), "os avisos saem uma vez só");
+}
+
+#[test]
+fn edicao_que_cai_no_pacote_novo_leva_os_textos_conhecidos_e_avisa() {
+    let dir = tmp("insp-pacote-novo");
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    let mut exif = exif_com_textos_antigos();
+    exif[8..10].copy_from_slice(&u16::MAX.to_le_bytes()); // EXIF que não dá para limpar
+    let meta = MetaCarry {
+        exif: Some(exif),
+        iptc: Some(iim(&[(120, "Legenda conhecida"), (116, "Gera")])),
+        xmp: Some("<<isto não é XML".into()),
+        ..MetaCarry::default()
+    };
+    let src = dir.join("origem.jpg");
+    fs::write(&src, encode(&rgba, &opts(ExportFormat::Jpeg), &meta).unwrap()).unwrap();
+    let store = DocStore::new();
+    let id = store.open_documents(&[s(&src)]).remove(0).id;
+    store.wait_ready(id).unwrap();
+    store.set_meta_edits(id, &MetadataEdits { title: Some("Novo título".into()), ..Default::default() });
+    store.save(id, None).unwrap();
+    let d = decode(&src).unwrap();
+    let m = read_metadata(&src, &d).unwrap();
+    assert_eq!(m.texts.title.as_deref(), Some("Novo título"));
+    assert_eq!(m.texts.description.as_deref(), Some("Legenda conhecida"), "o texto não editado foi semeado");
+    assert_eq!(m.general.width, 16);
+    // O EXIF não podia ser limpo: não é gravado (e o texto antigo dele não vaza), com aviso.
+    assert_eq!(store.take_meta_notes(id), ["xmpRebuilt", "exifDropped"]);
+    assert!(d.exif.is_none());
 }

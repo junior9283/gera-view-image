@@ -515,6 +515,11 @@
     "pasted": "Pasted",
     "capture": "Screenshot",
     "saved": "Saved: {{name}}",
+    "metaNote": {
+      "xmpRebuilt": "The file's XMP could not be edited safely and was rebuilt: it holds only title, description, author and alt text, and the rest of the XMP (such as rating) was not kept.",
+      "exifDropped": "The old text could not be removed from the EXIF safely, so the whole EXIF (date, camera, location) was not written.",
+      "textNotSaved": "This format does not store title, description, author or alt text: the new text was not written. Export as JPEG, TIFF, PNG or WebP."
+    },
     "keywordsNotSaved": "Keywords, title, description and author were not saved: this format does not store IPTC/XMP. Export as JPEG, TIFF, PNG or WebP.",
     "exported": "Exported: {{name}}",
     "exportedMany": "{{count}} images exported",

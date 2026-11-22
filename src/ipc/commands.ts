@@ -175,6 +175,8 @@ export const fileStats = (ids: DocId[]) => invoke<FileStat[]>("file_stats", { id
 
 // Lote 9: metadados editáveis
 export const editMetadata = (id: DocId, edits: MetadataEdits) => invoke<void>("edit_metadata", { id, edits });
+/** Lote 9: avisos da última gravação sobre os textos (`xmpRebuilt`, `exifDropped`, `textNotSaved`). */
+export const takeMetaNotes = (id: DocId) => invoke<string[]>("take_meta_notes", { id });
 
 // Lote 10: fontes do sistema
 export const systemFonts = () => invoke<string[]>("system_fonts");

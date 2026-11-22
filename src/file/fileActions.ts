@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { notify } from "../chrome/notify";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
+import { reportMetaNotes } from "../inspector/notes";
 import { hasPendingTextEdits } from "../inspector/textEdits";
 import * as ipc from "../ipc/commands";
 import { annotationsPng } from "../markup/flatten";
@@ -76,6 +77,7 @@ export async function exportDoc(id: DocId, dest: string, opts: ExportOptions): P
   const info = await ipc.exportDoc(id, dest, opts, getPendingKeywords(id));
   update(info);
   if (info.path === dest) settleKeywords(id, opts.stripMetadata ? null : opts.format);
+  else void reportMetaNotes(id);
   return info;
 }
 
@@ -90,6 +92,7 @@ const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "tiff", "png", "we
  * grava; senão continuam pendentes e o usuário é avisado (`format` nulo = metadados removidos).
  */
 export function settleKeywords(id: DocId, format: string | null): void {
+  void reportMetaNotes(id);
   if (!getPendingKeywords(id) && !hasPendingTextEdits(id)) return;
   if (format && KEYWORD_FORMATS.has(format)) clearKeywords(id);
   else notify(t("file.keywordsNotSaved"));

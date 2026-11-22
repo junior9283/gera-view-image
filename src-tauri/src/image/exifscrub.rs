@@ -68,6 +68,8 @@ struct Table {
     end: usize,
     entries: Vec<Entry>,
     next: usize,
+    /// O ponteiro do próximo IFD existe e não é parte de um valor: senão a tabela acaba em `end`.
+    has_slot: bool,
 }
 
 /// Lê a tabela do IFD em `at`; `drop` diz quais tags saem.
@@ -84,16 +86,21 @@ fn table(r: &Reader, at: usize, drop: &[u16], budget: &mut usize) -> Option<Tabl
         let o = first + i * 12;
         let (tag, ty, count) = (r.u16(o)?, r.u16(o + 2)?, r.u32(o + 4)? as usize);
         let size = unit(ty);
+        // Valor que passa do fim do bloco: a faixa vai até o fim (é o que um leitor tolerante leria).
         let value = size.and_then(|s| s.checked_mul(count)).filter(|&l| l > 4).and_then(|len| {
             let off = r.u32(o + 8)? as usize;
-            let stop = off.checked_add(len)?;
-            (stop <= r.b.len()).then_some(off..stop)
+            let stop = off.checked_add(len).map_or(r.b.len(), |e| e.min(r.b.len()));
+            (off < stop).then_some(off..stop)
         });
         entries.push(Entry { tag, at: o, value, unknown_type: size.is_none(), drop: drop.contains(&tag) });
     }
-    // Ponteiro ausente (bloco cortado logo depois das entradas) vale 0: não há próximo IFD.
-    let next = r.u32(end).unwrap_or(0) as usize;
-    Some(Table { at, end, entries, next })
+    // Ponteiro ausente (bloco cortado logo depois das entradas) ou ocupado por um valor (gravador que
+    // o omite) vale 0: não há próximo IFD, e nada ali é zerado nem sobrescrito.
+    let slot = end..end + 4;
+    let has_slot = end + 4 <= r.b.len()
+        && !entries.iter().any(|e| e.value.as_ref().is_some_and(|v| overlaps(v, &slot)));
+    let next = if has_slot { r.u32(end).unwrap_or(0) as usize } else { 0 };
+    Some(Table { at, end, entries, next, has_slot })
 }
 
 fn overlaps(a: &Range<usize>, b: &Range<usize>) -> bool {
@@ -106,15 +113,25 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
     let r = Reader { b: tiff, le };
     let mut budget = MAX_ENTRIES;
     // IFD0, IFD1 (próximo IFD do IFD0) e, a partir do IFD0, os sub-IFDs Exif, GPS e interoperabilidade.
-    let t0 = table(&r, ifd0, tags.tiff, &mut budget)?;
+    let mut t0 = table(&r, ifd0, tags.tiff, &mut budget)?;
+    // Sub-IFD Exif: ausente é normal; presente e ilegível (ou apontado duas vezes) não dá para limpar.
+    let pointers = |t: &Table, tag: u16| t.entries.iter().filter(|e| e.tag == tag).count();
     let sub = |t: &Table, tag: u16, drop: &[u16], budget: &mut usize| -> Option<Table> {
         let e = t.entries.iter().find(|e| e.tag == tag)?;
         table(&r, r.u32(e.at + 8)? as usize, drop, budget)
     };
     let exif = sub(&t0, TAG_EXIF_IFD, tags.exif, &mut budget);
+    if pointers(&t0, TAG_EXIF_IFD) > 1 || (pointers(&t0, TAG_EXIF_IFD) == 1 && exif.is_none()) {
+        return None;
+    }
+    // GPS e interoperabilidade não levam texto: se estiverem quebrados, só não protegem nada.
     let gps = sub(&t0, TAG_GPS_IFD, &[], &mut budget);
     let interop = exif.as_ref().and_then(|t| sub(t, TAG_INTEROP_IFD, &[], &mut budget));
+    // IFD1: ilegível corta a cadeia (o IFD0 passa a dizer que não há próximo) em vez de derrubar o EXIF.
     let t1 = (t0.next != 0).then(|| table(&r, t0.next, tags.tiff, &mut budget)).flatten();
+    if t1.is_none() {
+        t0.next = 0;
+    }
     let tables: Vec<&Table> = [Some(&t0), exif.as_ref(), gps.as_ref(), interop.as_ref(), t1.as_ref()]
         .into_iter()
         .flatten()
@@ -132,7 +149,7 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
     let mut protected: Vec<Range<usize>> = Vec::new();
     protected.push(0..8);
     for t in &tables {
-        protected.push(t.at..(t.end + 4).min(tiff.len()));
+        protected.push(t.at..t.end + if t.has_slot { 4 } else { 0 });
         protected.extend(t.entries.iter().filter(|e| !e.drop).filter_map(|e| e.value.clone()));
     }
     if let Some(t) = &t1 {
@@ -179,15 +196,17 @@ fn compact(b: &mut [u8], t: &Table, le: bool) {
     let count = if le { (kept.len() as u16).to_le_bytes() } else { (kept.len() as u16).to_be_bytes() };
     b[t.at..first].copy_from_slice(&count);
     let next = if le { (t.next as u32).to_le_bytes() } else { (t.next as u32).to_be_bytes() };
-    let stop = (t.end + 4).min(b.len());
+    // Sem ponteiro próprio (omitido, cortado ou ocupado por um valor), a tabela acaba em `end` e o
+    // que vem depois não é tocado.
+    let stop = if t.has_slot { t.end + 4 } else { t.end };
     let mut o = first;
     for entry in &kept {
         b[o..o + 12].copy_from_slice(entry);
         o += 12;
     }
     b[o..stop].fill(0);
-    if let Some(slot) = b.get_mut(o..o + 4) {
-        slot.copy_from_slice(&next);
+    if t.has_slot {
+        b[o..o + 4].copy_from_slice(&next);
     }
 }
 
@@ -263,6 +282,134 @@ mod tests {
         let cortado = &f[..8 + 2 + 24]; // termina logo depois das entradas
         let out = scrub(cortado, &T).unwrap();
         assert_eq!(u16::from_le_bytes(out[8..10].try_into().unwrap()), 1);
+    }
+
+    /// IFD0 `[(tag, tipo, contagem, 4 bytes)]` (todos os valores inline) seguido de `tail`; o
+    /// ponteiro do próximo IFD vale `next`. Os deslocamentos de `tail` começam em `base()`.
+    fn ifd0(entries: &[(u16, u16, u32, [u8; 4])], next: u32, tail: &[u8]) -> Vec<u8> {
+        let mut out = b"II*\0\x08\0\0\0".to_vec();
+        out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+        for (tag, ty, count, v) in entries {
+            out.extend_from_slice(&tag.to_le_bytes());
+            out.extend_from_slice(&ty.to_le_bytes());
+            out.extend_from_slice(&count.to_le_bytes());
+            out.extend_from_slice(v);
+        }
+        out.extend_from_slice(&next.to_le_bytes());
+        out.extend_from_slice(tail);
+        out
+    }
+
+    fn base(n: usize) -> u32 {
+        (8 + 2 + 12 * n + 4) as u32
+    }
+
+    const ARTIST: (u16, u16, u32, [u8; 4]) = (0x013B, 2, 3, *b"Ab\0\0");
+
+    #[test]
+    fn sub_ifd_exif_ausente_e_normal_ilegivel_ou_duplicado_derruba_o_bloco() {
+        let sem = ifd0(&[ARTIST], 0, &[]);
+        assert!(scrub(&sem, &T).is_some());
+        // ponteiro Exif para fora do bloco: ilegível
+        let fora = ifd0(&[ARTIST, (0x8769, 4, 1, 0xFFFFu32.to_le_bytes())], 0, &[]);
+        assert_eq!(scrub(&fora, &T), None);
+        // ponteiro para uma tabela vazia: legível
+        let ok = ifd0(&[ARTIST, (0x8769, 4, 1, base(2).to_le_bytes())], 0, &[0, 0, 0, 0, 0, 0]);
+        assert!(scrub(&ok, &T).is_some());
+        // dois ponteiros Exif: forjado
+        let dois = ifd0(&[ARTIST, (0x8769, 4, 1, base(3).to_le_bytes()), (0x8769, 4, 1, base(3).to_le_bytes())], 0, &[0, 0, 0, 0, 0, 0]);
+        assert_eq!(scrub(&dois, &T), None);
+        // tabela Exif cortada no meio das entradas
+        let cortada = ifd0(&[ARTIST, (0x8769, 4, 1, base(2).to_le_bytes())], 0, &[5, 0, 1, 2]);
+        assert_eq!(scrub(&cortada, &T), None);
+    }
+
+    #[test]
+    fn texto_no_sub_ifd_exif_sai() {
+        // UserComment (0x9286) no sub-IFD Exif é o "equivalente" da descrição.
+        let t = Tags { tiff: &[], exif: &[0x9286] };
+        let tail = [vec![1, 0], [0x86, 0x92, 2, 0, 3, 0, 0, 0, b'x', b'y', 0, 0].to_vec(), vec![0; 4]].concat();
+        let f = ifd0(&[(0x8769, 4, 1, base(1).to_le_bytes())], 0, &tail);
+        let out = scrub(&f, &t).unwrap();
+        let sub = base(1) as usize;
+        assert_eq!(u16::from_le_bytes(out[sub..sub + 2].try_into().unwrap()), 0, "entrada tirada");
+    }
+
+    #[test]
+    fn proximo_ifd_quebrado_corta_a_cadeia_sem_derrubar_o_exif() {
+        let f = ifd0(&[ARTIST, (0x0100, 3, 1, [1, 0, 0, 0])], 0x00FF_FFFF, &[]);
+        let out = scrub(&f, &T).unwrap();
+        assert_eq!(u16::from_le_bytes(out[8..10].try_into().unwrap()), 1);
+        assert_eq!(&out[8 + 2 + 12..8 + 2 + 12 + 4], &[0, 0, 0, 0], "próximo IFD = 0");
+    }
+
+    #[test]
+    fn texto_do_ifd1_legivel_sai() {
+        // IFD1 com Artist, logo depois do IFD0.
+        let ifd1 = [
+            vec![1, 0],
+            [0x3B, 0x01, 2, 0, 3, 0, 0, 0, b'A', b'b', 0, 0].to_vec(),
+            vec![0; 4],
+        ]
+        .concat();
+        let f = ifd0(&[(0x0100, 3, 1, [1, 0, 0, 0])], base(1), &ifd1);
+        let out = scrub(&f, &T).unwrap();
+        let at = base(1) as usize;
+        assert_eq!(u16::from_le_bytes(out[at..at + 2].try_into().unwrap()), 0, "Artist do IFD1 saiu");
+    }
+
+    #[test]
+    fn valor_que_passa_do_fim_e_zerado_ate_o_fim_se_nada_mantido_estiver_la() {
+        let tail = b"abcdefgh";
+        let artist_longo = (0x013B, 2, 100, base(1).to_le_bytes()); // 100 bytes, só 8 existem
+        let f = ifd0(&[artist_longo], 0, tail);
+        let out = scrub(&f, &T).unwrap();
+        assert!(!tem(&out, "abcdefgh") && out.len() == f.len());
+        // se o valor estourado cruza um valor mantido, o bloco cai
+        let make = (0x010F, 2, 8, base(2).to_le_bytes());
+        let artist = (0x013B, 2, 100, (base(2) - 8).to_le_bytes()); // 100 bytes a partir de antes do valor de Make
+        let g = ifd0(&[make, artist], 0, b"MakeDado");
+        assert_eq!(scrub(&g, &T), None);
+    }
+
+    #[test]
+    fn valor_mantido_logo_depois_das_entradas_sem_ponteiro_de_proximo_ifd_nao_e_tocado() {
+        // Gravador que omite o ponteiro do próximo IFD: o valor de Make começa onde ele estaria.
+        let mut f = b"II*\0\x08\0\0\0".to_vec();
+        f.extend_from_slice(&2u16.to_le_bytes());
+        f.extend_from_slice(&[0x3B, 0x01, 1, 0, 2, 0, 0, 0, 7, 8, 0, 0]); // Artist inline
+        f.extend_from_slice(&[0x0F, 0x01, 2, 0, 5, 0, 0, 0]);
+        f.extend_from_slice(&34u32.to_le_bytes()); // Make em 34 = fim das entradas
+        f.extend_from_slice(b"Gera\0");
+        let out = scrub(&f, &T).expect("não derruba o EXIF");
+        assert!(tem(&out, "Gera"), "o valor mantido continua lá");
+        let r = exif::Reader::new().read_raw(out).unwrap();
+        assert!(r.get_field(exif::Tag::Make, exif::In::PRIMARY).is_some());
+        assert!(r.get_field(exif::Tag::Artist, exif::In::PRIMARY).is_none());
+    }
+
+    #[test]
+    fn mutacao_de_bytes_com_sub_ifd_e_ifd1_nao_entra_em_panico() {
+        let ifd1 = [vec![1, 0], [0x3B, 0x01, 2, 0, 3, 0, 0, 0, b'A', b'b', 0, 0].to_vec(), vec![0; 4]].concat();
+        let exif_ifd = [vec![1, 0], [0x86, 0x92, 2, 0, 3, 0, 0, 0, b'x', b'y', 0, 0].to_vec(), vec![0; 4]].concat();
+        let off_exif = base(3) + ifd1.len() as u32;
+        let f = ifd0(&[ARTIST, (0x0100, 3, 1, [1, 0, 0, 0]), (0x8769, 4, 1, off_exif.to_le_bytes())], base(3), &[ifd1, exif_ifd].concat());
+        let t = Tags { tiff: &[0x013B], exif: &[0x9286] };
+        assert!(scrub(&f, &t).is_some());
+        let mut st = 0x1234_5678_9ABC_DEF1u64;
+        for _ in 0..5000 {
+            let mut b = f.clone();
+            for _ in 0..1 + st % 4 {
+                st ^= st << 13;
+                st ^= st >> 7;
+                st ^= st << 17;
+                let i = (st as usize) % b.len();
+                b[i] = (st >> 16) as u8;
+            }
+            if let Some(out) = scrub(&b, &t) {
+                assert_eq!(out.len(), b.len(), "o tamanho do bloco não muda");
+            }
+        }
     }
 
     #[test]
