@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_STYLE, type Annotation } from "./model";
-import { editableBox, hasEditableBox, withBox, withText } from "./properties";
+import { DEFAULT_STYLE, withText, type Annotation } from "./model";
+import { editableBox, hasEditableBox, withBox } from "./properties";
 
 const rect = (g = { x: 10, y: 20, w: 30, h: 40 }): Annotation => ({ id: "r", kind: "rect", geom: g, style: DEFAULT_STYLE });
 const text: Annotation = { id: "t", kind: "text", geom: { x: 0, y: 0, w: 50, h: 20, text: "oi" }, style: DEFAULT_STYLE };
@@ -28,8 +28,9 @@ describe("propriedades da anotação", () => {
     expect((withBox(rect({ x: 40, y: 60, w: -30, h: -40 }), { w: 8 }) as { geom: object }).geom).toEqual({ x: 10, y: 20, w: 8, h: 40 });
   });
 
-  it("só texto aceita novo conteúdo", () => {
+  it("só texto e as formas aceitam novo conteúdo", () => {
     expect(withText(text, "novo")).toMatchObject({ geom: { text: "novo", w: 50 } });
-    expect(withText(rect(), "x")).toEqual(rect());
+    expect(withText(rect(), "x")).toMatchObject({ text: "x", geom: rect().geom });
+    expect(withText(line, "x")).toBe(line);
   });
 });

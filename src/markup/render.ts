@@ -1,16 +1,20 @@
 // Desenho das anotações num canvas 2D (camada da tela e achatamento em resolução cheia).
 import {
-  DEFAULT_FONT,
+  BUBBLE_RADIUS,
   bounds,
   normBox,
   polygonVertices,
   starVertices,
+  textBox,
+  textFont,
   type Annotation,
   type Box,
+  type FontStyle,
   type Point,
   type Style,
 } from "./model";
 import { cssFont } from "./fontCss";
+import { LINE_HEIGHT, wrapText } from "./textLayout";
 import { handlesFor, type HandleColor } from "./tools/handles";
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -26,7 +30,7 @@ export interface RenderOpts {
   imageH: number;
   /** Pixels do dispositivo por px CSS. */
   dpr?: number;
-  /** Anotação que não deve ser desenhada (texto em edição, desenhado pelo `<textarea>`). */
+  /** Anotação com o texto em edição: quem o mostra é o `<textarea>` (a forma continua desenhada). */
   skip?: string | null;
 }
 
@@ -128,7 +132,7 @@ const ovalPath = (ctx: Ctx, b: Box) => {
  * num caminho só (o contorno não cruza a base da cauda).
  */
 function bubblePath(ctx: Ctx, b: Box, tail: { x: number; y: number }): void {
-  const r = Math.min(b.w, b.h) * 0.2;
+  const r = Math.min(b.w, b.h) * BUBBLE_RADIUS;
   const cx = b.x + b.w / 2;
   const cy = b.y + b.h / 2;
   const nx = (tail.x - cx) / (b.w / 2 || 1);
@@ -186,17 +190,15 @@ function ends(ctx: Ctx, pts: readonly Point[], s: Style): void {
   if (s.arrowStart !== "none") arrowHead(ctx, pts[0], pts[1], s, s.arrowStart);
 }
 
-function drawText(ctx: Ctx, a: Extract<Annotation, { kind: "text" }>): void {
-  const f = a.style.font ?? DEFAULT_FONT;
-  const b = normBox(a.geom);
+/** Linhas dentro de `b` (alinhamento da fonte), a partir do topo `b.y`. */
+function drawLines(ctx: Ctx, f: FontStyle, lines: readonly string[], b: Box): void {
   ctx.font = cssFont(f);
   ctx.fillStyle = f.color;
   ctx.textBaseline = "top";
   ctx.textAlign = f.align;
   const x = f.align === "left" ? b.x : f.align === "center" ? b.x + b.w / 2 : b.x + b.w;
-  const lh = f.size * 1.25;
-  a.geom.text.split("\n").forEach((line, i) => {
-    const y = b.y + i * lh;
+  lines.forEach((line, i) => {
+    const y = b.y + i * f.size * LINE_HEIGHT;
     ctx.fillText(line, x, y);
     if (f.underline && line) {
       const w = ctx.measureText(line).width;
@@ -204,6 +206,17 @@ function drawText(ctx: Ctx, a: Extract<Annotation, { kind: "text" }>): void {
       ctx.fillRect(x0, y + f.size * 1.05, w, Math.max(1, f.size / 14));
     }
   });
+}
+
+/** Texto dentro da forma: quebrado na largura e centralizado na altura. */
+function drawShapeText(ctx: Ctx, a: Annotation): void {
+  const b = textBox(a);
+  if (!b || !a.text) return;
+  const f = textFont(a);
+  ctx.shadowColor = "transparent"; // a sombra é da forma
+  ctx.font = cssFont(f);
+  const lines = wrapText(a.text, b.w, (s) => ctx.measureText(s).width);
+  drawLines(ctx, f, lines, { ...b, y: b.y + (b.h - lines.length * f.size * LINE_HEIGHT) / 2 });
 }
 
 function drawLoupe(ctx: Ctx, a: Extract<Annotation, { kind: "loupe" }>, src: Source | null | undefined, o: RenderOpts): void {
@@ -273,7 +286,7 @@ function drawItem(ctx: Ctx, a: Annotation, src: Source | null | undefined, o: Re
       paint(ctx, a.style);
       break;
     case "text":
-      drawText(ctx, a);
+      if (a.id !== o.skip) drawLines(ctx, textFont(a), a.geom.text.split("\n"), normBox(a.geom));
       break;
     case "loupe":
       drawLoupe(ctx, a, src, o);
@@ -288,6 +301,7 @@ function drawItem(ctx: Ctx, a: Annotation, src: Source | null | undefined, o: Re
     case "highlight":
       break; // desenhado à parte (máscara única)
   }
+  if (a.id !== o.skip) drawShapeText(ctx, a);
   ctx.restore();
 }
 
@@ -327,7 +341,7 @@ export function render(
   ctx.setTransform(k * view.scale, 0, 0, k * view.scale, k * view.panX, k * view.panY);
   const hl = items.filter((a): a is Extract<Annotation, { kind: "highlight" }> => a.kind === "highlight");
   if (hl.length) drawHighlights(ctx, hl, opts);
-  for (const a of items) if (a.kind !== "highlight" && a.id !== opts.skip) drawItem(ctx, a, source, opts, onImage);
+  for (const a of items) if (a.kind !== "highlight") drawItem(ctx, a, source, opts, onImage);
   ctx.restore();
 }
 

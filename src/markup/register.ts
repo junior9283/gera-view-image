@@ -16,7 +16,7 @@ import { Eyedropper } from "./Eyedropper";
 import { MarkupBar } from "./MarkupBar";
 import { MarkupLayer } from "./MarkupLayer";
 import "./markup.css";
-import type { Annotation } from "./model";
+import { textOf, type Annotation } from "./model";
 import { docOf, hasPages, pageItems } from "./pages";
 import { getItems, getSelected, toggleMarkupBar, useMarkup } from "./store";
 
@@ -62,7 +62,7 @@ setAnnotationSource({
     getItems(id).map((a) => ({
       id: a.id,
       kind: a.kind,
-      label: a.kind === "text" ? a.geom.text.split("\n")[0].slice(0, 60) : i18n.t(`markup.kind.${a.kind}`),
+      label: textOf(a)?.split("\n")[0].slice(0, 60) || i18n.t(`markup.kind.${a.kind}`),
     })),
   subscribe: (cb) => useMarkup.subscribe((s, prev) => s.docs !== prev.docs && cb()),
   select: (id, annotationId) => {

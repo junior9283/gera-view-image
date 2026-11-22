@@ -12,10 +12,11 @@ import { addAnnotation, commit, deleteSelected, endLive, moveSelectedLive } from
 import { cloneItems } from "./clipboard";
 import { loadSource } from "./flatten";
 import { cssFont } from "./fontCss";
-import { DEFAULT_FONT, hitTest, moveItems, normBox, type Annotation, type Point } from "./model";
+import { bounds, hitTest, moveItems, normBox, textBox, textFont, textOf, withText, type Annotation, type Point } from "./model";
 import { onCurrentPage, onPage, pageItems } from "./pages";
 import { render, renderSelection, type Source, type ViewXf } from "./render";
 import { annotationsFocused, getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
+import { LINE_HEIGHT, layoutLines } from "./textLayout";
 import { createShape, createStroke, createText, toImageStyle } from "./tools/create";
 import { dragHandle, handlesFor, hitHandle, type HandleId } from "./tools/handles";
 
@@ -53,7 +54,7 @@ function useLoupeSource(doc: DocInfo | null, needed: boolean, page: number): Sou
   return src?.key === key ? src.s : null;
 }
 
-/** Atalhos locais da camada: Delete apaga as selecionadas; Esc desmarca e volta à Seleção; setas movem. */
+/** Atalhos locais da camada: Delete apaga as selecionadas; Esc desmarca e volta à Seleção; Enter edita o texto; setas movem. */
 function useMarkupKeys() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -68,6 +69,11 @@ function useMarkupKeys() {
         if (getSelected(id).length) st.select(id, []);
         else if (st.tool !== "select") st.setTool("select");
         else return;
+        used = true;
+      } else if (e.key === "Enter" && annotationsFocused(id) && !(e.target as Element | null)?.closest?.("button, a, [role]")) {
+        const [a, ...more] = getItems(id).filter((x) => getSelected(id).includes(x.id));
+        if (more.length || textOf(a) === null) return;
+        st.setEditing(a.id);
         used = true;
       }
       if (used) {
@@ -271,8 +277,9 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       if (!st.visible || id === null) return;
       const p = at(e);
       const hit = hitTest(pageItems(id), p[0], p[1], HIT_PX / cur.current.view.scale);
-      if (hit?.kind === "text") {
+      if (hit && textOf(hit) !== null) {
         e.stopPropagation();
+        st.select(id, [hit.id]);
         st.setEditing(hit.id);
       } else if (hit) e.stopPropagation(); // não alterna Ajustar/Tamanho real sobre uma anotação
     };
@@ -290,7 +297,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
     };
   }, []);
 
-  const editingItem = items.find((a) => a.id === editing && a.kind === "text");
+  const editingItem = items.find((a) => a.id === editing && textOf(a) !== null);
   const cursor = !active ? undefined : tool === "select" ? "default" : tool === "text" ? "text" : "crosshair";
 
   return (
@@ -302,20 +309,22 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       style={{ pointerEvents: active ? "auto" : "none", cursor }}
     >
       <canvas ref={canvas} className="markup-canvas" />
-      {docId !== null && editingItem?.kind === "text" && (
+      {docId !== null && editingItem && (
         <TextEditor key={editingItem.id} docId={docId} item={editingItem} view={{ scale, panX, panY }} />
       )}
     </div>
   );
 }
 
-/** `<textarea>` sobre o texto em edição; confirma ao sair (vazio apaga). */
-function TextEditor({ docId, item, view }: { docId: number; item: Extract<Annotation, { kind: "text" }>; view: ViewXf }) {
+/** `<textarea>` sobre o texto em edição; confirma ao sair (vazio apaga o texto, ou a forma fica sem ele). */
+function TextEditor({ docId, item, view }: { docId: number; item: Annotation; view: ViewXf }) {
   const { t } = useTranslation();
-  const [value, setValue] = useState(item.geom.text);
+  const original = textOf(item) ?? "";
+  const [value, setValue] = useState(original);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const f = item.style.font ?? DEFAULT_FONT;
-  const b = normBox(item.geom);
+  const f = textFont(item);
+  const inShape = textBox(item);
+  const b = inShape ?? normBox(bounds(item));
 
   useEffect(() => {
     ref.current?.focus();
@@ -327,26 +336,34 @@ function TextEditor({ docId, item, view }: { docId: number; item: Extract<Annota
     if (st.editing !== item.id) return;
     st.setEditing(null);
     const text = value.replace(/\s+$/, "");
-    if (text && text === item.geom.text) return; // nada mudou: sem passo no desfazer
     const items = getItems(docId);
+    if (item.kind !== "text") {
+      if (text !== original) commit(docId, items.map((a) => (a.id === item.id ? withText(a, text) : a)));
+      return;
+    }
+    if (text && text === original) return; // nada mudou: sem passo no desfazer
     const without = items.filter((a) => a.id !== item.id);
     // Texto recém-criado (vazio) ainda não está no histórico: o "antes" é sem ele.
-    const before = item.geom.text === "" ? without : items;
+    const before = original === "" ? without : items;
     if (!text) {
       commit(docId, without, before);
       return;
     }
     const lines = text.split("\n");
     const w = Math.max(b.w, f.size * 2, ...lines.map((l) => l.length * f.size * 0.62));
-    const next = { ...item, geom: { ...item.geom, text, w, h: lines.length * f.size * 1.25 } };
+    const next = { ...item, geom: { ...item.geom, text, w, h: lines.length * f.size * LINE_HEIGHT } };
     commit(docId, items.map((a) => (a.id === item.id ? next : a)), before);
   };
 
   const size = f.size * view.scale;
+  const lineCount = inShape ? layoutLines(value, b.w, f).length : value.split("\n").length;
+  const height = lineCount * f.size * LINE_HEIGHT;
+  // Na forma, o campo tem a altura do texto e fica no meio, onde ele será desenhado.
+  const top = inShape ? b.y + (b.h - height) / 2 : b.y;
   return (
     <textarea
       ref={ref}
-      className="markup-text-editor"
+      className={`markup-text-editor${inShape ? " in-shape" : ""}`}
       aria-label={t("markup.textEditor")}
       value={value}
       onChange={(e) => setValue(e.target.value)}
@@ -357,9 +374,9 @@ function TextEditor({ docId, item, view }: { docId: number; item: Extract<Annota
       }}
       style={{
         left: view.panX + b.x * view.scale,
-        top: view.panY + b.y * view.scale,
-        width: Math.max(b.w * view.scale, size * 4),
-        height: Math.max(b.h, (value.split("\n").length) * f.size * 1.25) * view.scale + 4,
+        top: view.panY + top * view.scale,
+        width: inShape ? Math.max(b.w * view.scale, size) : Math.max(b.w * view.scale, size * 4),
+        height: (inShape ? height : Math.max(b.h, height)) * view.scale + 4,
         font: cssFont({ ...f, size }),
         color: f.color,
         textAlign: f.align,

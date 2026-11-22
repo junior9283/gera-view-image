@@ -38,6 +38,8 @@ interface Base {
   style: Style;
   /** Página do documento (várias páginas, como TIFF); ausente = a primeira. */
   page?: number;
+  /** Texto dentro da forma (só nas que `canHoldText`); a anotação de texto guarda o dela em `geom`. */
+  text?: string;
 }
 
 export type Annotation = Base &
@@ -64,6 +66,9 @@ export const KINDS: readonly Kind[] = [
   "line", "arrow", "rect", "roundRect", "oval", "bubble", "star", "polygon",
   "freehand", "text", "loupe", "highlight", "signature", "image",
 ];
+
+/** Raio dos cantos do balão, em fração do lado menor. */
+export const BUBBLE_RADIUS = 0.2;
 
 export const COUNT_MIN = 3;
 export const COUNT_MAX = 20;
@@ -140,6 +145,55 @@ export function bounds(a: Annotation): Box {
     default:
       return normBox(a.geom);
   }
+}
+
+type TextShape = Extract<Annotation, { kind: "rect" | "roundRect" | "oval" | "bubble" | "star" | "polygon" }>;
+const TEXT_SHAPES: readonly Kind[] = ["rect", "roundRect", "oval", "bubble", "star", "polygon"];
+
+/** Formas que levam texto dentro (duplo clique), como no Pré-Visualização. */
+export const canHoldText = (a: Annotation): a is TextShape => TEXT_SHAPES.includes(a.kind);
+
+/** Fração da caixa que o texto ocupa em cada forma (a parte reta, dentro do contorno). */
+function textFraction(a: TextShape): number {
+  switch (a.kind) {
+    case "oval":
+      return Math.SQRT1_2;
+    case "star":
+      return 0.5;
+    case "polygon":
+      return Math.max(0.4, Math.cos(Math.PI / clamp(Math.round(a.geom.sides), COUNT_MIN, COUNT_MAX)) * Math.SQRT1_2);
+    default:
+      return 1;
+  }
+}
+
+/** Onde o texto da forma fica (centralizado na caixa), ou `null` se ela não leva texto. */
+export function textBox(a: Annotation): Box | null {
+  if (!canHoldText(a)) return null;
+  const b = normBox(a.geom);
+  const k = textFraction(a);
+  const side = Math.min(b.w, b.h);
+  const radius = a.kind === "roundRect" ? Math.min(a.geom.radius, side / 2) : a.kind === "bubble" ? side * BUBBLE_RADIUS : 0;
+  const pad = Math.max(0, a.style.width / 2 + (a.style.font ?? DEFAULT_FONT).size * 0.2 + Math.max(0, radius) * (1 - Math.SQRT1_2));
+  const w = Math.max(0, b.w * k - 2 * pad);
+  const h = Math.max(0, b.h * k - 2 * pad);
+  return { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, w, h };
+}
+
+/** Texto da anotação ("" se ainda não tem), ou `null` se ela não leva texto. */
+export const textOf = (a: Annotation): string | null => (a.kind === "text" ? a.geom.text : canHoldText(a) ? (a.text ?? "") : null);
+
+/** Fonte do texto da anotação; o primeiro texto de uma forma nasce centralizado. */
+export const textFont = (a: Annotation): FontStyle => {
+  const f = a.style.font ?? DEFAULT_FONT;
+  return canHoldText(a) && a.text === undefined ? { ...f, align: "center" } : f;
+};
+
+/** A anotação com o texto trocado; a forma sem texto volta a ser só a forma. */
+export function withText(a: Annotation, text: string): Annotation {
+  if (a.kind === "text") return { ...a, geom: { ...a.geom, text } };
+  if (!canHoldText(a)) return a;
+  return text ? { ...a, text, style: { ...a.style, font: textFont(a) } } : { ...a, text: undefined };
 }
 
 /** Desloca a anotação (imutável). */
@@ -238,6 +292,7 @@ export function deserialize(json: string): AnnotationDoc {
     const o = a as Record<string, unknown>;
     return (
       isStr(o.id) &&
+      (o.text === undefined || isStr(o.text)) &&
       KINDS.includes(o.kind as Kind) &&
       !!o.geom && typeof o.geom === "object" && validGeom(o.kind as Kind, o.geom as Record<string, unknown>) &&
       !!o.style && typeof o.style === "object" && validStyle(o.style as Record<string, unknown>)
