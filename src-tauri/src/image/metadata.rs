@@ -316,15 +316,19 @@ fn parse_iim(mut d: &[u8], fields: &mut Vec<(String, String)>, keywords: &mut Ve
     }
 }
 
+/// Teto de palavras-chave lidas de um XMP (o `contains` de cada uma é linear).
+const MAX_KEYWORDS: usize = 2000;
+
 /// Itens de `<dc:subject>` de um pacote XMP.
 fn xmp_keywords(xmp: &str) -> Vec<String> {
+    let xmp = metaedit::cap_str(xmp, metaedit::MAX_XMP);
     let mut out = vec![];
     let Some(a) = xmp.find("<dc:subject>") else {
         return out;
     };
     let body = &xmp[a..];
     let body = &body[..body.find("</dc:subject>").unwrap_or(body.len())];
-    for part in body.split("<rdf:li").skip(1) {
+    for part in body.split("<rdf:li").skip(1).take(MAX_KEYWORDS) {
         let (Some(s), Some(e)) = (part.find('>'), part.find("</rdf:li>")) else {
             continue;
         };

@@ -192,7 +192,12 @@ pub fn encode<'a>(
     } else {
         MetaCarry {
             exif: meta.exif.as_deref().map(|e| {
-                container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions())
+                let e = container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions());
+                // O texto antigo de autor/descrição/título não pode sobrar no EXIF.
+                match &meta.text_edits {
+                    Some(t) => metaedit::exif_without_text(&e, t),
+                    None => e,
+                }
             }),
             icc: out_icc,
             ..meta.clone()

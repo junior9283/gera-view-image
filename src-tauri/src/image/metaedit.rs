@@ -8,6 +8,10 @@ use std::ops::Range;
 
 /// Teto de caracteres de cada campo (uma edição maior é cortada, nunca recusada).
 pub const MAX_CHARS: usize = 16_384;
+/// Teto do texto que `xml_unescape` processa (o resto é descartado).
+pub const MAX_UNESCAPE: usize = 1 << 16;
+/// Teto do pacote XMP lido para exibir (a gravação preserva o pacote inteiro).
+pub const MAX_XMP: usize = 4 << 20;
 /// Tetos em bytes no IPTC-IIM (o XMP guarda o texto inteiro).
 const IIM_TITLE: usize = 256;
 const IIM_AUTHOR: usize = 256;
@@ -19,6 +23,15 @@ const MAX_ITEMS: usize = 64;
 
 const NS_DC: &str = "http://purl.org/dc/elements/1.1/";
 const NS_IPTC: &str = "http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/";
+
+/// Prefixo de `s` com até `max` bytes, sem partir um caractere.
+pub fn cap_str(s: &str, max: usize) -> &str {
+    let mut n = s.len().min(max);
+    while !s.is_char_boundary(n) {
+        n -= 1;
+    }
+    &s[..n]
+}
 
 /// Tira controles (menos quebra de linha e tabulação), normaliza `\r\n` e corta no teto.
 pub fn clean(s: &str) -> String {
@@ -104,6 +117,33 @@ fn find_element(x: &str, name: &str) -> Option<Range<usize>> {
     None
 }
 
+/// Remove TODAS as ocorrências da propriedade `name` (elementos e atributos) e devolve onde estava
+/// o primeiro elemento, para o texto novo entrar no mesmo lugar.
+fn remove_all(x: &mut String, name: &str) -> Option<usize> {
+    let attr = format!(" {name}=");
+    for _ in 0..MAX_ITEMS * 16 {
+        let Some(p) = x.find(&attr) else { break };
+        let q = p + attr.len();
+        let quote = match x.as_bytes().get(q) {
+            Some(&b @ (b'"' | b'\'')) => b as char,
+            _ => break,
+        };
+        let Some(end) = x[q + 1..].find(quote) else {
+            break;
+        };
+        x.replace_range(p..q + 1 + end + 1, "");
+    }
+    let mut first = None;
+    for _ in 0..MAX_ITEMS * 16 {
+        let Some(r) = find_element(x, name) else {
+            break;
+        };
+        first.get_or_insert(r.start);
+        x.replace_range(r, "");
+    }
+    first
+}
+
 /// Pacote XMP com os campos de `e` trocados (ou acrescentados); `Some("")` remove a propriedade.
 /// O restante do pacote original fica como estava.
 pub fn xmp_with_edits(orig: Option<&str>, e: &MetadataEdits) -> String {
@@ -120,8 +160,8 @@ pub fn xmp_with_edits(orig: Option<&str>, e: &MetadataEdits) -> String {
         } else {
             element(name, &v, kind)
         };
-        match find_element(&x, name) {
-            Some(r) => x.replace_range(r, &new),
+        match remove_all(&mut x, name) {
+            Some(at) => x.insert_str(at, &new),
             None if !new.is_empty() => missing.push((i, new)),
             None => {}
         }
@@ -150,12 +190,13 @@ pub fn xmp_with_edits(orig: Option<&str>, e: &MetadataEdits) -> String {
 }
 
 pub fn xml_unescape(s: &str) -> String {
+    let s = cap_str(s, MAX_UNESCAPE);
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         rest = &rest[i..];
-        let decoded = rest.find(';').filter(|&e| e <= 10).and_then(|e| {
+        let decoded = rest.as_bytes().iter().take(11).position(|&b| b == b';').and_then(|e| {
             let ent = &rest[1..e];
             let ch = match ent {
                 "lt" => Some('<'),
@@ -210,6 +251,7 @@ fn list_items(inner: &str) -> Vec<(&str, String)> {
 /// Texto de uma propriedade do XMP: o `x-default` (ou o primeiro) de uma lista de idiomas;
 /// os itens de uma sequência, separados por vírgula; ou o texto simples do elemento.
 pub fn xmp_text(xmp: &str, name: &str) -> Option<String> {
+    let xmp = cap_str(xmp, MAX_XMP);
     let r = find_element(xmp, name)?;
     let el = xmp.get(r)?;
     let from = el.find('>')? + 1;
@@ -272,16 +314,91 @@ pub fn texts_of(xmp: Option<&str>, iptc: &[(String, String)], exif: &[(String, S
     }
 }
 
-// ---------- IPTC-IIM ----------
+// ---------- EXIF ----------
 
-/// Corta `s` em até `max` bytes sem partir um caractere.
-fn cap_bytes(s: &str, max: usize) -> &[u8] {
-    let mut n = s.len().min(max);
-    while !s.is_char_boundary(n) {
-        n -= 1;
+/// Tags do IFD0 que repetem cada texto editável: Artist/XPAuthor, ImageDescription/XPComment e XPTitle.
+const EXIF_TITLE: [u16; 1] = [0x9C9B];
+const EXIF_DESCRIPTION: [u16; 2] = [0x010E, 0x9C9C];
+const EXIF_AUTHOR: [u16; 2] = [0x013B, 0x9C9D];
+
+/// Bloco EXIF sem o valor antigo dos campos editados: tira do IFD0 as entradas deles e zera os bytes
+/// dos valores. O novo texto vai para o XMP e o IPTC. O resto do EXIF fica como estava; um bloco que
+/// não dá para ler com segurança volta como veio.
+pub fn exif_without_text(tiff: &[u8], e: &MetadataEdits) -> Vec<u8> {
+    let mut drop: Vec<u16> = Vec::new();
+    if e.title.is_some() {
+        drop.extend(EXIF_TITLE);
     }
-    &s.as_bytes()[..n]
+    if e.description.is_some() {
+        drop.extend(EXIF_DESCRIPTION);
+    }
+    if e.author.is_some() {
+        drop.extend(EXIF_AUTHOR);
+    }
+    let mut out = tiff.to_vec();
+    if !drop.is_empty() {
+        let _ = scrub_ifd0(&mut out, &drop);
+    }
+    out
 }
+
+fn scrub_ifd0(b: &mut [u8], drop: &[u16]) -> Option<()> {
+    let (ifd, le) = super::makernote::tiff_header(b)?;
+    let u16_at = |b: &[u8], o: usize| -> Option<u16> {
+        let a: [u8; 2] = b.get(o..o.checked_add(2)?)?.try_into().ok()?;
+        Some(if le { u16::from_le_bytes(a) } else { u16::from_be_bytes(a) })
+    };
+    let u32_at = |b: &[u8], o: usize| -> Option<u32> {
+        let a: [u8; 4] = b.get(o..o.checked_add(4)?)?.try_into().ok()?;
+        Some(if le { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) })
+    };
+    let n = usize::from(u16_at(b, ifd)?);
+    let first = ifd.checked_add(2)?;
+    let end = first.checked_add(n * 12)?;
+    let next: [u8; 4] = b.get(end..end.checked_add(4)?)?.try_into().ok()?;
+    let mut keep: Vec<[u8; 12]> = Vec::with_capacity(n);
+    let mut zero: Vec<(usize, usize)> = Vec::new();
+    for i in 0..n {
+        let o = first + i * 12;
+        let entry: [u8; 12] = b.get(o..o + 12)?.try_into().ok()?;
+        if !drop.contains(&u16_at(b, o)?) {
+            keep.push(entry);
+            continue;
+        }
+        let unit = match u16_at(b, o + 2)? {
+            1 | 2 | 6 | 7 => 1,
+            3 | 8 => 2,
+            4 | 9 | 11 => 4,
+            5 | 10 | 12 => 8,
+            _ => 0,
+        };
+        let len = unit * (u32_at(b, o + 4)? as usize);
+        if len > 4 {
+            zero.push((u32_at(b, o + 8)? as usize, len));
+        }
+    }
+    if keep.len() == n {
+        return Some(());
+    }
+    for (off, len) in zero {
+        if let Some(v) = off.checked_add(len).and_then(|e| b.get_mut(off..e)) {
+            v.fill(0);
+        }
+    }
+    let count = if le { (keep.len() as u16).to_le_bytes() } else { (keep.len() as u16).to_be_bytes() };
+    b[ifd..ifd + 2].copy_from_slice(&count);
+    let mut o = first;
+    for entry in &keep {
+        b[o..o + 12].copy_from_slice(entry);
+        o += 12;
+    }
+    b[o..end].fill(0);
+    b[o..o + 4].copy_from_slice(&next);
+    b[o + 4..end + 4].fill(0);
+    Some(())
+}
+
+// ---------- IPTC-IIM ----------
 
 /// IIM com os registros 2:05 (título), 2:120 (legenda) e 2:80 (autor) trocados conforme `e`
 /// (`Some("")` apaga) e o resto mantido; declara UTF-8 (1:90) e ordena por registro/conjunto.
@@ -308,7 +425,7 @@ pub fn iim_with_edits(orig: Option<&[u8]>, e: &MetadataEdits) -> Vec<u8> {
     records.push((1, 90, b"\x1B%G".to_vec()));
     for (num, v, max) in fields {
         if let Some(v) = v.as_deref().map(clean).filter(|v| !v.is_empty()) {
-            records.push((2, num, cap_bytes(&v, max).to_vec()));
+            records.push((2, num, cap_str(&v, max).as_bytes().to_vec()));
         }
     }
     records.sort_by_key(|(r, n, _)| (*r, *n)); // estável: palavras-chave repetidas mantêm a ordem
@@ -484,6 +601,94 @@ mod tests {
         assert_eq!(t.description.as_deref(), Some("IC"));
         assert_eq!(t.author.as_deref(), Some("Fulano"));
         assert_eq!(t.alt_text, None);
+    }
+
+    fn ascii(s: &str) -> (u32, Vec<u8>) {
+        let mut b = s.as_bytes().to_vec();
+        b.push(0);
+        (b.len() as u32, b)
+    }
+
+    fn utf16(s: &str) -> (u32, Vec<u8>) {
+        let mut b: Vec<u8> = s.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        b.extend_from_slice(&[0, 0]);
+        (b.len() as u32, b)
+    }
+
+    fn ent(tag: u16, ty: u16, v: (u32, Vec<u8>)) -> (u16, u16, u32, Vec<u8>) {
+        (tag, ty, v.0, v.1)
+    }
+
+    fn exif_com_textos() -> Vec<u8> {
+        crate::image::test_util::tiff_le(&[
+            ent(0x010E, 2, ascii("Descricao antiga")),
+            ent(0x010F, 2, ascii("Gera")),
+            ent(0x013B, 2, ascii("Antigo Autor")),
+            ent(0x9C9B, 1, utf16("Titulo XP antigo")),
+            ent(0x9C9C, 1, utf16("Comentario XP antigo")),
+            ent(0x9C9D, 1, utf16("Autor XP antigo")),
+        ])
+    }
+
+    fn tem(b: &[u8], s: &str) -> bool {
+        let u: Vec<u8> = s.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        b.windows(s.len()).any(|w| w == s.as_bytes()) || b.windows(u.len()).any(|w| w == u)
+    }
+
+    #[test]
+    fn exif_apaga_autor_e_descricao_antigos_e_guarda_o_resto() {
+        let orig = exif_com_textos();
+        let e = MetadataEdits {
+            author: Some("Ana".into()),
+            description: Some(String::new()),
+            ..Default::default()
+        };
+        let out = exif_without_text(&orig, &e);
+        for velho in ["Antigo Autor", "Autor XP antigo", "Descricao antiga", "Comentario XP antigo"] {
+            assert!(!tem(&out, velho), "{velho} ainda no EXIF");
+        }
+        // o título não foi editado: XPTitle e Make ficam
+        assert!(tem(&out, "Titulo XP antigo") && tem(&out, "Gera"));
+        let r = exif::Reader::new().read_raw(out).unwrap();
+        assert!(r.get_field(exif::Tag::Make, exif::In::PRIMARY).is_some());
+        assert!(r.get_field(exif::Tag::Artist, exif::In::PRIMARY).is_none());
+        assert!(r.get_field(exif::Tag::ImageDescription, exif::In::PRIMARY).is_none());
+    }
+
+    #[test]
+    fn exif_sem_edicao_ou_malformado_volta_como_veio() {
+        let orig = exif_com_textos();
+        assert_eq!(exif_without_text(&orig, &MetadataEdits::default()), orig);
+        let e = MetadataEdits { author: Some("x".into()), ..Default::default() };
+        for n in 0..orig.len() {
+            let _ = exif_without_text(&orig[..n], &e);
+        }
+        let mut forjado = orig.clone();
+        forjado[8..10].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert_eq!(exif_without_text(&forjado, &e), forjado);
+    }
+
+    #[test]
+    fn xmp_remove_todas_as_ocorrencias_da_propriedade() {
+        let dup = "<rdf:RDF><rdf:Description dc:creator=\"Atributo Velho\"><dc:creator><rdf:Seq><rdf:li>Velho 1</rdf:li></rdf:Seq></dc:creator></rdf:Description><rdf:Description><dc:creator><rdf:Seq><rdf:li>Velho 2</rdf:li></rdf:Seq></dc:creator></rdf:Description></rdf:RDF>";
+        let e = MetadataEdits { author: Some("Ana".into()), ..Default::default() };
+        let x = xmp_with_edits(Some(dup), &e);
+        assert!(!x.contains("Velho"), "{x}");
+        assert_eq!(x.matches("<dc:creator>").count(), 1);
+        assert_eq!(xmp_text(&x, "dc:creator").as_deref(), Some("Ana"));
+        let e = MetadataEdits { author: Some(String::new()), ..Default::default() };
+        assert!(!xmp_with_edits(Some(dup), &e).contains("Velho"));
+    }
+
+    #[test]
+    fn unescape_e_leitura_do_xmp_sao_lineares_com_muitos_e_comerciais() {
+        let t = std::time::Instant::now();
+        let muitos = "&".repeat(1 << 20);
+        assert_eq!(xml_unescape(&muitos).len(), MAX_UNESCAPE);
+        let xmp = format!("<dc:title>{muitos}</dc:title>");
+        let _ = xmp_text(&xmp, "dc:title");
+        let _ = texts_of(Some(&xmp), &[], &[]);
+        assert!(t.elapsed() < std::time::Duration::from_secs(5), "{:?}", t.elapsed());
     }
 
     fn iim(v: &[(u8, u8, &str)]) -> Vec<u8> {

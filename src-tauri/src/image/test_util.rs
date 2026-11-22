@@ -52,3 +52,32 @@ pub fn icc_falso() -> Vec<u8> {
     v[100] = 42;
     v
 }
+
+/// TIFF little-endian com um IFD0 `(tag, tipo, contagem, bytes do valor)`; valores com mais de
+/// 4 bytes vão depois do IFD. Serve para montar EXIF e arquivos TIFF forjados nos testes.
+pub fn tiff_le(entries: &[(u16, u16, u32, Vec<u8>)]) -> Vec<u8> {
+    let n = entries.len();
+    let extra_at = 8 + 2 + 12 * n + 4;
+    let mut out = b"II*\0\x08\0\0\0".to_vec();
+    out.extend_from_slice(&(n as u16).to_le_bytes());
+    let mut tail = Vec::new();
+    for (tag, ty, count, data) in entries {
+        out.extend_from_slice(&tag.to_le_bytes());
+        out.extend_from_slice(&ty.to_le_bytes());
+        out.extend_from_slice(&count.to_le_bytes());
+        if data.len() <= 4 {
+            let mut d = data.clone();
+            d.resize(4, 0);
+            out.extend_from_slice(&d);
+        } else {
+            out.extend_from_slice(&((extra_at + tail.len()) as u32).to_le_bytes());
+            tail.extend_from_slice(data);
+            if tail.len() % 2 == 1 {
+                tail.push(0);
+            }
+        }
+    }
+    out.extend_from_slice(&[0; 4]);
+    out.extend_from_slice(&tail);
+    out
+}

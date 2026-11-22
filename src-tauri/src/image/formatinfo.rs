@@ -1,7 +1,7 @@
 //! Abas por formato do Inspetor (Lote 9): JFIF, PNG, GIF, HEIF e TIFF, lidas direto dos bytes do
 //! arquivo. O arquivo não é confiável: toda leitura usa `get` (nada de índice direto), os laços
 //! têm teto de iterações e os textos saem sem controles e com tamanho limitado.
-use std::fmt::Write as _;
+use super::makernote::{Entry, ifd_entries, tiff_header, u16_at};
 
 pub type Rows = Vec<(String, String)>;
 
@@ -510,31 +510,70 @@ fn heif(file: &[u8]) -> Rows {
 // ---------- TIFF ----------
 
 /// Tags do IFD0 que são ponteiros ou blobs enormes: não são "informação" para exibir.
-const TIFF_SKIP: [u16; 12] = [
-    273, 279, 288, 289, 324, 325, 513, 514, 700, 33723, 34377, 34675,
+const TIFF_SKIP: [u16; 15] = [
+    273, 279, 288, 289, 324, 325, 513, 514, 700, 33723, 34377, 34675, 0x8769, 0x8825, 0xA005,
 ];
-/// Teto para ler um TIFF inteiro só pelas tags (o arquivo já está em memória; isto evita copiá-lo).
-const MAX_TIFF_FILE: usize = 256 << 20;
+/// Máximo de elementos de um valor que viram texto na aba.
+const MAX_SHOWN: usize = 16;
 
-fn tiff_rows(file: &[u8], exif_tiff: Option<&[u8]>) -> Rows {
-    use exif::{Context, In, Reader, Tag};
-    let is_tiff = file.starts_with(b"II*\0") || file.starts_with(b"MM\0*");
-    let parsed = if is_tiff && file.len() <= MAX_TIFF_FILE {
-        Reader::new().read_from_container(&mut std::io::Cursor::new(file)).ok()
-    } else {
-        exif_tiff.and_then(|e| Reader::new().read_raw(e.to_vec()).ok())
+/// Valor de uma entrada, com no máximo `MAX_SHOWN` elementos (e `MAX_TEXT` bytes de texto).
+fn tiff_value(e: &Entry) -> Option<exif::Value> {
+    use exif::{Rational, SRational, Value};
+    let (d, le) = (e.data, e.le);
+    let n = e.count.min(MAX_SHOWN);
+    let u32s = |i: usize| -> Option<u32> {
+        let a: [u8; 4] = d.get(i * 4..i * 4 + 4)?.try_into().ok()?;
+        Some(if le { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) })
     };
-    let Some(exif) = parsed else {
+    let shorts = || (0..n).filter_map(|i| u16_at(d, i * 2, le));
+    Some(match e.ty {
+        1 => Value::Byte(d.iter().copied().take(n).collect()),
+        2 => {
+            let text = &d[..d.len().min(MAX_TEXT)];
+            let end = text.iter().position(|&b| b == 0).unwrap_or(text.len());
+            Value::Ascii(vec![text[..end].to_vec()])
+        }
+        3 => Value::Short(shorts().collect()),
+        4 => Value::Long((0..n).filter_map(u32s).collect()),
+        5 => Value::Rational(
+            (0..n)
+                .filter_map(|i| Some(Rational { num: u32s(i * 2)?, denom: u32s(i * 2 + 1)? }))
+                .collect(),
+        ),
+        6 => Value::SByte(d.iter().take(n).map(|&b| b as i8).collect()),
+        7 => Value::Undefined(d.iter().copied().take(MAX_SHOWN).collect(), 0),
+        8 => Value::SShort(shorts().map(|v| v as i16).collect()),
+        9 => Value::SLong((0..n).filter_map(u32s).map(|v| v as i32).collect()),
+        10 => Value::SRational(
+            (0..n)
+                .filter_map(|i| {
+                    Some(SRational { num: u32s(i * 2)? as i32, denom: u32s(i * 2 + 1)? as i32 })
+                })
+                .collect(),
+        ),
+        _ => return None,
+    })
+}
+
+/// IFD0 do TIFF (o arquivo, se for TIFF, ou o bloco EXIF), lido com leitor limitado: sem montar o
+/// arquivo inteiro na memória, sem ler valores grandes e sem formatar mais que `MAX_SHOWN` elementos.
+fn tiff_rows(file: &[u8], exif_tiff: Option<&[u8]>) -> Rows {
+    use exif::{Context, Field, In, Tag};
+    let buf = if file.starts_with(b"II*\0") || file.starts_with(b"MM\0*") {
+        file
+    } else {
+        exif_tiff.unwrap_or(&[])
+    };
+    let Some((ifd, le)) = tiff_header(buf) else {
         return Rows::new();
     };
-    exif.fields()
-        .filter(|f| f.ifd_num == In::PRIMARY && f.tag.0 == Context::Tiff)
-        .filter(|f| !TIFF_SKIP.contains(&f.tag.1) && !matches!(f.tag, Tag::ExifIFDPointer | Tag::GPSInfoIFDPointer))
+    ifd_entries(buf, ifd, le)
+        .iter()
+        .filter(|e| !TIFF_SKIP.contains(&e.tag))
         .take(128)
-        .map(|f| {
-            let mut v = String::new();
-            let _ = write!(v, "{}", f.display_value().with_unit(&exif));
-            (f.tag.to_string(), sanitize(v.trim_matches('"')))
+        .filter_map(|e| {
+            let f = Field { tag: Tag(Context::Tiff, e.tag), ifd_num: In::PRIMARY, value: tiff_value(e)? };
+            Some((f.tag.to_string(), sanitize(f.display_value().to_string().trim_matches('"'))))
         })
         .collect()
 }
@@ -747,6 +786,42 @@ mod tests {
         for n in 0..f.len() {
             let _ = jfif(&f[..n]);
             let _ = sections(&f[..n], None);
+        }
+    }
+
+    fn tiff_forjado_com_entradas_grandes() -> Vec<u8> {
+        let make = (5u32, b"Gera\0".to_vec());
+        let grande_ascii = (200_000u32, vec![b'A'; 200_000]);
+        let curtos = (30_000u32, vec![1u8; 60_000]); // SHORT: cabe no teto, mas só alguns são mostrados
+        crate::image::test_util::tiff_le(&[
+            (0x010F, 2, make.0, make.1),
+            (0x010E, 2, grande_ascii.0, grande_ascii.1),
+            (0x0102, 3, curtos.0, curtos.1),
+        ])
+    }
+
+    #[test]
+    fn tiff_ignora_entrada_grande_so_pelo_cabecalho_e_limita_os_elementos() {
+        let f = tiff_forjado_com_entradas_grandes();
+        let r = tiff_rows(&f, None);
+        assert_eq!(get(&r, "Make"), Some("Gera"));
+        assert_eq!(get(&r, "ImageDescription"), None, "valor de 200 KB não deve ser lido");
+        let bits = get(&r, "BitsPerSample").expect("SHORT de 60 KB entra, truncado");
+        assert!(bits.split_whitespace().count() <= 17, "{bits}");
+        // o mesmo bloco, como EXIF de um JPEG
+        let r2 = tiff_rows(b"\xFF\xD8", Some(&f));
+        assert_eq!(r2, r);
+    }
+
+    #[test]
+    fn tiff_com_ifd_forjado_nao_panica_nem_passa_do_teto() {
+        let mut f = crate::image::test_util::tiff_le(&[(0x010F, 2, 5, b"Gera\0".to_vec())]);
+        f[8..10].copy_from_slice(&u16::MAX.to_le_bytes()); // 65535 entradas num arquivo curto
+        assert!(tiff_rows(&f, None).len() <= 128);
+        f[4..8].copy_from_slice(&u32::MAX.to_le_bytes()); // IFD0 fora do arquivo
+        assert!(tiff_rows(&f, None).is_empty());
+        for n in 0..f.len() {
+            let _ = tiff_rows(&f[..n], None);
         }
     }
 }

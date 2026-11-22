@@ -270,3 +270,81 @@ fn makernote_forjado_dentro_de_um_exif_valido_nao_panica() {
     assert!(b.exif.iter().any(|(k, _)| k == "Make"), "o EXIF em si é lido");
     assert!(b.maker.is_none(), "MakerNote lixo não vira aba");
 }
+
+/// EXIF little-endian com Make, Artist, ImageDescription e XPAuthor (UTF-16).
+fn exif_com_textos_antigos() -> Vec<u8> {
+    let ascii = |s: &str| {
+        let mut b = s.as_bytes().to_vec();
+        b.push(0);
+        (b.len() as u32, b)
+    };
+    let (n_xp, xp) = {
+        let mut b: Vec<u8> = "Autor XP antigo".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        b.extend_from_slice(&[0, 0]);
+        (b.len() as u32, b)
+    };
+    let entries = [
+        (0x010Eu16, 2u16, ascii("Descricao antiga")),
+        (0x010F, 2, ascii("Gera")),
+        (0x013B, 2, ascii("Antigo Autor")),
+        (0x9C9D, 1, (n_xp, xp)),
+    ];
+    let n = entries.len();
+    let extra_at = 8 + 2 + 12 * n + 4;
+    let mut out = b"II*\0\x08\0\0\0".to_vec();
+    out.extend_from_slice(&(n as u16).to_le_bytes());
+    let mut tail = Vec::new();
+    for (tag, ty, (count, data)) in entries {
+        out.extend_from_slice(&tag.to_le_bytes());
+        out.extend_from_slice(&ty.to_le_bytes());
+        out.extend_from_slice(&count.to_le_bytes());
+        out.extend_from_slice(&((extra_at + tail.len()) as u32).to_le_bytes());
+        tail.extend_from_slice(&data);
+        if tail.len() % 2 == 1 {
+            tail.push(0);
+        }
+    }
+    out.extend_from_slice(&[0; 4]);
+    out.extend_from_slice(&tail);
+    out
+}
+
+fn contem(bytes: &[u8], s: &str) -> bool {
+    let u: Vec<u8> = s.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    bytes.windows(s.len()).any(|w| w == s.as_bytes()) || bytes.windows(u.len()).any(|w| w == u)
+}
+
+#[test]
+fn editar_autor_e_descricao_nao_deixa_o_valor_antigo_no_exif() {
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    let meta = MetaCarry {
+        exif: Some(exif_com_textos_antigos()),
+        icc: Some(icc_profile_named("Perfil Teste")),
+        iptc: Some(iim(&[(25, "mar"), (25, "sol"), (116, "Gera")])),
+        xmp: Some(XMP.to_string()),
+        text_edits: Some(MetadataEdits {
+            author: Some("Ana".into()),
+            description: Some(String::new()),
+            ..Default::default()
+        }),
+        ..MetaCarry::default()
+    };
+    for (fmt, ext) in [(ExportFormat::Jpeg, "jpg"), (ExportFormat::Tiff, "tiff"), (ExportFormat::Png, "png")] {
+        let out = encode(&rgba, &opts(fmt), &meta).unwrap();
+        for velho in ["Antigo Autor", "Descricao antiga", "Autor XP antigo"] {
+            assert!(!contem(&out, velho), "{velho} sobrou no .{ext}");
+        }
+        if ext != "png" {
+            let dir = tmp(&format!("insp-exif-{ext}"));
+            let path = dir.join(format!("a.{ext}"));
+            fs::write(&path, &out).unwrap();
+            let d = decode(&path).unwrap();
+            let m = read_metadata(&path, &d).unwrap();
+            assert!(campo(&m.exif, "Make").unwrap().contains("Gera"), ".{ext} perdeu o Make");
+            assert_eq!(m.texts.author.as_deref(), Some("Ana"));
+            assert_eq!(m.general.profile.as_deref(), Some("Perfil Teste"));
+            assert_eq!(campo(&m.iptc, "Copyright"), Some("Gera"));
+            assert_eq!(m.keywords, vec!["mar".to_string(), "sol".to_string()]);
+        }
+    }
+}

@@ -23,12 +23,12 @@ pub struct Maker {
 }
 
 #[derive(Clone, Copy)]
-struct Entry<'a> {
-    tag: u16,
-    ty: u16,
-    count: usize,
-    data: &'a [u8],
-    le: bool,
+pub(super) struct Entry<'a> {
+    pub tag: u16,
+    pub ty: u16,
+    pub count: usize,
+    pub data: &'a [u8],
+    pub le: bool,
 }
 
 /// Onde está o IFD do fabricante e como resolver os deslocamentos dos valores.
@@ -44,7 +44,7 @@ struct Layout<'a> {
     labels: fn(u16) -> Option<&'static str>,
 }
 
-fn u16_at(b: &[u8], o: usize, le: bool) -> Option<u16> {
+pub(super) fn u16_at(b: &[u8], o: usize, le: bool) -> Option<u16> {
     let a: [u8; 2] = b.get(o..o.checked_add(2)?)?.try_into().ok()?;
     Some(if le { u16::from_le_bytes(a) } else { u16::from_be_bytes(a) })
 }
@@ -64,6 +64,24 @@ fn type_size(ty: u16) -> Option<usize> {
         _ => return None,
     })
 }
+
+/// Cabeçalho TIFF de `buf`: `(deslocamento do IFD0, little-endian?)`.
+pub(super) fn tiff_header(buf: &[u8]) -> Option<(usize, bool)> {
+    let le = match buf.get(..4)? {
+        b"II*\0" => true,
+        b"MM\0*" => false,
+        _ => return None,
+    };
+    Some((u32_at(buf, 4, le)? as usize, le))
+}
+
+/// Entradas do IFD em `ifd` (deslocamentos relativos a `buf`), com os mesmos tetos do MakerNote:
+/// entradas, bytes por valor e fatias só dentro do buffer. Valores grandes demais são pulados
+/// pelo cabeçalho de 12 bytes, sem ler o conteúdo.
+pub(super) fn ifd_entries(buf: &[u8], ifd: usize, le: bool) -> Vec<Entry<'_>> {
+    read_ifd(&Layout { buf, base: 0, ifd, le, name: "", labels: |_| None })
+}
+
 
 fn read_ifd<'a>(l: &Layout<'a>) -> Vec<Entry<'a>> {
     let mut out = Vec::new();
