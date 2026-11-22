@@ -2,7 +2,25 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Janela sumia e só aparecia a última região clicada (0.3.0 e 0.4.0)
+- **Sintoma (usuário, KDE Wayland, Intel + Nvidia):** ao abrir uma imagem ou um menu, a janela sumia e só a última região redesenhada ficava visível.
+- **Causa:** com a janela transparente (`transparent:true`), o WebKitGTK 2.54 apaga o resto da janela a cada redesenho parcial se o DMABUF **ou** o compositing estiver desligado. O app desligava os dois por padrão (entrada seguinte). Medido na 0.3.0, kwin aninhado:
+
+| DMABUF | Compositing | Janela |
+|---|---|---|
+| desligado | desligado | some |
+| desligado | ligado | some |
+| ligado | desligado | some |
+| ligado | ligado | inteira |
+
+- **Por que a correção anterior não servia:** só trocou um modo quebrado por outro. Na época o DMABUF continuou desligado, então "ligar o compositing" nunca foi testado sozinho.
+- **Correção:** `apply_webkit_workarounds` não desliga mais nada por padrão e define só `__NV_DISABLE_EXPLICIT_SYNC=1`: na Nvidia, sem ela, o app fecha com "Error 71 dispatching to Wayland display" (3/3 sem, 0/3 com). `GVI_GPU_ACCEL` deixou de existir. `GVI_SAFE_RENDER=1` ainda desliga os dois, mas abre a janela opaca (com ela o defeito não ocorre).
+- **Teste:** `padrao_mantem_o_desenho_acelerado_e_so_desliga_o_explicit_sync` e `modo_de_seguranca_abre_janela_opaca` (`webkit.rs`) e `scripts/render-check.sh`, que reprova a 0.3.0. Ele roda em X11 sem GPU: não cobre o "Error 71" nem o Wayland, que foram conferidos com `kwin_wayland --virtual` nas duas placas.
+- **Lição:** o defeito já tinha aparecido nas capturas e foi anotado como "armadilha do Xvfb". Desenho errado em teste é defeito do app até prova em contrário.
+
 ## Janela toda branca no app instalado (Wayland)
+> Superada pela entrada acima: a correção descrita aqui causava o outro defeito.
+
 - **Sintoma:** no app instalado (KDE Plasma Wayland, Intel + Nvidia), a janela ficava toda branca; só a região sob o mouse era redesenhada.
 - **Causa:** janela transparente e sem decoração (`decorations:false`, `transparent:true`) com o WebKitGTK em modo compositing. Com `GVI_SAFE_RENDER=1` (`WEBKIT_DISABLE_COMPOSITING_MODE=1`) tudo renderizava.
 - **Correção:** `apply_webkit_workarounds` define por padrão `WEBKIT_DISABLE_COMPOSITING_MODE=1` além de `WEBKIT_DISABLE_DMABUF_RENDERER=1`, respeitando valores existentes. `GVI_GPU_ACCEL=1` desliga os dois; `GVI_SAFE_RENDER` virou redundante.

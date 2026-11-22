@@ -55,9 +55,8 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
   tratado como o canto, não o centro). O primeiro ponto do arrasto fica certo e os seguintes vão para outro
   lugar: setas e retângulos saem tortos, a lupa fica enorme. Os specs só contam anotações, então passam; para
   posições exatas (prints), use eventos reais do X com `xdotool` (`scripts/screenshots.mjs`).
-- **Sem compositing, o WebKit no Xvfb deixa regiões sem redesenhar** (tema escuro sai preto, o canvas fica com o
-  quadro antigo). Para prints, rode com `GVI_GPU_ACCEL=1` (padrão do `screenshots.mjs`) e capture o framebuffer
-  do X (`import -window root`): o snapshot do WebDriver devolve o canvas desatualizado.
+- **Região sem redesenhar no Xvfb era defeito do app**, não do Xvfb (ver a primeira entrada de `bugs.md`). Para
+  prints, capture o framebuffer do X (`import -window root`): o snapshot do WebDriver devolve o canvas desatualizado.
 
 ## Arraste para fora (drag-source GTK)
 

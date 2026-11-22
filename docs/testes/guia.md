@@ -6,7 +6,7 @@
 
 ## Marco 0: validação WebKitGTK (spec §13.2)
 Máquina: KDE Plasma Wayland, Intel UHD + Nvidia GTX 1650 (híbrida). Binário release, JPEG 24 MP (6000x4000, 6,1 MiB, plasma ImageMagick).
-Contornos aplicados por padrão: `WEBKIT_DISABLE_DMABUF_RENDERER=1` e `WEBKIT_DISABLE_COMPOSITING_MODE=1` (desligar ambos com `GVI_GPU_ACCEL=1`; `GVI_SAFE_RENDER=1` segue aceito, mas é redundante). Esta tabela foi medida só com o DMABUF desligado: ver bug em `bugs.md`.
+Esta tabela foi medida só com o DMABUF desligado, modo que o app não usa mais por padrão: ver a primeira entrada de `bugs.md`. `GVI_SAFE_RENDER=1` volta ao desenho por software.
 
 | GPU | decodificado | buffer pronto | imagem exibida (ms desde o início do processo) | Captura |
 |---|---|---|---|---|

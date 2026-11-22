@@ -15,6 +15,12 @@ pub fn run() {
         unsafe { std::env::set_var(k, v) }
     });
 
+    let mut context = tauri::generate_context!();
+    platform::webkit::apply_safe_window(
+        &|k| std::env::var(k).ok(),
+        &mut context.config_mut().app.windows,
+    );
+
     let store = doc::store::DocStore::new();
     // A decodificação de argv[1..] começa já, em paralelo com a subida do WebView.
     let startup = commands::docs::Startup::spawn(
@@ -146,7 +152,7 @@ pub fn run() {
             );
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("erro ao executar o aplicativo Tauri")
         .run(|app, event| {
             if let RunEvent::Exit = event

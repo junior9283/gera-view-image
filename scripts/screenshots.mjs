@@ -35,8 +35,6 @@ const env = {
   XDG_CONFIG_HOME: path.join(home, "config"),
   XDG_DATA_HOME: path.join(home, "data"),
   XDG_CACHE_HOME: path.join(home, "cache"),
-  // Sem compositing (padrão do app), o WebKit no Xvfb deixa regiões sem redesenhar.
-  GVI_GPU_ACCEL: process.env.GVI_GPU_ACCEL ?? "1",
   LANG: lang,
   LC_ALL: lang,
 };
