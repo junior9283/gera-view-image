@@ -116,6 +116,9 @@ export const captureScreen = (mode: CaptureMode, name: string) =>
 export const displayProfile = () => invoke<string | null>("display_profile");
 export const listProfiles = () => invoke<ColorProfile[]>("list_profiles");
 export const assignProfile = (id: DocId, profile: string) => invoke<DocInfo>("assign_profile", { id, profile });
+/** Perfil atual (o atribuído, ou o embutido com `id` vazio); `null` = sRGB presumido. */
+export const documentProfile = (id: DocId) => invoke<ColorProfile | null>("document_profile", { id });
+export const setColorManagement = (enabled: boolean) => invoke<void>("set_color_management", { enabled });
 
 // Lote 2: PNG da área de transferência, para colar como camada
 export const clipboardImage = async () => new Uint8Array(await invoke<ArrayBuffer>("clipboard_image"));

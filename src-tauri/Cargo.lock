@@ -1893,6 +1893,7 @@ dependencies = [
  "libheif-rs",
  "libheif-sys",
  "md5",
+ "moxcms",
  "notify",
  "openjp2",
  "prost",

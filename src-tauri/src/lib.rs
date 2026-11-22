@@ -78,6 +78,8 @@ pub fn run() {
             commands::color::display_profile,
             commands::color::list_profiles,
             commands::color::assign_profile,
+            commands::color::set_color_management,
+            commands::color::document_profile,
             commands::paste::clipboard_image,
             commands::paste::image_file_png,
             commands::paste::copy_image,

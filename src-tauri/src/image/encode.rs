@@ -3,6 +3,7 @@
 use super::{
     container::{self, TiffMeta},
     encode_heic, encode_jp2,
+    icc,
     raster::Raster,
 };
 use crate::{
@@ -48,6 +49,11 @@ impl ExportFormat {
     fn keeps_alpha(self) -> bool {
         use ExportFormat::*;
         matches!(self, Png | Tiff | Webp | Avif | Exr | Heic | Jp2)
+    }
+
+    /// O codificador grava o perfil ICC no arquivo (no AVIF e no EXR, não).
+    fn embeds_icc(self) -> bool {
+        !matches!(self, ExportFormat::Avif | ExportFormat::Exr)
     }
 
     /// Formato em que Salvar grava o arquivo de origem (`None` = só Exportar).
@@ -97,6 +103,12 @@ pub struct ExportOptions {
     pub strip_metadata: bool,
     #[serde(default)]
     pub resize: Option<(u32, u32)>,
+    /// Perfil de saída (Lote 1): os pixels são convertidos do perfil da imagem para este e ele é
+    /// embutido no arquivo, mesmo sem metadados. `None` = manter o perfil da imagem.
+    /// Valores: os ids de `icc::BUILTIN` ou o caminho de um .icc do sistema; AVIF e EXR não levam
+    /// perfil e só aceitam sRGB (manter um perfil que não seja sRGB também converte para sRGB).
+    #[serde(default)]
+    pub color_profile: Option<String>,
 }
 
 fn yes() -> bool {
@@ -142,9 +154,36 @@ pub fn encode<'a>(
         Some((w, h)) => img.into().resized(w, h),
         None => img.into(),
     };
+    // Só um perfil RGB descreve os pixels; CMYK e cinza já viraram RGB na decodificação.
+    let src = meta.icc.as_deref().filter(|p| container::icc_is_rgb(p));
+    let target = match &opts.color_profile {
+        Some(id) if !fmt.embeds_icc() && id != icc::SRGB => {
+            return Err(AppError::Unsupported(format!(
+                "{fmt:?} não leva perfil de cor: só sRGB"
+            )));
+        }
+        Some(id) => Some(icc::profile_bytes(id)?),
+        // O arquivo vai sair sem perfil: em sRGB, as cores continuam certas.
+        None if (opts.strip_metadata || !fmt.embeds_icc())
+            && src.is_some_and(|s| icc::convertible(s, icc::srgb_icc())) =>
+        {
+            Some(icc::profile_bytes(icc::SRGB)?)
+        }
+        None => None,
+    };
+    let img = match &target {
+        Some(dst) => icc::convert_raster(img, src.unwrap_or(icc::srgb_icc()), dst)?,
+        None => img,
+    };
+    let out_icc = match (&opts.color_profile, &target) {
+        (Some(_), Some(dst)) => Some(dst.to_vec()),
+        (None, None) if !opts.strip_metadata => src.map(<[u8]>::to_vec),
+        _ => None,
+    };
     let meta = if opts.strip_metadata {
         MetaCarry {
             dpi: meta.dpi,
+            icc: out_icc,
             ..MetaCarry::default()
         }
     } else {
@@ -152,8 +191,7 @@ pub fn encode<'a>(
             exif: meta.exif.as_deref().map(|e| {
                 container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions())
             }),
-            // Os pixels gravados são RGB: perfil CMYK ou cinza não os descreve (é descartado).
-            icc: meta.icc.clone().filter(|p| container::icc_is_rgb(p)),
+            icc: out_icc,
             ..meta.clone()
         }
     };
@@ -727,5 +765,136 @@ mod tests {
         );
         assert!(!out.windows(6).any(|w| w == [0x1C, 2, 25, 0, 1, b'x']));
         assert!(out.ends_with(&[0x1C, 2, 25, 0, 1, b'y']));
+    }
+
+    /// Perfil de saída: os pixels vão do perfil da imagem para o escolhido, que é embutido
+    /// (também sem metadados). Sem escolha, os pixels e o perfil original ficam como estão.
+    #[test]
+    fn perfil_de_saida_converte_e_embute() {
+        let p3 = icc::profile_bytes("display-p3").unwrap().to_vec();
+        let srgb = icc::profile_bytes("srgb").unwrap().to_vec();
+        let img = ::image::RgbaImage::from_pixel(3, 2, ::image::Rgba([200, 100, 50, 255]));
+        let meta = MetaCarry {
+            icc: Some(p3.clone()),
+            ..MetaCarry::default()
+        };
+        let reread = |opts: &ExportOptions| {
+            let png = encode(&img, opts, &meta).unwrap();
+            let d = super::super::decode::decode_bytes(Path::new("x.png"), &png).unwrap();
+            (d.frames[0].get_pixel(0, 0).0, d.icc)
+        };
+        let base = ExportOptions {
+            format: ExportFormat::Png,
+            quality: None,
+            alpha: true,
+            depth16: false,
+            strip_metadata: false,
+            resize: None,
+            color_profile: None,
+        };
+        assert_eq!(reread(&base), ([200, 100, 50, 255], Some(p3.clone())));
+        for strip in [false, true] {
+            let opts = ExportOptions {
+                strip_metadata: strip,
+                color_profile: Some("srgb".into()),
+                ..base.clone()
+            };
+            let (px, icc) = reread(&opts);
+            let want = [215, 93, 31];
+            assert!(px[..3].iter().zip(want).all(|(a, b)| a.abs_diff(b) <= 2), "{px:?}");
+            assert_eq!(icc.as_ref(), Some(&srgb), "strip={strip}");
+        }
+        let unknown = ExportOptions {
+            color_profile: Some("nao-existe".into()),
+            ..base
+        };
+        assert!(encode(&img, &unknown, &meta).is_err());
+    }
+
+    /// AVIF e EXR não levam perfil: manter um P3 grava sRGB, e outro destino é recusado.
+    /// O mesmo vale para "Remover metadados", que tira o perfil.
+    #[test]
+    fn sem_perfil_no_arquivo_grava_srgb() {
+        let img = ::image::RgbaImage::from_pixel(16, 16, ::image::Rgba([200, 100, 50, 255]));
+        let opts = |format, strip_metadata, color_profile: Option<&str>| ExportOptions {
+            format,
+            quality: Some(100),
+            alpha: false,
+            depth16: false,
+            strip_metadata,
+            resize: None,
+            color_profile: color_profile.map(Into::into),
+        };
+        let near = |px: &[u8], want: [u8; 3], tol: u8| {
+            assert!(px[..3].iter().zip(want).all(|(a, b)| a.abs_diff(b) <= tol), "{px:?}");
+        };
+        for (id, want) in [("display-p3", [215, 93, 31]), ("adobe-rgb", [227, 100, 42])] {
+            let meta = MetaCarry {
+                icc: Some(icc::profile_bytes(id).unwrap().to_vec()),
+                ..MetaCarry::default()
+            };
+            for explicit in [None, Some("srgb")] {
+                let exr = encode(&img, &opts(ExportFormat::Exr, false, explicit), &meta).unwrap();
+                let exr = ::image::load_from_memory(&exr).unwrap().into_rgb32f();
+                let enc = |c: f32| ((1.055 * c.powf(1.0 / 2.4) - 0.055) * 255.0).round() as u8;
+                near(&exr.get_pixel(3, 3).0.map(enc), want, 2);
+                let avif = encode(&img, &opts(ExportFormat::Avif, false, explicit), &meta).unwrap();
+                let d = super::super::decode::decode_bytes(Path::new("x.avif"), &avif).unwrap();
+                near(&d.frames[0].get_pixel(3, 3).0, want, 5);
+                assert_eq!(d.icc, None);
+            }
+            let png = encode(&img, &opts(ExportFormat::Png, true, None), &meta).unwrap();
+            let d = super::super::decode::decode_bytes(Path::new("x.png"), &png).unwrap();
+            near(&d.frames[0].get_pixel(3, 3).0, want, 2);
+            assert_eq!(d.icc, None);
+            for format in [ExportFormat::Exr, ExportFormat::Avif] {
+                for target in ["display-p3", "adobe-rgb"] {
+                    let e = encode(&img, &opts(format, false, Some(target)), &meta).unwrap_err();
+                    assert_eq!(e.code(), "unsupported");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn perfil_rgb_ilegivel_da_erro_so_se_for_converter() {
+        let img = ::image::RgbaImage::from_pixel(2, 2, ::image::Rgba([1, 2, 3, 255]));
+        let mut fake = vec![0u8; 132];
+        fake[16..20].copy_from_slice(b"RGB ");
+        let meta = MetaCarry {
+            icc: Some(fake),
+            ..MetaCarry::default()
+        };
+        let mut opts = ExportOptions {
+            format: ExportFormat::Png,
+            quality: None,
+            alpha: true,
+            depth16: false,
+            strip_metadata: false,
+            resize: None,
+            color_profile: None,
+        };
+        assert!(encode(&img, &opts, &meta).is_ok());
+        opts.color_profile = Some("display-p3".into());
+        assert!(encode(&img, &opts, &meta).is_err());
+    }
+
+    #[test]
+    fn perfil_de_saida_em_16_bits() {
+        let img = super::super::raster::Rgba16Image::from_pixel(2, 2, ::image::Rgba([65535, 0, 0, 65535]));
+        let opts = ExportOptions {
+            format: ExportFormat::Png,
+            quality: None,
+            alpha: true,
+            depth16: true,
+            strip_metadata: true,
+            resize: None,
+            color_profile: Some("display-p3".into()),
+        };
+        let png = encode(&img, &opts, &MetaCarry::default()).unwrap();
+        let d = ::image::load_from_memory(&png).unwrap().into_rgba16();
+        let p = d.get_pixel(0, 0).0;
+        let want = [234.0, 51.0, 35.0];
+        assert!(p[..3].iter().zip(want).all(|(c, w)| (*c as f64 / 257.0 - w).abs() <= 2.0), "{p:?}");
     }
 }

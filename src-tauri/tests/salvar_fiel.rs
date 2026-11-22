@@ -40,6 +40,7 @@ fn opts(format: ExportFormat) -> ExportOptions {
         depth16: false,
         strip_metadata: false,
         resize: None,
+        color_profile: None,
     }
 }
 

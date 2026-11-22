@@ -12,7 +12,7 @@ use gera_view_image_lib::{
         versions,
     },
     error::AppError,
-    image::encode::{ExportFormat, ExportOptions},
+    image::encode::{ExportFormat, ExportOptions, MetaCarry, encode},
 };
 use image::{Rgba, RgbaImage};
 use make_fixtures::{png, s, tmp};
@@ -82,6 +82,34 @@ fn salvar_guarda_a_versao_anterior_e_restaurar_nao_grava() {
     assert_eq!(&prev[..8], &[4, 0, 0, 0, 3, 0, 0, 0]);
 }
 
+/// A prévia da versão sai em cores de tela, como a miniatura da versão atual ao lado dela.
+#[test]
+fn previa_da_versao_converte_o_perfil() {
+    ambiente();
+    let dir = tmp("finder-versao-p3");
+    let p = dir.join("p3.png");
+    let opts = ExportOptions {
+        format: ExportFormat::Png,
+        quality: None,
+        alpha: true,
+        depth16: false,
+        strip_metadata: false,
+        resize: None,
+        color_profile: Some("display-p3".into()),
+    };
+    let img = RgbaImage::from_pixel(8, 6, Rgba([215, 93, 31, 255]));
+    fs::write(&p, encode(&img, &opts, &MetaCarry::default()).unwrap()).unwrap();
+    let store = DocStore::new();
+    let id = abre(&store, &p);
+    assert_ne!(store.render_full(id, 0).unwrap().get_pixel(0, 0).0, [215, 93, 31, 255]);
+    store.apply_op(id, Op::FlipH).unwrap();
+    salva(&store, id);
+    let v = store.list_versions(id).unwrap().remove(0);
+    let prev = store.version_preview(id, &v.id, 8).unwrap();
+    assert!(prev[8..11].iter().zip([215, 93, 31]).all(|(a, b)| a.abs_diff(b) <= 2), "{:?}", &prev[8..12]);
+    assert_eq!(prev, store.thumbnail(id, 0, 8).unwrap());
+}
+
 #[test]
 fn salvar_como_passa_a_ser_o_arquivo_novo() {
     ambiente();
@@ -98,6 +126,7 @@ fn salvar_como_passa_a_ser_o_arquivo_novo() {
         depth16: false,
         strip_metadata: false,
         resize: None,
+        color_profile: None,
     };
     let info = store.save_as(id, &s(&dest), &opts, None).unwrap();
     assert_eq!(info.path, s(&dest));

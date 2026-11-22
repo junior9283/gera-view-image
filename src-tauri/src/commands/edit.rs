@@ -71,11 +71,8 @@ pub async fn copy_region(
     mask: Option<Mask>,
 ) -> AppResult<()> {
     let store = store.inner().clone();
-    let region = blocking(move || {
-        let img = store.render_full(id, 0)?;
-        select::extract_region(&img, mask.as_ref()).ok_or(AppError::EmptySelection)
-    })
-    .await?;
+    let region =
+        blocking(move || super::paste::copied_region(&store, id, mask.as_ref(), None)).await?;
     let (w, h) = region.dimensions();
     app.clipboard()
         .write_image(&Image::new_owned(region.into_raw(), w, h))
@@ -95,6 +92,7 @@ pub async fn preview_adjust(
     blocking(move || {
         let mut buf = store.preview_base(id, max_w, max_h)?.to_vec();
         color::adjust_view_buffer(&mut buf, &adjust);
+        store.to_display(id, &mut buf[thumb::HEADER_LEN..]);
         Ok(buf)
     })
     .await

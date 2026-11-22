@@ -6,6 +6,7 @@ pub mod encode;
 pub mod encode_heic;
 pub mod encode_jp2;
 pub mod heic;
+pub mod icc;
 pub mod metadata;
 pub mod ocr; // Lote 3
 pub mod ops;

@@ -165,6 +165,7 @@ pub fn apply16(img: &Rgba16Image, op: &Op) -> Rgba16Image {
         Op::Erase(mask) => masked16(img, mask, |p| *p = [0; 4]),
         Op::MakeTransparent(mask) => masked16(img, mask, |p| p[3] = 0),
         Op::Composite { png } => composite16(img, png),
+        Op::AssignProfile { .. } => img.clone(),
     }
 }
 

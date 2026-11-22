@@ -167,8 +167,21 @@ pub enum Op {
     /// Alfa da máscara vai a 0, preservando RGB (Alfa Instantâneo).
     MakeTransparent(Mask),
     /// Anotações achatadas: PNG RGBA composto por cima (src-over), escalado ao tamanho atual.
+    /// A interface o envia em cores de tela; `DocStore::apply_op` guarda no espaço do documento.
     Composite {
         #[serde(with = "serde_bytes")]
         png: Vec<u8>,
     },
+    /// Atribuir Perfil… (Lote 1): reinterpreta os pixels com outro perfil ICC, sem mudá-los.
+    /// `profile`: id de `image::icc::BUILTIN` ou caminho absoluto de um .icc/.icm.
+    AssignProfile {
+        profile: String,
+    },
+}
+
+impl Op {
+    /// A operação não altera os pixels (só como eles são interpretados).
+    pub fn keeps_pixels(&self) -> bool {
+        matches!(self, Op::AssignProfile { .. })
+    }
 }

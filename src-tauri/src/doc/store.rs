@@ -15,7 +15,7 @@ use crate::{
     error::{AppError, AppResult},
     image::{
         decode::{self, Decoded},
-        ops,
+        icc, ops,
         thumb,
     },
 };
@@ -483,6 +483,11 @@ impl DocStore {
         };
         self.inner.ready.notify_all();
         self.inner.cache.remove_doc(id);
+        self.notify(&info);
+    }
+
+    /// Avisa o ouvinte (`set_listener`) de que o documento mudou sozinho.
+    pub(super) fn notify(&self, info: &DocInfo) {
         if let Some(f) = self
             .inner
             .listener
@@ -490,7 +495,7 @@ impl DocStore {
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
         {
-            f(&info);
+            f(info);
         }
     }
 
@@ -554,6 +559,20 @@ impl DocStore {
     }
 
     pub fn apply_op(&self, id: DocId, op: Op) -> AppResult<DocInfo> {
+        // Lote 1: leitura de perfil e conversão do PNG ficam fora da trava dos documentos.
+        let op = match op {
+            Op::AssignProfile { profile } => {
+                icc::profile_bytes(&profile)?;
+                Op::AssignProfile { profile }
+            }
+            Op::Composite { png } => {
+                self.wait_ready(id)?;
+                Op::Composite {
+                    png: self.png_from_display(id, png),
+                }
+            }
+            op => op,
+        };
         let mut map = self.lock_loaded(id);
         let doc = map.get_mut(&id).ok_or_else(|| not_found(id))?;
         doc.check()?;
@@ -654,9 +673,18 @@ impl DocStore {
                 state,
             ));
         }
-        let tail = doc.ops[k..n].to_vec();
+        let tail: Vec<Op> = doc.ops[k..n]
+            .iter()
+            .filter(|op| !op.keeps_pixels())
+            .cloned()
+            .collect();
         let source = doc.source.clone();
         drop(map);
+        // Só operações que não mexem nos pixels (Atribuir Perfil): vale a base ou o original.
+        if tail.is_empty() {
+            let px = base.map_or(Pixels::Source(source, f), Pixels::Owned);
+            return Ok((px, size, 1.0, state));
+        }
 
         // Renders iguais em andamento esperam o primeiro em vez de repetir o pipeline.
         let key = (id, n, frame, generation);
@@ -701,8 +729,8 @@ impl DocStore {
         Ok((Pixels::Owned(out), size, 1.0, state))
     }
 
-    /// Buffer do IPC (`u32 LE w`, `u32 LE h`, RGBA) que cabe em `max_w`x`max_h` sem ampliar.
-    /// `region` está em coordenadas da imagem atual (depois das operações).
+    /// Buffer do IPC (`u32 LE w`, `u32 LE h`, RGBA) que cabe em `max_w`x`max_h` sem ampliar,
+    /// já no perfil de exibição. `region` está em coordenadas da imagem atual (depois das operações).
     pub fn render_view(
         &self,
         id: DocId,
@@ -711,8 +739,9 @@ impl DocStore {
         max_h: u32,
         region: Option<Rect>,
     ) -> AppResult<Vec<u8>> {
-        self.render_view_state(id, frame, max_w, max_h, region)
-            .map(|(buf, _)| buf)
+        let (mut buf, _) = self.render_view_state(id, frame, max_w, max_h, region)?;
+        self.to_display(id, &mut buf[thumb::HEADER_LEN..]);
+        Ok(buf)
     }
 
     /// `render_view` e o estado do documento que o buffer reflete.
@@ -742,7 +771,8 @@ impl DocStore {
         Ok((thumb::view_buffer(&px, src, out_w, out_h), state))
     }
 
-    /// Quadro 0 inteiro reduzido para `max_w`x`max_h` (como `render_view`), guardado num
+    /// Quadro 0 inteiro reduzido para `max_w`x`max_h` (como `render_view`, mas no espaço de cor
+    /// do documento: quem mostra converte com `to_display`), guardado num
     /// cache de 1 entrada: os ajustes de cor repetem a prévia sem refazer a redução.
     /// A chave inclui `ops.len()` e `generation`, então editar o documento a invalida.
     pub fn preview_base(&self, id: DocId, max_w: u32, max_h: u32) -> AppResult<Arc<Vec<u8>>> {

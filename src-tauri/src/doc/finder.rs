@@ -301,7 +301,9 @@ impl DocStore {
             d.info.writable = Document::can_save(dest, format, d.source.frames.len());
             let same = d.generation == generation && d.ops.len() >= n;
             d.saved_len = if same { n } else { usize::MAX };
-            d.deep = (same && opts.depth16).then(|| DeepBase {
+            // Com perfil de saída (ou sem perfil), o arquivo não está no espaço do documento.
+            let same_color = opts.color_profile.is_none() && !opts.strip_metadata;
+            d.deep = (same && opts.depth16 && same_color).then(|| DeepBase {
                 source: Arc::downgrade(&d.source),
                 generation,
                 n,
@@ -340,7 +342,9 @@ impl DocStore {
         let (w, h) = img.dimensions();
         let (tw, th) = thumb::fit_size(w, h, size.max(1), size.max(1));
         let all = super::model::Rect { x: 0, y: 0, w, h };
-        Ok(thumb::view_buffer(img, all, tw, th))
+        let mut buf = thumb::view_buffer(img, all, tw, th);
+        crate::image::icc::to_display(&mut buf[thumb::HEADER_LEN..], dec.icc.as_deref());
+        Ok(buf)
     }
 
     /// Restaurar: a versão vira o conteúdo do documento, **sem gravar**. O documento fica com
