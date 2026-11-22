@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream (lojas de aplicativos do Linux). O `npm run release` acrescenta cada versão nova em <releases>. -->
+<component type="desktop-application">
+  <id>io.github.junior9283.geraviewimage</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Gera View Image</name>
+  <summary>Image viewer and editor</summary>
+  <summary xml:lang="pt_BR">Visualizador e editor de imagens</summary>
+
+  <developer id="io.github.junior9283">
+    <name>junior9283</name>
+  </developer>
+
+  <description>
+    <p>Gera View Image opens photos and images quickly and lets you make simple edits, in the style of the macOS Preview app.</p>
+    <p xml:lang="pt_BR">O Gera View Image abre fotos e imagens com rapidez e permite edições simples, no estilo do Visualização do macOS.</p>
+    <ul>
+      <li>Thumbnails, contact sheet, tabs and slideshow</li>
+      <li xml:lang="pt_BR">Miniaturas, folha de contatos, abas e apresentação</li>
+      <li>Markup: shapes, text, arrows, highlights and signatures</li>
+      <li xml:lang="pt_BR">Marcação: formas, texto, setas, realces e assinaturas</li>
+      <li>Rotate, crop, resize, adjust color and remove the background</li>
+      <li xml:lang="pt_BR">Girar, recortar, ajustar tamanho e cor e remover o fundo</li>
+      <li>Inspector with EXIF, IPTC, GPS and image description</li>
+      <li xml:lang="pt_BR">Inspetor com EXIF, IPTC, GPS e descrição da imagem</li>
+      <li>Export to JPEG, PNG, TIFF, WebP, HEIC, AVIF and PDF, and print</li>
+      <li xml:lang="pt_BR">Exportar em JPEG, PNG, TIFF, WebP, HEIC, AVIF e PDF, e imprimir</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">Gera View Image.desktop</launchable>
+  <url type="homepage">https://github.com/junior9283/gera-view-image</url>
+  <url type="bugtracker">https://github.com/junior9283/gera-view-image/issues</url>
+
+  <categories>
+    <category>Graphics</category>
+    <category>Viewer</category>
+  </categories>
+  <keywords>
+    <keyword>image</keyword>
+    <keyword>photo</keyword>
+    <keyword>viewer</keyword>
+    <keyword>editor</keyword>
+    <keyword>annotate</keyword>
+    <keyword xml:lang="pt_BR">imagem</keyword>
+    <keyword xml:lang="pt_BR">foto</keyword>
+    <keyword xml:lang="pt_BR">visualizador</keyword>
+    <keyword xml:lang="pt_BR">editor</keyword>
+    <keyword xml:lang="pt_BR">anotar</keyword>
+  </keywords>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Window with thumbnails</caption>
+      <caption xml:lang="pt_BR">Janela com miniaturas</caption>
+      <image>https://raw.githubusercontent.com/junior9283/gera-view-image/main/docs/screenshots/01-janela-miniaturas-claro.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Markup toolbar with annotations</caption>
+      <caption xml:lang="pt_BR">Barra de marcação com anotações</caption>
+      <image>https://raw.githubusercontent.com/junior9283/gera-view-image/main/docs/screenshots/04-marcacao.png</image>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1" />
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <provides>
+    <binary>gera-view-image</binary>
+    <mediatype>image/jpeg</mediatype>
+    <mediatype>image/png</mediatype>
+    <mediatype>image/gif</mediatype>
+    <mediatype>image/bmp</mediatype>
+    <mediatype>image/tiff</mediatype>
+    <mediatype>image/webp</mediatype>
+    <mediatype>image/heic</mediatype>
+    <mediatype>image/heif</mediatype>
+    <mediatype>image/avif</mediatype>
+    <mediatype>image/jp2</mediatype>
+    <mediatype>image/x-icon</mediatype>
+    <mediatype>image/svg+xml</mediatype>
+    <mediatype>image/vnd.adobe.photoshop</mediatype>
+    <mediatype>image/x-tga</mediatype>
+    <mediatype>image/x-adobe-dng</mediatype>
+    <mediatype>image/x-canon-cr2</mediatype>
+    <mediatype>image/x-canon-cr3</mediatype>
+    <mediatype>image/x-nikon-nef</mediatype>
+    <mediatype>image/x-sony-arw</mediatype>
+    <mediatype>image/x-olympus-orf</mediatype>
+    <mediatype>image/x-panasonic-rw2</mediatype>
+  </provides>
+
+  <releases>
+    <release version="0.4.1" date="2026-11-22"/>
+    <release version="0.4.0" date="2026-11-22"/>
+    <release version="0.3.0" date="2026-11-21"/>
+    <release version="0.2.1" date="2026-11-21"/>
+    <release version="0.2.0" date="2026-11-20"/>
+    <release version="0.1.2" date="2026-11-20"/>
+    <release version="0.1.1" date="2026-11-20"/>
+    <release version="0.1.0" date="2026-11-20"/>
+  </releases>
+</component>

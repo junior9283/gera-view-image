@@ -3,7 +3,7 @@
 // Sincroniza a versão em package.json, tauri.conf.json, Cargo.toml/Cargo.lock,
 // fecha a seção "Não lançado" do CHANGELOG, faz commit e cria a tag. Não faz push.
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,6 +36,8 @@ const git = (root, ...args) => execFileSync("git", args, { cwd: root, encoding: 
 /** Tag anotada: `git push --follow-tags` ignora tags leves. */
 export const tagArgs = (version) => ["tag", "-a", `v${version}`, "-m", `v${version}`];
 const HEAD = "## [Não lançado]";
+/** AppStream dos pacotes: cada release entra no topo de <releases>. */
+export const METAINFO = "src-tauri/linux/io.github.junior9283.geraviewimage.metainfo.xml";
 
 export function release(
   version,
@@ -81,9 +83,17 @@ export function release(
     s.replace(/(name = "gera-view-image"\nversion = ")[^"]+(")/, `$1${version}$2`),
   );
   writeFileSync(changelogPath, changelog.replace(HEAD, `${HEAD}\n\n## [${version}] - ${today}`));
+  const metainfo = join(root, METAINFO);
+  const hasMetainfo = existsSync(metainfo);
+  if (hasMetainfo)
+    edit(metainfo, (s) =>
+      s.includes(`<release version="${version}"`)
+        ? s
+        : s.replace(/(<releases>\n)(\s*)/, `$1$2<release version="${version}" date="${today}"/>\n$2`),
+    );
 
   if (useGit) {
-    git(root, "add", "package.json", "package-lock.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "CHANGELOG.md");
+    git(root, "add", "package.json", "package-lock.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "CHANGELOG.md", ...(hasMetainfo ? [METAINFO] : []));
     git(root, "commit", "-m", `chore(release): v${version}`);
     git(root, ...tagArgs(version));
   }
