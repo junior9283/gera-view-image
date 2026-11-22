@@ -16,7 +16,10 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
-    path::Path,
+    io::{Cursor, Read},
+    os::unix::fs::OpenOptionsExt,
+    panic::{AssertUnwindSafe, catch_unwind},
+    path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex, OnceLock, RwLock},
 };
 
@@ -45,64 +48,117 @@ fn builtin(id: &str) -> Option<Icc> {
     })
 }
 
-fn cms_err(e: impl std::fmt::Debug) -> AppError {
-    AppError::Unsupported(format!("perfil de cor inválido: {e:?}"))
+/// Perfis vêm de arquivos não confiáveis: um pânico da `moxcms` vira `None`.
+fn guard<T>(f: impl FnOnce() -> T) -> Option<T> {
+    catch_unwind(AssertUnwindSafe(f)).ok()
 }
 
 /// Perfil RGB legível pela `moxcms` (CMYK e cinza não descrevem os pixels RGBA do documento).
 fn parse_rgb(bytes: &[u8]) -> Option<Icc> {
-    Icc::new_from_slice(bytes)
-        .ok()
-        .filter(|p| p.color_space == DataColorSpace::Rgb)
+    if bytes.len() as u64 > MAX_ICC_BYTES {
+        return None;
+    }
+    guard(|| Icc::new_from_slice(bytes).ok())?.filter(|p| p.color_space == DataColorSpace::Rgb)
 }
 
 pub fn is_rgb_profile(bytes: &[u8]) -> bool {
     parse_rgb(bytes).is_some()
 }
 
-/// Bytes ICC de um perfil pelo `id` de [`BUILTIN`] ou pelo caminho absoluto de um .icc/.icm.
-/// Ficam em cache: o perfil atribuído é consultado a cada prévia.
-pub fn profile_bytes(id: &str) -> AppResult<Arc<Vec<u8>>> {
-    static CACHE: LazyLock<Mutex<HashMap<String, Arc<Vec<u8>>>>> = LazyLock::new(Default::default);
-    if let Some(b) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).get(id) {
-        return Ok(b.clone());
+static PROFILES: LazyLock<Mutex<HashMap<String, Arc<Vec<u8>>>>> = LazyLock::new(Default::default);
+
+/// Perfil já carregado por [`profile_bytes`], ou um de [`BUILTIN`]. Nunca lê o disco, então
+/// pode ser chamado com a trava dos documentos.
+pub fn known_profile(id: &str) -> Option<Arc<Vec<u8>>> {
+    if let Some(b) = PROFILES.lock().unwrap_or_else(|e| e.into_inner()).get(id) {
+        return Some(b.clone());
     }
-    let bytes = match builtin(id) {
-        Some(p) => p.encode().map_err(cms_err)?,
-        None => read_icc_file(Path::new(id))?,
-    };
-    let bytes = Arc::new(bytes);
-    CACHE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(id.to_string(), bytes.clone());
-    Ok(bytes)
+    let bytes = guard(|| builtin(id)?.encode().ok())??;
+    Some(remember(id, bytes))
 }
 
-fn read_icc_file(path: &Path) -> AppResult<Vec<u8>> {
-    if !path.is_absolute() {
-        return Err(AppError::Unsupported(format!(
-            "perfil desconhecido: {}",
-            path.display()
-        )));
+fn remember(id: &str, bytes: Vec<u8>) -> Arc<Vec<u8>> {
+    PROFILES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .entry(id.to_string())
+        .or_insert_with(|| Arc::new(bytes))
+        .clone()
+}
+
+/// Bytes ICC de um perfil pelo `id` de [`BUILTIN`] ou pelo caminho de um .icc/.icm dentro das
+/// pastas de perfis do sistema (o `id` vem da interface: outro caminho é recusado). Lê o disco
+/// na primeira vez: não chamar com a trava dos documentos.
+pub fn profile_bytes(id: &str) -> AppResult<Arc<Vec<u8>>> {
+    if let Some(b) = known_profile(id) {
+        return Ok(b);
     }
-    if std::fs::metadata(path)?.len() > MAX_ICC_BYTES {
-        return Err(AppError::Unsupported("perfil de cor grande demais".into()));
+    let bytes = read_profile(Path::new(id), &profile_dirs())?;
+    if !convertible(&bytes, srgb_icc()) {
+        return Err(bad_profile(Path::new(id)));
     }
-    let bytes = std::fs::read(path)?;
-    if !is_rgb_profile(&bytes) {
-        return Err(AppError::Unsupported(format!(
-            "{} não é um perfil RGB",
-            path.display()
-        )));
+    Ok(remember(id, bytes))
+}
+
+fn bad_profile(path: &Path) -> AppError {
+    AppError::Unsupported(format!("perfil de cor inválido: {}", path.display()))
+}
+
+/// Pastas de perfis: do sistema, do colord e do usuário.
+fn profile_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        PathBuf::from("/usr/share/color/icc"),
+        PathBuf::from("/usr/local/share/color/icc"),
+        PathBuf::from("/var/lib/colord/icc"),
+    ];
+    if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
+        dirs.push(h.join(".local/share/icc"));
+        dirs.push(h.join(".color/icc"));
     }
-    Ok(bytes)
+    dirs
+}
+
+fn has_icc_extension(p: &Path) -> bool {
+    p.extension()
+        .and_then(|x| x.to_str())
+        .is_some_and(|x| x.eq_ignore_ascii_case("icc") || x.eq_ignore_ascii_case("icm"))
+}
+
+/// Lê um perfil RGB de dentro de `dirs` (já sem links simbólicos). Só arquivo regular e até
+/// `MAX_ICC_BYTES`: FIFO não trava (`O_NONBLOCK`) e dispositivo é recusado pelo `fstat`.
+/// Todo erro é igual, para não dizer à interface o que existe fora das pastas.
+fn read_profile(path: &Path, dirs: &[PathBuf]) -> AppResult<Vec<u8>> {
+    let read = || -> Option<Vec<u8>> {
+        if !path.is_absolute() {
+            return None;
+        }
+        let real = path.canonicalize().ok()?;
+        let inside = dirs
+            .iter()
+            .filter_map(|d| d.canonicalize().ok())
+            .any(|d| real.starts_with(d));
+        if !inside || !has_icc_extension(&real) {
+            return None;
+        }
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
+            .open(&real)
+            .ok()?;
+        if !f.metadata().ok()?.is_file() {
+            return None;
+        }
+        let mut bytes = Vec::new();
+        f.take(MAX_ICC_BYTES + 1).read_to_end(&mut bytes).ok()?;
+        is_rgb_profile(&bytes).then_some(bytes)
+    };
+    read().ok_or_else(|| bad_profile(path))
 }
 
 /// Bytes ICC do sRGB (o perfil presumido de imagens sem perfil).
 pub fn srgb_icc() -> &'static [u8] {
     static B: OnceLock<Vec<u8>> = OnceLock::new();
-    B.get_or_init(|| Icc::new_srgb().encode().unwrap_or_default())
+    B.get_or_init(|| known_profile(SRGB).map_or_else(Vec::new, |b| b.to_vec()))
 }
 
 /// Nome legível do perfil (tag `desc`).
@@ -118,36 +174,52 @@ fn digest(bytes: &[u8]) -> u64 {
     h.finish()
 }
 
-type Cached8 = Option<Arc<Transform8BitExecutor>>;
+/// Como levar pixels RGBA8 de um perfil a outro.
+#[derive(Clone)]
+enum Conversion {
+    /// Nenhum canal muda mais de 1 nível numa grade de cores: a conversão é pulada.
+    Identity,
+    Run(Arc<Transform8BitExecutor>),
+    /// Perfil ilegível ou par sem transform.
+    Failed,
+}
 
 /// Até quantos pares de perfis ficam em cache (cada transform guarda algumas LUTs).
 const MAX_TRANSFORMS: usize = 32;
 
-fn options() -> TransformOptions {
-    TransformOptions::default()
-}
-
-/// Transform RGBA8 de `src` para `dst`; `None` se algum perfil for ilegível ou se o par for
-/// equivalente à identidade (nenhum canal muda mais de 1 nível numa grade de cores).
-fn transform8(src: &[u8], dst: &[u8]) -> Cached8 {
-    static CACHE: LazyLock<Mutex<HashMap<(u64, u64), Cached8>>> = LazyLock::new(Default::default);
-    let key = (digest(src), digest(dst));
-    if let Some(t) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
-        return t.clone();
+fn conversion(src: &[u8], dst: &[u8]) -> Conversion {
+    static CACHE: LazyLock<Mutex<HashMap<(u64, u64), Conversion>>> =
+        LazyLock::new(Default::default);
+    if src == dst {
+        return Conversion::Identity;
     }
-    let t = parse_rgb(src)
-        .zip(parse_rgb(dst))
-        .and_then(|(s, d)| {
-            s.create_transform_8bit(Layout::Rgba, &d, Layout::Rgba, options())
-                .ok()
+    let key = (digest(src), digest(dst));
+    if let Some(c) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+        return c.clone();
+    }
+    let built = guard(|| {
+        let (s, d) = parse_rgb(src).zip(parse_rgb(dst))?;
+        let t = s
+            .create_transform_8bit(Layout::Rgba, &d, Layout::Rgba, TransformOptions::default())
+            .ok()?;
+        Some(if is_identity(t.as_ref()) {
+            Conversion::Identity
+        } else {
+            Conversion::Run(t)
         })
-        .filter(|t| !is_identity(t.as_ref()));
+    });
+    let c = built.flatten().unwrap_or(Conversion::Failed);
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     if cache.len() >= MAX_TRANSFORMS {
         cache.clear();
     }
-    cache.insert(key, t.clone());
-    t
+    cache.insert(key, c.clone());
+    c
+}
+
+/// Há conversão de `src` para `dst` (inclusive a identidade).
+pub fn convertible(src: &[u8], dst: &[u8]) -> bool {
+    !matches!(conversion(src, dst), Conversion::Failed)
 }
 
 fn is_identity(t: &Transform8BitExecutor) -> bool {
@@ -165,53 +237,67 @@ fn is_identity(t: &Transform8BitExecutor) -> bool {
 /// Pixels por bloco nas conversões em paralelo (cabe no cache L2 junto com a cópia).
 const CHUNK_PX: usize = 16 * 1024;
 
-/// Converte RGBA8 de `src` para `dst` no próprio buffer. Perfil ilegível: não mexe.
-pub fn convert_rgba8(px: &mut [u8], src: &[u8], dst: &[u8]) {
-    if let Some(t) = transform8(src, dst) {
-        run_in_place(px, t.as_ref());
+/// Converte RGBA8 de `src` para `dst` no próprio buffer; `false` se não deu (perfil ilegível).
+#[must_use]
+pub fn convert_rgba8(px: &mut [u8], src: &[u8], dst: &[u8]) -> bool {
+    match conversion(src, dst) {
+        Conversion::Identity => true,
+        Conversion::Run(t) => run_in_place(px, t.as_ref()),
+        Conversion::Failed => false,
     }
 }
 
 fn run_in_place<V: Copy + Default + Send + Sync>(
     px: &mut [V],
     t: &(dyn moxcms::TransformExecutor<V> + Send + Sync),
-) {
-    px.par_chunks_mut(CHUNK_PX * 4).for_each(|chunk| {
-        let src = chunk.to_vec();
-        // `transform` só falha com tamanhos incoerentes, que aqui não acontecem.
-        let _ = t.transform(&src, chunk);
-    });
+) -> bool {
+    px.par_chunks_mut(CHUNK_PX * 4)
+        .map(|chunk| {
+            let src = chunk.to_vec();
+            let ok = guard(|| t.transform(&src, chunk).is_ok()).unwrap_or(false);
+            if !ok {
+                chunk.copy_from_slice(&src);
+            }
+            ok
+        })
+        .reduce(|| true, |a, b| a && b)
 }
 
-/// `img` convertida de `src` para `dst` (Exportar com perfil de saída); sem cópia se o par
-/// for equivalente à identidade.
-pub fn convert_raster<'a>(img: Raster<'a>, src: &[u8], dst: &[u8]) -> Raster<'a> {
-    match img {
-        Raster::Rgba8(i) => match transform8(src, dst) {
-            Some(t) => {
+/// Converte RGBA16 de `src` para `dst`; `false` se não deu.
+#[must_use]
+pub fn convert_rgba16(px: &mut [u16], src: &[u8], dst: &[u8]) -> bool {
+    if src == dst {
+        return true;
+    }
+    let t = guard(|| {
+        let (s, d) = parse_rgb(src).zip(parse_rgb(dst))?;
+        s.create_transform_16bit(Layout::Rgba, &d, Layout::Rgba, TransformOptions::default())
+            .ok()
+    });
+    t.flatten().is_some_and(|t| run_in_place(px, t.as_ref()))
+}
+
+/// `img` convertida de `src` para `dst` (Salvar/Exportar); sem cópia se for identidade.
+/// Erro em vez de pixels não convertidos: o arquivo levaria um perfil que não os descreve.
+pub fn convert_raster<'a>(img: Raster<'a>, src: &[u8], dst: &[u8]) -> AppResult<Raster<'a>> {
+    let (out, ok) = match img {
+        Raster::Rgba8(i) => match conversion(src, dst) {
+            Conversion::Identity => (Raster::Rgba8(i), true),
+            Conversion::Failed => (Raster::Rgba8(i), false),
+            Conversion::Run(t) => {
                 let mut i = i.into_owned();
-                run_in_place(&mut i, t.as_ref());
-                Raster::Rgba8(Cow::Owned(i))
+                let ok = run_in_place(&mut i, t.as_ref());
+                (Raster::Rgba8(Cow::Owned(i)), ok)
             }
-            None => Raster::Rgba8(i),
         },
         Raster::Rgba16(i) => {
             let mut i = i.into_owned();
-            convert_rgba16(&mut i, src, dst);
-            Raster::Rgba16(Cow::Owned(i))
+            let ok = convert_rgba16(&mut i, src, dst);
+            (Raster::Rgba16(Cow::Owned(i)), ok)
         }
-    }
-}
-
-/// Converte RGBA16 de `src` para `dst` (Exportar em 16 bits). Perfil ilegível: não mexe.
-pub fn convert_rgba16(px: &mut [u16], src: &[u8], dst: &[u8]) {
-    let Some(t) = parse_rgb(src).zip(parse_rgb(dst)).and_then(|(s, d)| {
-        s.create_transform_16bit(Layout::Rgba, &d, Layout::Rgba, options())
-            .ok()
-    }) else {
-        return;
     };
-    run_in_place(px, t.as_ref());
+    ok.then_some(out)
+        .ok_or_else(|| AppError::Unsupported("não foi possível converter o perfil de cor".into()))
 }
 
 // ---------- Exibição ----------
@@ -248,26 +334,62 @@ pub fn display_name() -> Option<String> {
         .map(|b| describe(b).unwrap_or_else(|| "ICC".into()))
 }
 
+/// Perfis `(imagem, tela)` de uma conversão; `None` quando não há o que converter. Copia o alvo
+/// para não segurar a trava durante o trabalho no rayon.
+fn screen_pair<'a>(
+    doc: Option<&'a [u8]>,
+    target: &'a Option<Arc<Vec<u8>>>,
+) -> Option<(&'a [u8], &'a [u8])> {
+    (doc.is_some() || target.is_some()).then(|| {
+        let srgb = srgb_icc();
+        (doc.unwrap_or(srgb), target.as_deref().map_or(srgb, Vec::as_slice))
+    })
+}
+
+fn display() -> Display {
+    DISPLAY.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
 /// Converte RGBA8 do perfil da imagem (`None` = sRGB) para o de exibição, no próprio buffer.
-pub fn to_display(px: &mut [u8], src: Option<&[u8]>) {
-    let d = DISPLAY.read().unwrap_or_else(|e| e.into_inner());
-    if d.disabled {
-        return;
+/// Perfil ilegível: os pixels ficam como estão.
+pub fn to_display(px: &mut [u8], doc: Option<&[u8]>) {
+    let d = display();
+    if let Some((doc, screen)) = screen_pair(doc, &d.target).filter(|_| !d.disabled) {
+        let _ = convert_rgba8(px, doc, screen);
     }
-    let dst = d.target.as_deref().map_or(srgb_icc(), Vec::as_slice);
-    match src {
-        Some(s) => convert_rgba8(px, s, dst),
-        None if d.target.is_some() => convert_rgba8(px, srgb_icc(), dst),
-        None => {}
+}
+
+/// PNG desenhado pela interface (cores de tela) levado ao perfil da imagem, o inverso de
+/// [`to_display`]. `None` = usar o PNG como está.
+pub fn png_from_display(png: &[u8], doc: Option<&[u8]>) -> Option<Vec<u8>> {
+    use ::image::{
+        ExtendedColorType, ImageEncoder, ImageFormat,
+        codecs::png::{CompressionType, FilterType, PngEncoder},
+    };
+    let d = display();
+    let (doc, screen) = screen_pair(doc, &d.target).filter(|_| !d.disabled)?;
+    if !matches!(conversion(screen, doc), Conversion::Run(_)) {
+        return None;
     }
+    let mut img = ::image::load_from_memory_with_format(png, ImageFormat::Png)
+        .ok()?
+        .into_rgba8();
+    if !convert_rgba8(&mut img, screen, doc) {
+        return None;
+    }
+    let mut out = Cursor::new(Vec::new());
+    PngEncoder::new_with_quality(&mut out, CompressionType::Fast, FilterType::Adaptive)
+        .write_image(&img, img.width(), img.height(), ExtendedColorType::Rgba8)
+        .ok()?;
+    Some(out.into_inner())
 }
 
 // ---------- Perfil do monitor (colord) ----------
 
 /// Perfil ICC do primeiro monitor com perfil no colord (`org.freedesktop.ColorManager`).
 ///
-/// Só em sessão X11: no Wayland, KWin 6 e Mutter 48+ aplicam o perfil do monitor sobre a saída
-/// sRGB dos apps, e converter aqui também aplicaria a correção duas vezes.
+/// Só em sessão X11: no Wayland a correção do monitor é do compositor (que trata a saída dos
+/// apps como sRGB), e converter aqui também poderia aplicá-la duas vezes.
 pub fn monitor_profile() -> Option<Vec<u8>> {
     if std::env::var_os("WAYLAND_DISPLAY").is_some() {
         return None;
@@ -289,7 +411,7 @@ fn colord_display_icc() -> zbus::Result<Option<Vec<u8>>> {
         };
         let p = Proxy::new(&conn, DEST, first, "org.freedesktop.ColorManager.Profile")?;
         let file: String = p.get_property("Filename").unwrap_or_default();
-        if let Ok(bytes) = read_icc_file(Path::new(&file)) {
+        if let Ok(bytes) = read_profile(Path::new(&file), &profile_dirs()) {
             return Ok(Some(bytes));
         }
     }
@@ -298,31 +420,26 @@ fn colord_display_icc() -> zbus::Result<Option<Vec<u8>>> {
 
 // ---------- Perfis do sistema ----------
 
-/// Perfis RGB instalados (`/usr/share/color/icc`, `~/.local/share/icc`, `~/.color/icc`):
-/// `(caminho, nome)`, sem repetir nome, em ordem alfabética.
+/// Perfis RGB instalados (ver `profile_dirs`): `(caminho, nome)`, sem repetir nome, em ordem
+/// alfabética.
 pub fn system_profiles() -> Vec<(String, String)> {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-    let mut dirs = vec![
-        std::path::PathBuf::from("/usr/share/color/icc"),
-        std::path::PathBuf::from("/usr/local/share/color/icc"),
-    ];
-    if let Some(h) = home {
-        dirs.push(h.join(".local/share/icc"));
-        dirs.push(h.join(".color/icc"));
-    }
+    profiles_in(&profile_dirs())
+}
+
+fn profiles_in(dirs: &[PathBuf]) -> Vec<(String, String)> {
     let mut found = Vec::new();
     for d in dirs {
-        collect_icc(&d, 3, &mut found);
+        collect_icc(d, 3, &mut found);
     }
     let mut seen = std::collections::HashSet::new();
     let mut out: Vec<(String, String)> = found
         .into_iter()
         .filter_map(|p| {
-            let bytes = read_icc_file(&p).ok()?;
+            let bytes = read_profile(&p, dirs).ok()?;
             let name = describe(&bytes).unwrap_or_else(|| {
                 p.file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned())
             });
-            Some((p.to_string_lossy().into_owned(), name))
+            Some((p.to_str()?.to_string(), name))
         })
         .filter(|(_, n)| !n.is_empty() && seen.insert(n.clone()))
         .collect();
@@ -330,20 +447,13 @@ pub fn system_profiles() -> Vec<(String, String)> {
     out
 }
 
-fn collect_icc(dir: &Path, depth: u32, out: &mut Vec<std::path::PathBuf>) {
+fn collect_icc(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else { return };
-    for e in rd.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            if depth > 0 {
-                collect_icc(&p, depth - 1, out);
-            }
-        } else if p
-            .extension()
-            .and_then(|x| x.to_str())
-            .is_some_and(|x| x.eq_ignore_ascii_case("icc") || x.eq_ignore_ascii_case("icm"))
-        {
+    for p in rd.flatten().map(|e| e.path()) {
+        if has_icc_extension(&p) {
             out.push(p);
+        } else if depth > 0 && p.is_dir() {
+            collect_icc(&p, depth - 1, out);
         }
     }
 }
@@ -358,7 +468,7 @@ mod tests {
 
     fn convert(rgb: [u8; 3], from: &str, to: &str) -> [u8; 3] {
         let mut px = [rgb[0], rgb[1], rgb[2], 200];
-        convert_rgba8(&mut px, &bytes(from), &bytes(to));
+        assert!(convert_rgba8(&mut px, &bytes(from), &bytes(to)));
         assert_eq!(px[3], 200, "o alfa passa intacto");
         [px[0], px[1], px[2]]
     }
@@ -389,10 +499,10 @@ mod tests {
     fn tempo_da_conversao_de_uma_previa() {
         let mut px: Vec<u8> = (0..2560 * 1440 * 4).map(|i| (i * 7 % 251) as u8).collect();
         let (p3, srgb) = (bytes("display-p3"), srgb_icc());
-        convert_rgba8(&mut px[..4], &p3, srgb);
+        assert!(convert_rgba8(&mut px[..4], &p3, srgb));
         let t = std::time::Instant::now();
         for _ in 0..10 {
-            convert_rgba8(&mut px, &p3, srgb);
+            assert!(convert_rgba8(&mut px, &p3, srgb));
         }
         eprintln!("P3 → sRGB, 3,7 MP: {:?} por quadro", t.elapsed() / 10);
     }
@@ -413,10 +523,11 @@ mod tests {
 
     #[test]
     fn par_equivalente_vira_identidade() {
-        assert!(transform8(&bytes(SRGB), srgb_icc()).is_none());
-        assert!(transform8(&bytes("display-p3"), srgb_icc()).is_some());
+        let p3 = bytes("display-p3");
+        assert!(matches!(conversion(&bytes(SRGB), srgb_icc()), Conversion::Identity));
+        assert!(matches!(conversion(&p3, srgb_icc()), Conversion::Run(_)));
         let mut px = vec![10, 20, 30, 40];
-        convert_rgba8(&mut px, b"lixo", srgb_icc());
+        assert!(!convert_rgba8(&mut px, b"lixo", srgb_icc()));
         assert_eq!(px, [10, 20, 30, 40], "perfil ilegível não mexe nos pixels");
     }
 
@@ -424,14 +535,14 @@ mod tests {
     fn conversao_em_blocos_cobre_o_buffer_inteiro() {
         let n = CHUNK_PX * 3 + 5;
         let mut px: Vec<u8> = [234, 51, 35, 255].repeat(n);
-        convert_rgba8(&mut px, &bytes("display-p3"), srgb_icc());
+        assert!(convert_rgba8(&mut px, &bytes("display-p3"), srgb_icc()));
         assert!(px.as_chunks::<4>().0.iter().all(|p| p[0] >= 253 && p[1] <= 2 && p[2] <= 2));
     }
 
     #[test]
     fn dezesseis_bits() {
         let mut px = [65535u16, 0, 0, 65535];
-        convert_rgba16(&mut px, srgb_icc(), &bytes("display-p3"));
+        assert!(convert_rgba16(&mut px, srgb_icc(), &bytes("display-p3")));
         let want = [234.0, 51.0, 35.0];
         for (c, w) in px[..3].iter().zip(want) {
             assert!((*c as f64 / 257.0 - w).abs() <= 2.0, "{px:?}");
@@ -439,19 +550,95 @@ mod tests {
         assert_eq!(px[3], 65535);
     }
 
+    struct Dir(PathBuf);
+    impl Dir {
+        fn new(name: &str) -> Self {
+            let d = std::env::temp_dir().join(format!("gvi-icc-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            std::fs::create_dir_all(&d).unwrap();
+            Dir(d)
+        }
+    }
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
-    fn perfis_desconhecidos_e_invalidos() {
-        assert!(profile_bytes("relativo.icc").is_err());
-        assert!(profile_bytes("/nao/existe.icc").is_err());
-        let dir = std::env::temp_dir().join(format!("gvi-icc-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let ruim = dir.join("ruim.icc");
+    fn so_le_perfis_das_pastas_permitidas() {
+        let (dir, fora) = (Dir::new("dentro"), Dir::new("fora"));
+        let dirs = [dir.0.clone()];
+        let p3 = bytes("display-p3");
+        let put = |p: PathBuf| {
+            std::fs::write(&p, &*p3).unwrap();
+            p
+        };
+        let bom = put(dir.0.join("p3.icc"));
+        let secreto = put(fora.0.join("p3.icc"));
+        let ruim = dir.0.join("ruim.icc");
         std::fs::write(&ruim, b"nada").unwrap();
-        assert!(profile_bytes(ruim.to_str().unwrap()).is_err());
-        let bom = dir.join("p3.icc");
-        std::fs::write(&bom, &*bytes("display-p3")).unwrap();
-        assert_eq!(*bytes(bom.to_str().unwrap()), *bytes("display-p3"));
-        std::fs::remove_dir_all(&dir).unwrap();
+        let link = dir.0.join("link.icc");
+        std::os::unix::fs::symlink(&secreto, &link).unwrap();
+        let pasta = dir.0.join("pasta.icc");
+        std::fs::create_dir(&pasta).unwrap();
+        let grande = dir.0.join("grande.icc");
+        std::fs::File::create(&grande).unwrap().set_len(MAX_ICC_BYTES + 1).unwrap();
+        let fifo = dir.0.join("fifo.icc");
+        let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        // SAFETY: caminho válido terminado em NUL.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+
+        assert_eq!(read_profile(&bom, &dirs).unwrap(), **p3);
+        let sobe = dir.0.join("..").join(fora.0.file_name().unwrap()).join("p3.icc");
+        let sem_ext = put(dir.0.join("p3.txt"));
+        for p in [&secreto, &ruim, &link, &pasta, &grande, &fifo, &sobe, &sem_ext] {
+            assert!(read_profile(p, &dirs).is_err(), "{}", p.display());
+        }
+        for p in ["relativo.icc", "/nao/existe.icc", "/dev/zero", "/etc/passwd"] {
+            assert!(read_profile(Path::new(p), &dirs).is_err(), "{p}");
+            assert!(profile_bytes(p).is_err(), "{p}");
+        }
+        assert!(profile_bytes(bom.to_str().unwrap()).is_err(), "fora das pastas do sistema");
+        let nomes = profiles_in(&dirs);
+        assert_eq!(nomes.len(), 1, "{nomes:?}");
+        assert_eq!(nomes[0].0, bom.to_str().unwrap());
+    }
+
+    /// Perfis truncados e adulterados nunca derrubam o app nem mexem no alfa.
+    #[test]
+    fn icc_truncado_e_adulterado_nao_panica() {
+        for id in ["display-p3", "adobe-rgb"] {
+            let good = bytes(id);
+            // Um byte por vez; em 16 bits (LUTs grandes), só uma amostra.
+            let try_it = |i: usize, b: &[u8]| {
+                let mut px = [200u8, 100, 50, 77, 1, 2, 3, 4];
+                let _ = convert_rgba8(&mut px, b, srgb_icc());
+                assert_eq!((px[3], px[7]), (77, 4));
+                if i % 8 != 0 {
+                    return;
+                }
+                let mut px = [60000u16, 100, 50, 777];
+                let _ = convert_rgba16(&mut px, srgb_icc(), b);
+                assert_eq!(px[3], 777);
+            };
+            for n in 0..good.len() {
+                try_it(n, &good[..n]);
+            }
+            for i in 0..good.len() {
+                for v in [0x00, 0xFF] {
+                    let mut b = good.to_vec();
+                    b[i] = v;
+                    try_it(i, &b);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn exportar_com_perfil_ilegivel_da_erro() {
+        let img = ::image::RgbaImage::from_pixel(1, 1, ::image::Rgba([1, 2, 3, 255]));
+        assert!(convert_raster((&img).into(), b"lixo", srgb_icc()).is_err());
     }
 
     /// Estado padrão da exibição: sRGB. Imagem sem perfil fica como está; P3 é convertida.
@@ -463,6 +650,7 @@ mod tests {
         to_display(&mut px, Some(&bytes("display-p3")));
         near([px[0], px[1], px[2]], [215, 93, 31]);
         assert_eq!(display_name(), None);
+        assert!(png_from_display(b"nem chega a ler", None).is_none());
     }
 
     #[test]

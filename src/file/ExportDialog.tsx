@@ -18,6 +18,11 @@ const ALPHA: ExportFormat[] = ["png", "tiff", "webp", "avif", "exr"];
 const DEFAULT_QUALITY: Partial<Record<ExportFormat, number>> = { jpeg: 90, webp: 90, avif: 80 };
 /** Perfil de saída (Lote 1): "keep" mantém o da imagem; os outros são ids de `ColorProfile`. */
 const OUTPUT_PROFILES = ["keep", "srgb", "display-p3", "adobe-rgb"] as const;
+/** Formatos que não levam perfil: só manter (o Rust grava em sRGB) ou sRGB. */
+const NO_PROFILE: ExportFormat[] = ["avif", "exr"];
+const outputProfiles = (f: ExportFormat) => (NO_PROFILE.includes(f) ? OUTPUT_PROFILES.slice(0, 2) : OUTPUT_PROFILES);
+const profileFor = (f: ExportFormat, p: string | null | undefined) =>
+  outputProfiles(f).some((x) => x === p) ? p : null;
 
 /** Pasta da última exportação (padrão para documentos sem caminho). */
 let lastFolder = "";
@@ -36,7 +41,8 @@ function OptionsFields({ opts, onChange }: { opts: ExportOptions; onChange: (o: 
           value={f}
           onChange={(e) => {
             const format = e.target.value as ExportFormat;
-            set({ format, quality: DEFAULT_QUALITY[format] ?? null, depth16: opts.depth16 && DEEP.includes(format) });
+            set({ format, quality: DEFAULT_QUALITY[format] ?? null, depth16: opts.depth16 && DEEP.includes(format),
+              colorProfile: profileFor(format, opts.colorProfile) });
           }}
         >
           {EXPORT_FORMATS.map((x) => (
@@ -82,7 +88,7 @@ function OptionsFields({ opts, onChange }: { opts: ExportOptions; onChange: (o: 
           onChange={(e) => set({ colorProfile: e.target.value === "keep" ? null : e.target.value })}
           data-testid="export-profile"
         >
-          {OUTPUT_PROFILES.map((p) => (
+          {outputProfiles(f).map((p) => (
             <option key={p} value={p}>{t(`file.export.profiles.${p}`)}</option>
           ))}
         </select>

@@ -71,9 +71,6 @@ pub fn validate((w, h): (u32, u32), op: &Op) -> Result<(), String> {
         Op::Resize { w, h, .. } if (*w as u64) * (*h as u64) > 1 << 31 => {
             Err("tamanho grande demais".into())
         }
-        Op::AssignProfile { profile } => crate::image::icc::profile_bytes(profile)
-            .map(|_| ())
-            .map_err(|e| e.to_string()),
         _ => Ok(()),
     }
 }

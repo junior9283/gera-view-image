@@ -166,6 +166,7 @@ pub enum Op {
     /// Alfa da máscara vai a 0, preservando RGB (Alfa Instantâneo).
     MakeTransparent(Mask),
     /// Anotações achatadas: PNG RGBA composto por cima (src-over), escalado ao tamanho atual.
+    /// A interface o envia em cores de tela; `DocStore::apply_op` guarda no espaço do documento.
     Composite {
         #[serde(with = "serde_bytes")]
         png: Vec<u8>,

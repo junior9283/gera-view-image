@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { listProfiles, metadata } from "../ipc/commands";
+import { documentProfile, listProfiles } from "../ipc/commands";
 import type { ColorProfile, DocInfo } from "../ipc/types";
 import { useModal } from "../lib/modal";
 import { useDocs } from "../store/docs";
@@ -20,14 +20,14 @@ export function AssignProfileDialog({ doc, onClose }: { doc: DocInfo; onClose: (
 
   useEffect(() => {
     let live = true;
-    const name = metadata(doc.id).then((m) => m.general.profile, () => null);
-    Promise.all([listProfiles(), name]).then(
+    Promise.all([listProfiles(), documentProfile(doc.id).catch(() => null)]).then(
       ([list, cur]) => {
         if (!live) return;
         setProfiles(list);
-        setCurrent(cur);
-        // Pré-seleciona o perfil com o mesmo nome do atual.
-        setChosen(list.find((p) => p.name === cur)?.id ?? list[0]?.id ?? "");
+        setCurrent(cur?.name ?? null);
+        // Pré-seleciona o atual: o atribuído pelo id, o embutido pelo nome.
+        const same = list.find((p) => p.id === cur?.id) ?? list.find((p) => p.name === cur?.name);
+        setChosen((same ?? list[0])?.id ?? "");
       },
       () => live && setError(t("color.assign.failed")),
     );

@@ -44,6 +44,16 @@ fn profiles(system: Vec<(String, String)>) -> Vec<ColorProfile> {
         .collect()
 }
 
+/// Perfil atual do documento (o atribuído ou o embutido, com `id` vazio); `None` = sRGB presumido.
+#[tauri::command]
+pub async fn document_profile(
+    store: State<'_, DocStore>,
+    id: DocId,
+) -> AppResult<Option<ColorProfile>> {
+    let p = store.with_doc(id, |d| d.profile_name())?;
+    Ok(p.map(|(id, name)| ColorProfile { id, name }))
+}
+
 /// Atribuir Perfil…: reinterpreta os pixels com `profile` (operação que se desfaz).
 #[tauri::command]
 pub async fn assign_profile(

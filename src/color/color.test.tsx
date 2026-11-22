@@ -8,9 +8,9 @@ const ipc = vi.hoisted(() => ({
     { id: "display-p3", name: "Display P3" },
     { id: "adobe-rgb", name: "Adobe RGB (1998)" },
   ]),
-  metadata: vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => ({ general: { profile: "Display P3" } })),
+  documentProfile: vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => ({ id: "", name: "Display P3" })),
   applyOp: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
-  setColorManagement: vi.fn(async () => {}),
+  setColorManagement: vi.fn<(on: boolean) => Promise<void>>(async () => {}),
 }));
 vi.mock("../ipc/commands", () => ipc);
 
@@ -53,8 +53,17 @@ describe("Atribuir Perfil…", () => {
     expect(useDocs.getState().docs[0].rev).toBe(2);
   });
 
+  it("mostra o perfil atribuído como atual, pelo id", async () => {
+    ipc.documentProfile.mockResolvedValueOnce({ id: "adobe-rgb", name: "Adobe RGB (1998)" });
+    render(<Slot name="above-content" props={{}} />);
+    act(() => void runCommand("tools.assignProfile"));
+    const select = (await screen.findByTestId("assign-profile")) as HTMLSelectElement;
+    expect(select.value).toBe("adobe-rgb");
+    expect(screen.getByText(/Perfil atual: Adobe RGB/)).toBeTruthy();
+  });
+
   it("mostra o erro e continua aberto se a operação falhar", async () => {
-    ipc.metadata.mockResolvedValueOnce({ general: { profile: null } });
+    ipc.documentProfile.mockResolvedValueOnce(null);
     ipc.applyOp.mockRejectedValue(new Error("x"));
     render(<Slot name="above-content" props={{}} />);
     act(() => void runCommand("tools.assignProfile"));
@@ -67,13 +76,19 @@ describe("Atribuir Perfil…", () => {
 });
 
 describe("preferência de correspondência de cor", () => {
-  it("avisa o Rust só quando o valor muda", () => {
-    setPrefs({ colorManagement: false });
-    setPrefs({ language: "en" });
-    expect(ipc.setColorManagement).toHaveBeenCalledTimes(1);
-    expect(ipc.setColorManagement).toHaveBeenCalledWith(false);
-    setPrefs({ colorManagement: true });
-    expect(ipc.setColorManagement).toHaveBeenLastCalledWith(true);
-    expect(ipc.setColorManagement).toHaveBeenCalledTimes(2);
+  it("avisa o Rust uma vez ao iniciar e depois só quando o valor muda", async () => {
+    vi.resetModules();
+    const prefs = await import("../store/prefs");
+    let loaded!: () => void;
+    const load = vi.spyOn(prefs, "loadPrefs").mockReturnValue(new Promise((r) => (loaded = () => r(prefs.getPrefs()))));
+    await import("./register");
+    expect(ipc.setColorManagement).not.toHaveBeenCalled();
+    loaded();
+    await vi.waitFor(() => expect(ipc.setColorManagement.mock.calls).toEqual([[true]]));
+    prefs.setPrefs({ colorManagement: false });
+    prefs.setPrefs({ language: "en" });
+    prefs.setPrefs({ colorManagement: true });
+    await vi.waitFor(() => expect(ipc.setColorManagement.mock.calls).toEqual([[true], [false], [true]]));
+    load.mockRestore();
   });
 });

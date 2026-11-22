@@ -2,20 +2,24 @@
 import { setColorManagement } from "../ipc/commands";
 import { registerSlot } from "../lib/slots";
 import { registerCommand } from "../shortcuts/commands";
-import { getPrefs, subscribePrefs } from "../store/prefs";
+import { getPrefs, loadPrefs, subscribePrefs } from "../store/prefs";
 import { activeDoc, viewable } from "../viewer/actions";
 import { AssignProfileHost, openAssignProfile } from "./AssignProfileHost";
 
 registerCommand("tools.assignProfile", openAssignProfile, () => viewable(activeDoc()));
 registerSlot("above-content", "assign-profile", AssignProfileHost);
 
-// O Rust começa com a correspondência ligada; só avisa quando a preferência for outra.
-let applied = true;
+// O Rust só lê o perfil do monitor quando recebe a preferência: avisa sempre uma vez, depois de
+// ler as preferências do disco, e a cada mudança (em fila, para valer a última).
+let applied: boolean | null = null;
+let queue: Promise<unknown> = Promise.resolve();
 function syncColorManagement() {
   const on = getPrefs().colorManagement;
   if (on === applied) return;
   applied = on;
-  setColorManagement(on).catch(console.error);
+  queue = queue.then(() => setColorManagement(on)).catch(console.error);
 }
-subscribePrefs(syncColorManagement);
-syncColorManagement();
+void loadPrefs().then(() => {
+  subscribePrefs(syncColorManagement);
+  syncColorManagement();
+});

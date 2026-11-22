@@ -93,6 +93,20 @@ describe("ExportDialog", () => {
     expect(ipc.exportDoc).toHaveBeenCalledWith(1, "/fotos/Ação 1.jpg", expect.objectContaining({ colorProfile: "srgb" }), null);
   });
 
+  it("AVIF e EXR não levam perfil: só manter ou sRGB, e a troca de formato desfaz outra escolha", async () => {
+    ipc.exportDoc.mockResolvedValue(doc);
+    render(createElement(ExportDialog, { doc, mode: "export", onClose: () => {} }));
+    const profile = screen.getByLabelText("Perfil de cor") as HTMLSelectElement;
+    fireEvent.change(profile, { target: { value: "adobe-rgb" } });
+    for (const format of ["avif", "exr"]) {
+      fireEvent.change(screen.getByLabelText("Formato"), { target: { value: format } });
+      expect([...profile.options].map((o) => o.value)).toEqual(["keep", "srgb"]);
+      expect(profile.value).toBe("keep");
+    }
+    await act(async () => fireEvent.click(screen.getByTestId("export-ok")));
+    expect(ipc.exportDoc).toHaveBeenCalledWith(1, "/fotos/Ação 1.exr", expect.objectContaining({ colorProfile: null }), null);
+  });
+
   it("pergunta antes de substituir um arquivo existente", async () => {
     ipc.pathExists.mockResolvedValue(true);
     ipc.exportDoc.mockResolvedValue(doc);

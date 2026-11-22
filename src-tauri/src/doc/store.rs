@@ -15,7 +15,7 @@ use crate::{
     error::{AppError, AppResult},
     image::{
         decode::{self, Decoded},
-        ops,
+        icc, ops,
         thumb,
     },
 };
@@ -556,6 +556,20 @@ impl DocStore {
     }
 
     pub fn apply_op(&self, id: DocId, op: Op) -> AppResult<DocInfo> {
+        // Lote 1: leitura de perfil e conversão do PNG ficam fora da trava dos documentos.
+        let op = match op {
+            Op::AssignProfile { profile } => {
+                icc::profile_bytes(&profile)?;
+                Op::AssignProfile { profile }
+            }
+            Op::Composite { png } => {
+                self.wait_ready(id)?;
+                Op::Composite {
+                    png: self.png_from_display(id, png),
+                }
+            }
+            op => op,
+        };
         let mut map = self.lock_loaded(id);
         let doc = map.get_mut(&id).ok_or_else(|| not_found(id))?;
         doc.check()?;
