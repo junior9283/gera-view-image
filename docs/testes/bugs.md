@@ -56,3 +56,40 @@ Formato: sintoma, causa, correção, teste, lição.
 - **Correção:** o ICO é sempre codificado em RGBA.
 - **Teste:** `ico_tga_e_psd_voltam_identicos` (`src-tauri/src/image/encode.rs`).
 - **Lição:** todo formato de exportação precisa de teste de ida e volta, com e sem alfa.
+
+## Correções da revisão do Lote 11 (antes de publicar)
+
+### JPEG corrompido quando o EXIF passava do APP1
+- **Sintoma:** exportar em JPEG com ppp, com um EXIF perto de 64 KB (ou vindo de PNG/TIFF), gravava um arquivo que não reabria direito, sem erro.
+- **Causa:** gravar o ppp aumenta o EXIF, e o `JpegEncoder` (image 0.25.10) escreve o tamanho do APP1 em u16 sem conferir.
+- **Correção:** se o EXIF com ppp não couber em 65 527 bytes, vale o anterior; se nem ele couber, sai sem EXIF.
+- **Teste:** `exif_no_limite_do_app1_nao_corrompe_o_jpeg` (`src-tauri/src/image/encode.rs`).
+- **Lição:** todo campo de tamanho fixo precisa de um teste no limite, reabrindo o arquivo.
+
+### "Substituir" gravava em um arquivo diferente do avisado
+- **Sintoma:** mudar nome, pasta ou formato com o aviso na tela e clicar em Substituir sobrescrevia o novo destino sem perguntar.
+- **Causa:** o botão recalculava o destino e pulava a checagem.
+- **Correção:** o aviso some quando o destino muda, e Substituir só vale se o destino for o do aviso.
+- **Teste:** "Substituir só o arquivo do aviso" (`src/file/fileActions.test.tsx`).
+- **Lição:** uma confirmação vale para o que foi mostrado, não para o estado de depois.
+
+### Impressão seguinte herdava páginas, "por folha" e o arquivo de saída
+- **Causa:** os ajustes da última impressão eram copiados inteiros.
+- **Correção:** `print-pages`, `page-ranges`, `number-up` e `output-uri` não são lembrados.
+- **Teste:** `impressao_nativa_exporta_para_pdf` (`src-tauri/tests/print.rs`).
+
+### GIF com furos em áreas escuras
+- **Sintoma:** foto escura com mais de 256 cores e poucos pixels transparentes saía com até metade da imagem transparente.
+- **Causa:** o NeuQuant da crate `gif` quantiza o transparente junto, e o preto opaco cai no mesmo índice.
+- **Correção:** `reserve_transparent` reduz só as cores opacas a 255 (com a busca exata da cor mais próxima: a do NeuQuant desviava até 49 níveis), e o transparente fica com um índice próprio (paleta exata).
+- **Teste:** `gif_escuro_com_pouco_alfa_nao_fura` (`src-tauri/src/image/encode.rs`). A primeira versão do teste, com ruído numa só escala, não reproduzia; uma busca com 1 728 combinações achou 213.
+- **Lição:** um teste que passa antes da correção não prova nada; varie tamanho, tons e proporção de alfa.
+
+### Anotações carimbadas em todas as páginas do TIFF
+- **Causa:** a anotação não tinha página, e `Op::Composite` valia para todos os quadros.
+- **Correção:** `Annotation.page` (a da tela ao criar) e `Op::Composite { frame }`; as camadas são geradas por página (`annotationLayers`).
+- **Teste:** "anotações em TIFF de várias páginas" (`src/print/print.test.tsx`), "documento de várias páginas" (`src/markup/markup.test.tsx`) e `anotacao_so_sai_na_sua_pagina` (`src-tauri/tests/print.rs`).
+
+### ppp absurdo do arquivo na página do PDF e na impressão
+- **Correção:** ppp não finito ou fora de 1 a 10 000 é ignorado (72), nos dois eixos juntos para não distorcer.
+- **Teste:** `ppp_fora_da_faixa_e_ignorado` (`src-tauri/src/image/pdf.rs`) e `escala_em_porcentagem_do_tamanho_natural` (`src-tauri/src/image/print_layout.rs`).

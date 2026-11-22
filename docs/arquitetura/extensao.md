@@ -95,7 +95,9 @@ registerSlot("viewport-overlay", "magnifier", Magnifier);
   pode acrescentar um alias em `ALIASES`.
 - **Lote 11.** `printDocs(ids?)` e `exportPdf(ids?)` (`src/print/print.ts`) aceitam uma lista de
   documentos, na ordem dada; sem ela, usam o ativo. A multisseleção da barra lateral chama essas duas.
-  Documentos com anotações não achatadas entram como cópias, fechadas no fim. No Rust,
+  Documentos com anotações não achatadas entram como cópias, fechadas no fim. Em TIFF de várias
+  páginas a anotação tem `page`, e `annotationLayers` gera um `Op::Composite { frame }` por página
+  anotada; sem `frame`, o composite vale para todos os quadros (animação). No Rust,
   `print_preview` e `print_native` usam o mesmo cálculo de página (`image/print_layout.rs`), e as
   imagens são decodificadas e reduzidas fora da thread do GTK (`draw_page` com desenho adiado).
   Os formatos que só aparecem com Alt ficam em `ALT_FORMATS` (`estimate.ts`). A página interna
