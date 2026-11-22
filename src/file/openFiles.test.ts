@@ -98,6 +98,14 @@ describe("em janelas separadas", () => {
     expect(ids()).toEqual([1]);
   });
 
+  it("abrir muitos de uma vez: no máximo 8 janelas novas, o resto fica aqui (memória)", async () => {
+    opens(...Array.from({ length: 30 }, (_, i) => i + 1));
+    await openFiles(Array.from({ length: 30 }, (_, i) => `/p/${i + 1}.png`));
+    expect(tabs.moveDocs).toHaveBeenCalledTimes(8);
+    expect(ids()).toEqual([1, ...Array.from({ length: 21 }, (_, i) => i + 10)]);
+    expect(tabs.moveDocs.mock.calls.map((c) => c[0])).toEqual([[2], [3], [4], [5], [6], [7], [8], [9]]);
+  });
+
   it("nada aberto (já estava em outra janela): nada a fazer", async () => {
     opens();
     await openFiles(["/p/1.png"]);

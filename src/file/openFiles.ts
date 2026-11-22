@@ -11,9 +11,12 @@ import { activate } from "../viewer/actions";
 
 export const openIds = (): DocId[] => useDocs.getState().docs.map((d) => d.id);
 
-/** Leva cada documento para uma janela própria; se um não puder ir, ele e os seguintes ficam. */
+/** Cada janela é um WebView inteiro: abrir 50 arquivos de uma vez não pode criar 50 (memória). */
+export const MAX_NEW_WINDOWS = 8;
+
+/** Leva cada documento para uma janela própria, até `MAX_NEW_WINDOWS`; se um não puder ir, ele e os seguintes ficam. */
 async function spread(docs: DocInfo[]): Promise<void> {
-  for (const d of docs) if (!(await moveDocs([d.id], ipc.newWindow))) return;
+  for (const d of docs.slice(0, MAX_NEW_WINDOWS)) if (!(await moveDocs([d.id], ipc.newWindow))) return;
 }
 
 /** Mostra os documentos recém-abertos; `before` são os que a janela já tinha. */
