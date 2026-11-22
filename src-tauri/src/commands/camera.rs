@@ -50,15 +50,19 @@ mod webkit {
     use webkit2gtk::{
         PermissionRequestExt, UserMediaPermissionRequest, UserMediaPermissionRequestExt, WebView,
         WebViewExt,
-        glib::{Cast, ObjectExt},
+        glib::{Cast, translate::ToGlibPtr},
     };
 
     static CONSENT: Mutex<Consent> = Mutex::new(Consent { until: None });
     static HOOKED: AtomicBool = AtomicBool::new(false);
 
-    /// Pedido de captura de tela/janela (`is-for-display-device`, só nas versões novas do WebKit).
-    fn for_display(m: &UserMediaPermissionRequest) -> bool {
-        m.find_property("is-for-display-device").is_some() && m.property::<bool>("is-for-display-device")
+    /// Pedido de captura de tela/janela. O wrapper Rust não expõe isso (e não é uma propriedade
+    /// GObject): chama a função C `webkit_user_media_permission_is_for_display_device`
+    /// (WebKitGTK 2.34 ou mais novo; o Tauri 2 já exige uma versão maior). Se a feature do
+    /// webkit2gtk não estiver ligada, o código nem compila, em vez de falhar aberto.
+    pub(super) fn for_display(m: &UserMediaPermissionRequest) -> bool {
+        // SAFETY: `m` é um UserMediaPermissionRequest vivo; a função só lê o estado do pedido.
+        unsafe { webkit2gtk::ffi::webkit_user_media_permission_is_for_display_device(m.to_glib_none().0) != 0 }
     }
 
     fn on_request(req: &webkit2gtk::PermissionRequest) -> bool {
@@ -169,5 +173,28 @@ mod tests {
         c.arm(t);
         c.disarm();
         assert!(!decide(&mut c, true, false, false, t));
+    }
+
+    /// Exercita a ligação real: o símbolo C que `for_display` chama existe na libwebkit2gtk
+    /// instalada (carregada com `dlopen`, porque o binário de teste não a mantém no processo).
+    /// Um pedido de captura de tela de verdade só existe com um webview e uma página pedindo
+    /// `getDisplayMedia`; criar o objeto sem WebKit inicializado derruba o processo (SIGSEGV),
+    /// então este teste não cobre o valor devolvido, só que o símbolo existe.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn simbolo_de_captura_de_tela_existe_na_libwebkit() {
+        let nome = c"webkit_user_media_permission_is_for_display_device";
+        let achou = [c"libwebkit2gtk-4.1.so.0", c"libwebkit2gtk-4.0.so.37"].iter().any(|lib| {
+            // SAFETY: nomes C válidos; só consulta a tabela de símbolos e fecha em seguida.
+            unsafe {
+                let h = libc::dlopen(lib.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL);
+                let ok = !h.is_null() && !libc::dlsym(h, nome.as_ptr()).is_null();
+                if !h.is_null() {
+                    libc::dlclose(h);
+                }
+                ok
+            }
+        });
+        assert!(achou, "libwebkit2gtk sem is_for_display_device (precisa do WebKitGTK 2.34+)");
     }
 }

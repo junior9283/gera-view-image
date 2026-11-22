@@ -84,7 +84,7 @@ url = "2"
 # Lote 10 (câmera da assinatura): o pedido de permissão do WebKitGTK. Já é dependência do
 # Tauri (mesma versão); nada novo no NEEDED.
 [target.'cfg(target_os = "linux")'.dependencies]
-webkit2gtk = { version = "2.0", features = ["v2_8"] }
+webkit2gtk = { version = "2.0", features = ["v2_34"] }
 
 [dev-dependencies]
 # Monta o ONNX mínimo dos testes de segmentação (mesma versão do tract-onnx).
