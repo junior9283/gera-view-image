@@ -22,8 +22,7 @@ import { confirmClose } from "./unsaved";
 export type FileDialog =
   | { kind: "export"; id: DocId; mode: "export" | "save" }
   | { kind: "exportSelected" }
-  | { kind: "rename"; id: DocId }
-  | { kind: "recent" };
+  | { kind: "rename"; id: DocId };
 
 interface FileUi {
   dialog: FileDialog | null;
@@ -53,6 +52,7 @@ export function current(): DocInfo | null {
 }
 
 export const dirname = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")));
+export const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 export const stem = (name: string) => (name.lastIndexOf(".") > 0 ? name.slice(0, name.lastIndexOf(".")) : name);
 
 /**
@@ -215,10 +215,12 @@ export const openWith = async () => {
   if (d?.path) await ipc.openWith(d.id);
 };
 
-/** Abre um recente; se ele não abrir (apagado/movido), sai da lista. */
+/** Abre um recente. O que não abre sai da lista; o que não existe mais só gera um aviso. */
 export async function openRecent(path: string): Promise<void> {
   const [info] = await openHere([path]);
   if (!info) return;
-  activate(info.id);
   if (info.error) setPrefs({ recent: getPrefs().recent.filter((p) => p !== path) });
+  if (info.error !== "not_found") return activate(info.id);
+  await useDocs.getState().close(info.id);
+  notify(t("file.recent.missing", { name: basename(path) }));
 }

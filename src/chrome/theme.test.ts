@@ -1,15 +1,10 @@
 // L8: os diálogos seguem o tema (variáveis --chrome-*) e as cores passam no WCAG AA nos dois temas.
-import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { contrast, readableOn } from "./contrast";
 
-// Pelo disco: o Vitest troca o conteúdo dos .css importados por vazio.
-const sheets = Object.fromEntries(
-  readdirSync("src", { recursive: true, encoding: "utf8" })
-    .filter((f) => f.endsWith(".css"))
-    .map((f) => [f, readFileSync(`src/${f}`, "utf8")]),
-);
-const sheet = (name: string) => sheets[`${name}.css`];
+// `css.include` do vitest.config.ts deixa passar o `?raw` (o padrão do Vitest é conteúdo vazio).
+const sheets = import.meta.glob<string>("/src/**/*.css", { query: "?raw", import: "default", eager: true });
+const sheet = (name: string) => sheets[Object.keys(sheets).find((k) => k.endsWith(`/${name}.css`)) ?? ""];
 const themeCss = sheet("chrome/theme");
 
 /** Variáveis de um bloco `seletor { --x: y; }` (o primeiro que casar). */

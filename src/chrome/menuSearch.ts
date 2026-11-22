@@ -1,5 +1,6 @@
 // Campo Pesquisar do menu Ajuda: procura itens de menu pelo rótulo traduzido (como o do macOS).
 import type { CommandId } from "../shortcuts/commands";
+import { commandState } from "../shortcuts/commandState";
 import type { Menu, MenuItem } from "./menus";
 
 export interface MenuHit {
@@ -17,7 +18,7 @@ function leaves(items: MenuItem[], path: string[], t: (k: string) => string, out
   for (const it of items) {
     if ("separator" in it) continue;
     if (it.submenu) leaves(it.submenu, [...path, t(it.label)], t, out);
-    else if (it.command !== "help.search") out.push({ command: it.command, label: t(it.label).replace(/…$/, ""), path });
+    else if (it.command !== "help.search") out.push({ command: it.command, label: t(commandState(it.command).label ?? it.label).replace(/…$/, ""), path });
   }
 }
 

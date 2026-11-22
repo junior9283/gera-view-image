@@ -10,7 +10,7 @@ import { addKeyword, removeKeyword, seedKeywords, useKeywords } from "./keywords
 import { seedTexts } from "./textEdits";
 import { CropTab } from "./tabs/CropTab";
 import { DescriptionTab } from "./tabs/DescriptionTab";
-import { OPEN_INSPECTOR_TAB_EVENT, TOGGLE_INSPECTOR_EVENT } from "./toggle";
+import { OPEN_INSPECTOR_TAB_EVENT, setInspectorOpen, TOGGLE_INSPECTOR_EVENT } from "./toggle";
 import "./inspector.css";
 import { useWindowEvent } from "../lib/events";
 
@@ -46,6 +46,10 @@ export function InspectorHost() {
     setTab((e as CustomEvent<Tab>).detail);
     setOpen(true);
   });
+  useEffect(() => {
+    setInspectorOpen(open);
+    return () => setInspectorOpen(false);
+  }, [open]);
   return open ? <Inspector tab={tab} onTab={setTab} onClose={() => setOpen(false)} /> : null;
 }
 

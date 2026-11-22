@@ -61,6 +61,24 @@ const SlideshowIcon = icon(
   </>,
 );
 
+const RemoveBackgroundIcon = icon(
+  <>
+    <circle cx="9" cy="6" r="3" />
+    <path d="M3.5 16c.4-3.6 2.6-5.5 5.5-5.5s5.1 1.9 5.5 5.5" />
+    <path d="M2 5V2h3M13 2h3v3" strokeDasharray="2 1.5" />
+  </>,
+);
+const SelectionIcon = icon(<rect x="2.5" y="3.5" width="13" height="11" strokeDasharray="2.5 2" />);
+const ColorsIcon = icon(
+  <>
+    <circle cx="9" cy="9" r="7" />
+    <circle cx="6.5" cy="7" r="1" fill="currentColor" />
+    <circle cx="11" cy="6.5" r="1" fill="currentColor" />
+    <circle cx="11.5" cy="11.5" r="1" fill="currentColor" />
+  </>,
+);
+const FontsIcon = icon(<path d="M2 15 6.5 4 11 15M3.8 11h5.4M12 15V9.8a2 2 0 0 1 4 0V15M16 12.5h-4" />);
+
 export interface ToolbarButtonDef {
   command: CommandId;
   /** Chave de i18n do nome acessível (dica). */
@@ -72,9 +90,10 @@ export interface ToolbarItemDef {
   id: string;
   /** Chave de i18n do nome curto (modo texto e Personalizar). */
   label: string;
-  /** Um botão, ou vários lado a lado (Zoom). `share` é o menu Compartilhar. */
+  /** Um botão, ou vários lado a lado (Zoom). */
   buttons: ToolbarButtonDef[];
-  share?: boolean;
+  /** Em vez de executar o comando, o botão abre um menu. */
+  menu?: "share" | "selection";
 }
 
 const one = (id: string, command: CommandId, Icon: ComponentType, hint = `toolbar.items.${id}`): ToolbarItemDef => ({
@@ -94,14 +113,18 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
       { command: "view.zoomIn", hint: "toolbar.zoomIn", Icon: ZoomInIcon },
     ],
   },
-  { ...one("share", "file.shareEmail", ShareIcon, "toolbar.share"), share: true },
+  { ...one("share", "file.shareEmail", ShareIcon, "toolbar.share"), menu: "share" },
   one("markup", "view.markupBar", MarkupIcon, "toolbar.markup"),
   one("rotate", "tools.rotateLeft", RotateIcon, "toolbar.rotate"),
   one("inspector", "tools.inspector", InspectorIcon, "toolbar.inspector"),
   one("crop", "tools.crop", CropIcon),
   one("adjustColor", "tools.adjustColor", AdjustColorIcon),
   one("resize", "tools.resize", ResizeIcon),
+  { ...one("selection", "tools.crop", SelectionIcon), menu: "selection" },
   one("instantAlpha", "tools.instantAlpha", InstantAlphaIcon),
+  one("removeBackground", "tools.removeBackground", RemoveBackgroundIcon),
+  one("colors", "tools.showColors", ColorsIcon),
+  one("fonts", "tools.showFonts", FontsIcon),
   one("flipH", "tools.flipH", FlipHIcon),
   one("flipV", "tools.flipV", FlipVIcon),
   one("actualSize", "view.actualSize", ActualSizeIcon),

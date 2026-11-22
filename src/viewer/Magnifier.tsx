@@ -17,7 +17,7 @@ export const LENS_ZOOM = 3;
 
 let on = false;
 const listeners = new Set<() => void>();
-const subscribe = (l: () => void) => {
+export const subscribeMagnifier = (l: () => void) => {
   listeners.add(l);
   return () => listeners.delete(l);
 };
@@ -52,7 +52,7 @@ function around(cx: number, cy: number, half: number, w: number, h: number): Rec
 }
 
 export function Magnifier({ scale, panX, panY, imageW, imageH }: OverlayProps) {
-  const visible = useSyncExternalStore(subscribe, magnifierOn);
+  const visible = useSyncExternalStore(subscribeMagnifier, magnifierOn);
   const doc = useDocs((s) => s.docs.find((d) => d.id === s.activeId) ?? null);
   const frame = useUi((s) => s.page) ?? 0;
   const showBg = usePrefs((p) => p.showImageBackground);
