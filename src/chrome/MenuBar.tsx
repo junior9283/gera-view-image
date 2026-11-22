@@ -11,6 +11,7 @@ import { subscribeEnabled } from "../shortcuts/useEnabled";
 import { KEYMAP, formatShortcut } from "../shortcuts/keymap";
 import { setPrefs, usePrefs } from "../store/prefs";
 import { useTabs } from "../tabs/store";
+import { useDynamicMenu } from "./dynamicMenus";
 import { MENUS, type MenuItem } from "./menus";
 import { searchMenus } from "./menuSearch";
 import { notifyError } from "./notify";
@@ -72,6 +73,8 @@ const rows = (ul: HTMLElement) => Array.from(ul.querySelectorAll<HTMLElement>(":
 
 interface ListProps {
   label: string;
+  /** Submenu de `menus.ts` (chave do rótulo): pode ter itens calculados na hora. */
+  menuKey?: string;
   items: ListItem[];
   /** Primeira linha fixa, fora da navegação por setas (campo Pesquisar). */
   header?: ReactNode;
@@ -90,10 +93,14 @@ interface ListProps {
 }
 
 /** Lista de menu acessível (também usada pelo botão Compartilhar da barra de ferramentas). */
-export function MenuList({ label, items, header, level, autoFocus, openRow, onRun, onClose, onCloseAll, onSwitch }: ListProps) {
+export function MenuList({ label, menuKey, items: fixed, header, level, autoFocus, openRow, onRun, onClose, onCloseAll, onSwitch }: ListProps) {
   const { t } = useTranslation();
   const ul = useRef<HTMLUListElement>(null);
   const [sub, setSub] = useState<{ index: number; focus: boolean } | null>(openRow === undefined ? null : { index: openRow, focus: true });
+  const dynamic = useDynamicMenu(menuKey);
+  // Só os submenus de `menus.ts` têm `menuKey`: os itens são `MenuItem`.
+  const items = dynamic ? dynamic.build(fixed as MenuItem[]) : fixed;
+  useEffect(() => dynamic?.onOpen?.(), [dynamic]);
 
   useEffect(() => {
     if (autoFocus && openRow === undefined && ul.current) rows(ul.current)[0]?.focus();
@@ -146,7 +153,7 @@ export function MenuList({ label, items, header, level, autoFocus, openRow, onRu
 
   let index = -1;
   return (
-    <ul ref={ul} className={`menu menu-level-${level}`} role="menu" aria-label={label} onKeyDown={onKeyDown}>
+    <ul ref={ul} className={`menu menu-level-${level}${dynamic ? " menu-scroll" : ""}`} role="menu" aria-label={label} onKeyDown={onKeyDown}>
       {header && <li role="none" className="menu-header">{header}</li>}
       {items.map((it, key) => {
         if ("separator" in it) return <li key={key} role="separator" className="menu-separator" />;
@@ -179,6 +186,7 @@ export function MenuList({ label, items, header, level, autoFocus, openRow, onRu
             {it.submenu && sub?.index === i && (
               <MenuList
                 label={t(it.label)}
+                menuKey={it.label}
                 items={it.submenu}
                 level={level + 1}
                 autoFocus={sub.focus}

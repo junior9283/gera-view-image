@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { renderView } from "../ipc/commands";
+import { renderScreen } from "../ipc/commands";
 import type { DocInfo, Rect } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { getPrefs, usePrefs, type Prefs } from "../store/prefs";
@@ -179,7 +179,7 @@ export function Viewport() {
     const timer = setTimeout(async () => {
       const my = ++seq.current;
       try {
-        const v = await renderView(id, frame, need.outW, need.outH, need.region);
+        const v = await renderScreen(id, frame, need.outW, need.outH, need.region);
         const now = cur.current.doc;
         if (now?.id !== id || now.rev !== rev) return;
         const old = buffers.current.get(frame);

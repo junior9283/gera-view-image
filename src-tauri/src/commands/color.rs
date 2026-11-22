@@ -6,7 +6,7 @@ use crate::{
         store::DocStore,
     },
     error::AppResult,
-    image::icc,
+    image::{icc, proof},
 };
 use serde::Serialize;
 use tauri::State;
@@ -63,6 +63,30 @@ pub async fn assign_profile(
 ) -> AppResult<DocInfo> {
     let store = store.inner().clone();
     blocking(move || store.apply_op(id, Op::AssignProfile { profile })).await
+}
+
+/// Perfis de Prova de Cor com Perfil: os de `list_profiles` e também os CMYK e cinza instalados.
+#[tauri::command]
+pub async fn list_proof_profiles() -> AppResult<Vec<ColorProfile>> {
+    blocking(|| Ok(proof::profiles().into_iter().map(|(id, name)| ColorProfile { id, name }).collect())).await
+}
+
+/// Perfil de prova do documento; `None` = nenhum.
+#[tauri::command]
+pub async fn proof_profile(store: State<'_, DocStore>, id: DocId) -> AppResult<Option<ColorProfile>> {
+    Ok(store.proof(id)?.map(|p| ColorProfile { id: p.id, name: p.name }))
+}
+
+/// Troca o perfil de prova do documento (`profile` nulo = nenhum). Só muda a exibição.
+#[tauri::command]
+pub async fn set_proof_profile(
+    store: State<'_, DocStore>,
+    id: DocId,
+    profile: Option<String>,
+) -> AppResult<Option<ColorProfile>> {
+    let store = store.inner().clone();
+    let p = blocking(move || store.set_proof(id, profile.as_deref())).await?;
+    Ok(p.map(|p| ColorProfile { id: p.id, name: p.name }))
 }
 
 /// Preferência "Correspondência de cor": liga ou desliga a conversão para a tela e relê o

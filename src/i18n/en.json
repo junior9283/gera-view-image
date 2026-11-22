@@ -535,6 +535,9 @@
       "toolbar": "Hide Toolbar",
       "customizeToolbar": "Customize Toolbar…",
       "imageBackground": "Show Image Background",
+      "softProof": "Soft Proof with Profile",
+      "softProofNone": "None",
+      "softProofChoose": "Choose Profile…",
       "tabBar": "Show Tab Bar",
       "allTabs": "Show All Tabs",
       "fullscreenHide": "Exit Full Screen",
@@ -817,6 +820,7 @@
     }
   },
   "color": {
+    "iccFiles": "ICC Profiles",
     "assign": {
       "title": "Assign Profile",
       "current": "Current profile: {{name}}",
@@ -881,7 +885,7 @@
     },
     "saveAs": {
       "images": "Images",
-      "badFormat": "Use an extension that Save can write: .jpg, .png, .tiff, .webp, .avif or .bmp."
+      "badFormat": "Use an extension that Save As can write: .jpg, .png, .tiff, .heic, .webp, .avif, .jp2, .exr or .bmp. Other formats are in Export."
     },
     "versions": {
       "title": "Versions of {{name}}",

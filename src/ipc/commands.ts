@@ -37,6 +37,10 @@ export const folderImages = (path: string) => invoke<string[]>("folder_images", 
 export const renderView = async (id: DocId, frame: number, maxW: number, maxH: number, region: Rect | null = null) =>
   decodeViewBuffer(await invoke<ArrayBuffer>("render_view", { id, frame, maxW, maxH, region }));
 
+/** `renderView` do visor e da lupa: com a prova de cor do documento. */
+export const renderScreen = async (id: DocId, frame: number, maxW: number, maxH: number, region: Rect | null = null) =>
+  decodeViewBuffer(await invoke<ArrayBuffer>("render_view", { id, frame, maxW, maxH, region, proof: true }));
+
 export const thumbnail = async (id: DocId, frame: number, size: number) =>
   decodeViewBuffer(await invoke<ArrayBuffer>("thumbnail", { id, frame, size }));
 
@@ -133,6 +137,13 @@ export const listProfiles = () => invoke<ColorProfile[]>("list_profiles");
 export const assignProfile = (id: DocId, profile: string) => invoke<DocInfo>("assign_profile", { id, profile });
 /** Perfil atual (o atribuído, ou o embutido com `id` vazio); `null` = sRGB presumido. */
 export const documentProfile = (id: DocId) => invoke<ColorProfile | null>("document_profile", { id });
+
+/** Perfis da Prova de Cor: os de `listProfiles` e também os CMYK e cinza instalados. */
+export const listProofProfiles = () => invoke<ColorProfile[]>("list_proof_profiles");
+
+/** Troca o perfil de prova (`null` = nenhum; caminho de um .icc ou id de `ColorProfile`). Só a exibição. */
+export const setProofProfile = (id: DocId, profile: string | null) =>
+  invoke<ColorProfile | null>("set_proof_profile", { id, profile });
 export const setColorManagement = (enabled: boolean) => invoke<void>("set_color_management", { enabled });
 
 // Lote 2: PNG da área de transferência, para colar como camada

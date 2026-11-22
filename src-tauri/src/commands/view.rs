@@ -9,6 +9,7 @@ use crate::{
 };
 use tauri::{State, ipc::Response};
 
+/// `proof`: aplica a prova de cor do documento (só o visor e a lupa pedem).
 #[tauri::command]
 pub async fn render_view(
     store: State<'_, DocStore>,
@@ -17,9 +18,14 @@ pub async fn render_view(
     max_w: u32,
     max_h: u32,
     region: Option<Rect>,
+    proof: Option<bool>,
 ) -> AppResult<Response> {
     let store = store.inner().clone();
-    let buf = blocking(move || store.render_view(id, frame, max_w, max_h, region)).await?;
+    let buf = blocking(move || match proof {
+        Some(true) => store.render_screen(id, frame, max_w, max_h, region),
+        _ => store.render_view(id, frame, max_w, max_h, region),
+    })
+    .await?;
     log_timing("render_view pronto");
     Ok(Response::new(buf))
 }

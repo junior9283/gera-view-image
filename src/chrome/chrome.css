@@ -97,6 +97,8 @@
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
   font: 13px/1 Inter, system-ui, sans-serif;
 }
+/* Submenu de tamanho variável (perfis instalados): rola em vez de sair da janela. */
+.menu-scroll { max-height: 60vh; overflow-y: auto; }
 .menu .menu { top: -5px; left: 100%; margin: 0 0 0 2px; }
 .menu-item {
   position: relative;

@@ -155,9 +155,17 @@ Itens de funções ainda em desenvolvimento aparecem desabilitados nos menus, e 
 
 | | Formatos |
 |---|---|
-| **Abrir** | JPEG, PNG, GIF (animado), BMP, TIFF (várias páginas), WebP, HEIC/HEIF, AVIF, JPEG 2000, ICO, SVG, PSD (achatado), TGA e RAW (DNG, CR2/CR3, NEF, ARW, ORF, RW2) como prévia revelada |
+| **Abrir** | JPEG, PNG, GIF (animado), BMP, TIFF (várias páginas), WebP, HEIC/HEIF, AVIF, JPEG 2000 (inclusive .j2k/.jpx), JPEG XL (primeiro quadro), OpenEXR, Radiance HDR, PNM (PBM, PGM, PPM, PAM), ICO, ICNS (maior ícone), SVG, PSD (achatado), TGA, DDS, Farbfeld e RAW (DNG, CR2/CR3, NEF, ARW, ORF, RW2) como prévia revelada |
 | **Salvar no próprio arquivo** | JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000 e BMP |
-| **Exportar** | JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000, OpenEXR e BMP |
+| **Salvar Como** | os de cima e OpenEXR |
+| **Exportar** | JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000, OpenEXR, BMP e PDF (com Alt: GIF, ICO, TGA e PSD) |
+
+O formato é reconhecido pelo conteúdo, não pela extensão. OpenEXR, Radiance e imagens PQ/HLG são mostrados em
+SDR: até 75 % do branco nada muda; acima, o brilho é comprimido até o ponto mais claro da imagem, sem girar o
+matiz (não há HDR na tela). Imagens sem perfil ICC usam a cor que declaram: nclx do HEIC/AVIF e, no PNG,
+`cICP`, `sRGB`, `gAMA` e `cHRM`, na ordem da especificação. QOI não abre (exigiria outra dependência).
+**Visualizar › Prova de Cor com Perfil** mostra como a imagem sairia em outro perfil (inclusive CMYK), sem
+alterar o arquivo.
 
 **Abrir HEIC precisa da `libde265`**: no Fedora ela vem do [RPM Fusion](https://rpmfusion.org/)
 (`sudo dnf install libde265`); no Ubuntu/Debian, do pacote `libde265-0`. Sem ela o app abre normalmente e

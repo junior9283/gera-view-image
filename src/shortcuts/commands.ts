@@ -25,6 +25,7 @@ export const COMMAND_IDS = [
   "view.zoomOut", "view.zoomToSelection", "view.markupBar", "view.slideshow", "view.fullscreen",
   "view.sortByName", "view.sortByDate", "view.sortByKind", "view.sortBySize", "view.toolbar",
   "view.customizeToolbar", "view.imageBackground", "view.tabBar", "view.allTabs",
+  "view.softProofNone", "view.softProofChoose",
   // Ir
   "go.prev", "go.next", "go.first", "go.last", "go.back", "go.forward",
   // Ferramentas

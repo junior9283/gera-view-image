@@ -23,7 +23,7 @@ cc = "1"
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-image = { version = "0.25.10", default-features = false, features = ["avif", "bmp", "exr", "gif", "ico", "jpeg", "png", "rayon", "tga", "tiff", "webp"] }
+image = { version = "0.25.10", default-features = false, features = ["avif", "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "rayon", "tga", "tiff", "webp"] }
 jpeg-decoder = "0.3.2"
 rayon = "1.12.0"
 fast_image_resize = { version = "6.1.0", features = ["image", "rayon"] }
@@ -39,6 +39,8 @@ libheif-sys = { version = "=5.3.1", default-features = false, features = ["v1_17
 psd = "0.3.5"
 resvg = "0.50.0"
 rawler = "0.8.0"
+# JPEG XL (abrir): Rust puro (MIT/Apache); já vinha com o rawler, nada novo no NEEDED.
+jxl-oxide = "0.12"
 tiff = "0.11.3"
 unicode-normalization = "0.1.26"
 thiserror = "2.0.21"

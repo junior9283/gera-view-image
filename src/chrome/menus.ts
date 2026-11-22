@@ -69,6 +69,7 @@ export const MENUS: Menu[] = [
       ...items("view", "actualSize", "fit", "zoomIn", "zoomOut", "zoomToSelection"),
       SEP,
       item("view", "imageBackground"),
+      submenu("menu.view.softProof", [item("view", "softProofNone"), SEP, item("view", "softProofChoose")]),
       SEP,
       ...items("view", "markupBar", "toolbar", "customizeToolbar"),
       SEP,

@@ -81,3 +81,83 @@ pub fn tiff_le(entries: &[(u16, u16, u32, Vec<u8>)]) -> Vec<u8> {
     out.extend_from_slice(&tail);
     out
 }
+
+/// Pasta temporária própria, apagada no fim do teste.
+pub struct TempDir(std::path::PathBuf);
+
+impl TempDir {
+    pub fn new(name: &str) -> Self {
+        let d = std::env::temp_dir().join(format!("gvi-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        TempDir(d)
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Perfil CMYK de saída mínimo (`mft1`, PCS Lab) que só usa tinta preta: K = 1 - L na ida e
+/// L = 1 - K na volta.
+pub fn cmyk_profile(name: &str) -> Vec<u8> {
+    let lut8 = |i: u8, o: u8, clut: &[u8]| {
+        let mut b = b"mft1\0\0\0\0".to_vec();
+        b.extend([i, o, 2, 0]);
+        for k in 0..9u32 {
+            b.extend((if k % 4 == 0 { 0x1_0000u32 } else { 0 }).to_be_bytes());
+        }
+        (0..i).for_each(|_| b.extend(0..=255u8));
+        b.extend_from_slice(clut);
+        (0..o).for_each(|_| b.extend(0..=255u8));
+        b.resize(b.len().next_multiple_of(4), 0);
+        b
+    };
+    // A última entrada (K, b*) é a que varia mais rápido.
+    let a2b: Vec<u8> = (0..16).flat_map(|i| [if i & 1 == 1 { 0 } else { 255 }, 128, 128]).collect();
+    let b2a: Vec<u8> = (0..8).flat_map(|i| [0, 0, 0, if i & 4 == 4 { 0 } else { 255 }]).collect();
+    let units: Vec<u16> = name.encode_utf16().collect();
+    let mut desc = b"mluc\0\0\0\0".to_vec();
+    for v in [1u32, 12] {
+        desc.extend(v.to_be_bytes());
+    }
+    desc.extend(b"enUS");
+    for v in [units.len() as u32 * 2, 28] {
+        desc.extend(v.to_be_bytes());
+    }
+    units.iter().for_each(|u| desc.extend(u.to_be_bytes()));
+    desc.resize(desc.len().next_multiple_of(4), 0);
+    let mut white = b"XYZ \0\0\0\0".to_vec();
+    for v in [0xF6D6u32, 0x1_0000, 0xD32D] {
+        white.extend(v.to_be_bytes());
+    }
+    let tags: [(&[u8; 4], Vec<u8>); 4] =
+        [(b"desc", desc), (b"wtpt", white), (b"A2B0", lut8(4, 3, &a2b)), (b"B2A0", lut8(3, 4, &b2a))];
+    let mut head = vec![0u8; 128];
+    head[8..12].copy_from_slice(&0x0420_0000u32.to_be_bytes());
+    head[12..24].copy_from_slice(b"prtrCMYKLab ");
+    head[36..40].copy_from_slice(b"acsp");
+    for (i, v) in [0xF6D6u32, 0x1_0000, 0xD32D].into_iter().enumerate() {
+        head[68 + i * 4..72 + i * 4].copy_from_slice(&v.to_be_bytes());
+    }
+    head.extend((tags.len() as u32).to_be_bytes());
+    let mut at = head.len() + tags.len() * 12;
+    let mut body = Vec::new();
+    for (sig, data) in &tags {
+        head.extend_from_slice(*sig);
+        head.extend((at as u32).to_be_bytes());
+        head.extend((data.len() as u32).to_be_bytes());
+        at += data.len();
+        body.extend_from_slice(data);
+    }
+    head.extend(body);
+    let n = head.len() as u32;
+    head[..4].copy_from_slice(&n.to_be_bytes());
+    head
+}

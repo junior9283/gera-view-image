@@ -29,6 +29,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Seleções: Shift soma e Alt subtrai (retângulo, elipse, laço e Alfa Instantâneo); arrastar dentro da seleção a move, e as setas também (Shift = 10 px). Sem seleção anterior, o Shift continua forçando quadrado ou círculo.
 - Anotações: Copiar, Recortar, Colar e Editar › Duplicar Anotação (Ctrl+D) valem para as anotações selecionadas, inclusive entre imagens e janelas; o Ctrl+C copia a imagem quando não há anotação selecionada, e copiar outra coisa depois faz o Colar voltar a colar a imagem. A cópia vai para a área de transferência também como desenho, para colar em outros apps. Setas movem 1 px (Shift = 10), Alt+arrastar duplica, Shift ao criar ou redimensionar mantém a proporção ou o ângulo de 45° e Alt redimensiona a partir do centro. Shift+clique soma ou tira da seleção e Selecionar Tudo, com uma anotação selecionada, seleciona todas as da página.
 - Texto dentro de formas: duplo clique (ou Enter) num retângulo, oval, balão de fala, estrela ou polígono escreve dentro dele, com quebra de linha e centralizado; o texto sai ao salvar, exportar e imprimir, e pode ser editado depois (também no Inspetor de Marcação).
+- Mais formatos para abrir, reconhecidos pelo conteúdo: OpenEXR e Radiance HDR (mostrados em SDR, com um mapeamento de tons fixo), JPEG XL (primeiro quadro), PNM (PBM, PGM, PPM e PAM), ICNS (o maior ícone), DDS, Farbfeld e JPEG 2000 sem contêiner (.j2k, .j2c, .jpc) ou em .jpx/.jpf. São só para leitura: Salvar leva a Exportar.
+- Cor de imagens sem perfil ICC: Display P3, BT.2020 e outros espaços declarados em HEIC/AVIF (nclx) ou PNG (`cICP`, `sRGB`, `gAMA` e `cHRM`, na ordem da especificação) aparecem com as cores certas e mantêm o perfil ao salvar. PQ e HLG são convertidos para SDR.
+- Visualizar › Prova de Cor com Perfil: mostra a imagem como sairia em um perfil embutido, instalado no sistema (RGB, CMYK ou cinza) ou escolhido de um arquivo .icc, só na tela e por imagem. A prova acompanha a aba ao mudar de janela; miniaturas, conta-gotas, salvar, exportar e imprimir não são afetados.
+- Salvar Como também grava HEIC (com a libkvazaar), JPEG 2000 e OpenEXR. PDF, GIF, ICO, TGA e PSD continuam só no Exportar.
 
 ### Alterado
 - Diálogos, campos, listas e o foco seguem o tema claro ou escuro do sistema, com contraste adequado.
@@ -43,8 +47,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Em documentos de várias páginas (TIFF), cada anotação pertence à página em que foi feita: aparece, é editada, impressa, exportada em PDF e achatada só nela. Antes era carimbada em todas. Exportar, Salvar Como e Copiar usam a página exibida (o Exportar diz qual); as anotações das outras páginas continuam editáveis e não salvas, com aviso, e Duplicar as leva para a cópia. Em GIF e WebP animados continua valendo para todos os quadros.
 - Cancelar o Exportar aberto pelo Salvar (formato que não dá para regravar) não deixa mais as anotações achatadas.
 - Reiniciar depois de instalar uma atualização descartava as alterações não salvas sem perguntar.
+- O OpenEXR exportado com transparência segue a especificação (cor pré-multiplicada pelo alfa). Antes, outros programas mostravam as bordas claras demais.
 
 ### Limitações conhecidas (o que falta para a 1.0)
+- HDR: OpenEXR, Radiance, PQ e HLG são sempre mostrados em SDR, e gravar por cima perde o alcance original. QOI não abre, do JPEG XL só o primeiro quadro, o JPEG XL em CMYK é recusado e metadados comprimidos (caixas `brob`) do JPEG XL são ignorados.
+- Prova de Cor: sem simulação do branco do papel nem da tinta preta, e sem aviso de gama.
 - TIFF de várias páginas é gravado com uma página só (a exibida); a partir da segunda, sempre a partir dos 8 bits por canal.
 
 ## [0.4.1] - 2026-11-22
