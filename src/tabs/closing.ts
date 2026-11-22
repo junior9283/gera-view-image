@@ -85,14 +85,24 @@ export async function quitWith(leave: () => Promise<void>): Promise<boolean> {
 /** Sair do app. */
 export const quit = () => quitWith(ipc.quitApp);
 
-/** O app está saindo: responde por esta janela. */
+let answering = false;
+
+/**
+ * O app está saindo: responde por esta janela. Se a saída foi cancelada com a pergunta aberta e
+ * pedida de novo, a mesma resposta vale para as duas.
+ */
 export async function answerQuit(): Promise<void> {
+  if (answering) return;
+  answering = true;
   let ok = false;
   try {
     ok = await sealOnce();
   } catch (e) {
     notifyError(e);
+  } finally {
+    answering = false;
   }
+  if (ok) setVeil("quitting");
   await ipc.answerClose(ok);
 }
 

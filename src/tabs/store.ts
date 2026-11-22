@@ -7,8 +7,8 @@ interface TabsState {
   windows: WindowEntry[];
   /** Mostrar Todas as Abas. */
   overview: boolean;
-  /** Janela bloqueada: movendo documentos ou fechando. */
-  veil: "moving" | "closing" | null;
+  /** Janela bloqueada: movendo documentos, fechando ou, já de acordo em sair, esperando as outras. */
+  veil: "moving" | "closing" | "quitting" | null;
 }
 
 const INITIAL: TabsState = { windows: [], overview: false, veil: null };

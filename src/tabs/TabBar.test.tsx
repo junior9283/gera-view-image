@@ -237,4 +237,26 @@ describe("Mostrar Todas as Abas", () => {
     act(() => setVeil(null));
     expect(document.querySelector('[aria-modal="true"]')).toBeNull();
   });
+
+  // No Wayland a janela perguntada nem sempre vem para a frente.
+  it("saindo com a pergunta em outra janela: avisa onde responder e deixa cancelar", () => {
+    render(<TabsOverlays />);
+    act(() => setVeil("quitting"));
+    expect(screen.getByRole("dialog").textContent).toContain("outra janela");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(invoke).toHaveBeenCalledWith("cancel_quit");
+    invoke.mockClear();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(invoke).toHaveBeenCalledWith("cancel_quit");
+  });
+
+  it("mover e fechar uma janela não se cancelam", () => {
+    render(<TabsOverlays />);
+    for (const kind of ["moving", "closing"] as const) {
+      act(() => setVeil(kind));
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("button")).toBeNull();
+    }
+    expect(invoke).not.toHaveBeenCalled();
+  });
 });

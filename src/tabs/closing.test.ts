@@ -183,11 +183,22 @@ describe("sair e reiniciar", () => {
     answerUnsaved("discard");
     await vi.waitFor(() => expect(calls).toContainEqual(["answer_close", { ok: true }]));
     expect(names()).not.toContain("close_window");
-    expect(useTabs.getState().veil).toBe("closing");
+    expect(useTabs.getState().veil).toBe("quitting");
     // Outra janela cancelou: o documento continua aqui, com as alterações.
     events["quit-cancelled"].cb({ payload: null });
     expect(useTabs.getState().veil).toBeNull();
     expect(useDocs.getState().docs[0].dirty).toBe(true);
+  });
+
+  it("perguntada de novo com a pergunta aberta, responde uma vez só", async () => {
+    useDocs.getState().add([dirty(1)]);
+    events["confirm-close"].cb({ payload: null });
+    await asked();
+    events["confirm-close"].cb({ payload: null });
+    answerUnsaved("discard");
+    await vi.waitFor(() => expect(names()).toContain("answer_close"));
+    await tick();
+    expect(names().filter((c) => c === "answer_close")).toHaveLength(1);
   });
 
   it("Cancelar (ou falha) responde não", async () => {

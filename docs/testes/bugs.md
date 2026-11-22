@@ -2,6 +2,13 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Sair com edição em outra janela parecia travar (Lote 12, antes de publicar)
+- **Sintoma (Wayland aninhado):** Ctrl+Q numa janela sem edições, com outra não salva atrás: a da frente ficava com o véu "Fechando a janela…", Esc não fazia nada e a pergunta ficava escondida.
+- **Causa:** o Wayland não deixa o app trazer outra janela para a frente sem um gesto do usuário nela; o véu não avisava nem cancelava.
+- **Correção:** véu próprio da saída (`quitting`), que diz onde responder e cancela (botão e Esc). `cancel_quit` encerra a pergunta em andamento; um sim que chega depois devolve a janela ao normal em vez de deixá-la selada.
+- **Teste:** `TabBar.test.tsx` (véu), `closing.test.ts` (responde uma vez só), `saida_cancelada_por_outra_janela_encerra_a_pergunta` (`window.rs`) e conferência em kwin aninhado.
+- **Lição:** nada pode depender de trazer uma janela para a frente no Wayland.
+
 ## Janela sumia e só aparecia a última região clicada (0.3.0 e 0.4.0)
 - **Sintoma (usuário, KDE Wayland, Intel + Nvidia):** ao abrir uma imagem ou um menu, a janela sumia e só a última região redesenhada ficava visível.
 - **Causa:** com a janela transparente (`transparent:true`), o WebKitGTK 2.54 apaga o resto da janela a cada redesenho parcial se o DMABUF **ou** o compositing estiver desligado. O app desligava os dois por padrão (entrada seguinte). Medido na 0.3.0, kwin aninhado:

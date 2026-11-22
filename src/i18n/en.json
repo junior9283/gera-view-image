@@ -801,6 +801,9 @@
     "all": "All tabs",
     "moving": "Moving the images…",
     "closing": "Closing the window…",
+    "quitting": "Quitting…",
+    "answerElsewhere": "If another window is asking about unsaved changes, answer it there.",
+    "cancelQuit": "Cancel",
     "busy": "Close the panel or finish the current operation before moving the images.",
     "pending": "Save the changes to “{{name}}” before moving the image to another window.",
     "timeout": "The image is still being processed. Try moving it again in a moment."

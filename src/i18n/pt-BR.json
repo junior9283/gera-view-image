@@ -801,6 +801,9 @@
     "all": "Todas as abas",
     "moving": "Movendo as imagens…",
     "closing": "Fechando a janela…",
+    "quitting": "Saindo…",
+    "answerElsewhere": "Se outra janela estiver perguntando por alterações não salvas, responda nela.",
+    "cancelQuit": "Cancelar",
     "busy": "Feche o painel ou termine a operação em andamento antes de mover as imagens.",
     "pending": "Salve as alterações de “{{name}}” antes de mover a imagem para outra janela.",
     "timeout": "A imagem ainda está sendo processada. Tente mover de novo em instantes."

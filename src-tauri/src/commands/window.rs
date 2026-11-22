@@ -393,11 +393,17 @@ impl Quitting {
         Some(rx)
     }
 
-    /// Resposta da janela perguntada; de qualquer outra, é ignorada.
-    fn reply(&self, label: &str, ok: bool) {
+    /// Resposta da janela perguntada; de qualquer outra, é ignorada (`false`).
+    fn reply(&self, label: &str, ok: bool) -> bool {
         let mut s = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(a) = s.take_if(|a| a.label == label) {
-            let _ = a.answer.try_send(ok);
+        let asked = s.take_if(|a| a.label == label);
+        asked.is_some_and(|a| a.answer.try_send(ok).is_ok())
+    }
+
+    /// Encerra a pergunta em andamento com um não.
+    fn cancel(&self) {
+        if let Some(a) = self.0.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            let _ = a.answer.try_send(false);
         }
     }
 
@@ -451,29 +457,43 @@ async fn ask(app: &AppHandle, registry: &WindowRegistry, quitting: &Quitting, la
     answer.recv().await.unwrap_or(false)
 }
 
-/// Desfaz os selos e devolve as janelas ao normal.
-fn release_all(app: &AppHandle, registry: &WindowRegistry) {
-    for label in registry.labels() {
-        registry.unseal(&label);
-        let _ = app.emit_to(label, QUIT_CANCELLED_EVENT, ());
-    }
+/// Desfaz o selo e devolve a janela ao normal.
+fn release(app: &AppHandle, registry: &WindowRegistry, label: &str) {
+    registry.unseal(label);
+    let _ = app.emit_to(label, QUIT_CANCELLED_EVENT, ());
 }
 
-/// Resposta da janela ao `confirm-close`. O sim só vale com a janela selada.
+fn release_all(app: &AppHandle, registry: &WindowRegistry) {
+    registry.labels().iter().for_each(|label| release(app, registry, label));
+}
+
+/// Resposta da janela ao `confirm-close`. O sim só vale com a janela selada; se a saída já foi
+/// cancelada, a janela volta ao normal.
 #[tauri::command]
 pub async fn answer_close(
+    app: AppHandle,
     window: WebviewWindow,
     registry: State<'_, WindowRegistry>,
     quitting: State<'_, Quitting>,
     ok: bool,
 ) -> AppResult<()> {
-    quitting.reply(window.label(), ok && registry.is_sealed(window.label()));
+    let label = window.label();
+    let accepted = quitting.reply(label, ok && registry.is_sealed(label));
+    if ok && !accepted {
+        release(&app, &registry, label);
+    }
     Ok(())
 }
 
-/// A saída confirmada não aconteceu (o reinício falhou): as janelas voltam ao normal.
+/// A saída confirmada não aconteceu (o reinício falhou) ou foi cancelada numa janela que já tinha
+/// concordado: as janelas voltam ao normal.
 #[tauri::command]
-pub async fn cancel_quit(app: AppHandle, registry: State<'_, WindowRegistry>) -> AppResult<()> {
+pub async fn cancel_quit(
+    app: AppHandle,
+    registry: State<'_, WindowRegistry>,
+    quitting: State<'_, Quitting>,
+) -> AppResult<()> {
+    quitting.cancel();
     release_all(&app, &registry);
     Ok(())
 }
@@ -604,6 +624,21 @@ mod tests {
         assert_eq!(rx.blocking_recv(), Some(false));
         assert!(q.asking().is_none());
         assert!(q.ask("doc-1").is_some());
+    }
+
+    #[test]
+    fn saida_cancelada_por_outra_janela_encerra_a_pergunta() {
+        let q = Quitting::default();
+        let mut rx = q.ask("main").unwrap();
+        q.cancel();
+        assert_eq!(rx.blocking_recv(), Some(false));
+        assert!(q.asking().is_none());
+        q.cancel();
+        // A resposta que chega depois não vale: quem respondeu sim não pode ficar selada.
+        assert!(!q.reply("main", true));
+        let _rx = q.ask("main").unwrap();
+        assert!(!q.reply("doc-1", true));
+        assert!(q.reply("main", true));
     }
 
     #[test]

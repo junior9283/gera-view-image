@@ -2,6 +2,8 @@
 // E o véu que bloqueia a janela enquanto documentos mudam de janela ou ela fecha.
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { notifyError } from "../chrome/notify";
+import { cancelQuit } from "../ipc/commands";
 import { useModal } from "../lib/modal";
 import { bucket } from "../sidebar/ContactSheet";
 import { Thumb } from "../sidebar/Thumb";
@@ -71,13 +73,24 @@ function Overview() {
   );
 }
 
-function Veil({ kind }: { kind: "moving" | "closing" }) {
+function Veil({ kind }: { kind: "moving" | "closing" | "quitting" }) {
   const { t } = useTranslation();
   const root = useRef<HTMLDivElement>(null);
-  useModal(root);
+  // Outra janela pode estar perguntando, talvez escondida atrás desta.
+  const quitting = kind === "quitting";
+  const cancel = () => void cancelQuit().catch(notifyError);
+  useModal(root, { onClose: quitting ? cancel : undefined });
   return (
     <div ref={root} className="tabs-veil" role="dialog" aria-modal="true" aria-busy="true" aria-label={t(`tabs.${kind}`)} tabIndex={-1}>
-      <p>{t(`tabs.${kind}`)}</p>
+      <div>
+        <p>{t(`tabs.${kind}`)}</p>
+        {quitting && (
+          <>
+            <p>{t("tabs.answerElsewhere")}</p>
+            <button type="button" onClick={cancel}>{t("tabs.cancelQuit")}</button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
