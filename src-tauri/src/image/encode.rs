@@ -22,6 +22,7 @@ use ::image::{
         webp::WebPEncoder,
     },
 };
+use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -178,10 +179,12 @@ impl ExportOptions {
     }
 }
 
-/// ppp aceitos ao gravar (fora disto o valor é puxado para o limite).
-const DPI_MIN: f32 = 1.0;
-const DPI_MAX: f32 = 10_000.0;
+/// ppp aceitos: ao gravar, o valor é puxado para o limite; lido do arquivo, é ignorado.
+pub(super) const DPI_MIN: f32 = 1.0;
+pub(super) const DPI_MAX: f32 = 10_000.0;
 const ICO_MAX: u32 = 256;
+/// Maior EXIF de um JPEG: os 65 533 bytes do APP1 menos o `Exif\0\0`.
+const JPEG_EXIF_MAX: usize = 65_533 - 6;
 
 fn yes() -> bool {
     true
@@ -283,11 +286,14 @@ pub fn encode<'a>(
         }
     };
     // A resolução nova também vai para o EXIF (leitores que olham primeiro para ele).
+    // O que não cabe no APP1 do JPEG fica de fora: o codificador gravaria o tamanho truncado.
+    let fits = |e: &Vec<u8>| fmt != ExportFormat::Jpeg || e.len() <= JPEG_EXIF_MAX;
     if let Some(d) = new_dpi
         && (meta.exif.is_some() || fmt.dpi_in_exif())
     {
-        meta.exif = container::exif_with_dpi(meta.exif.as_deref(), d).or(meta.exif);
+        meta.exif = container::exif_with_dpi(meta.exif.as_deref(), d).filter(fits).or(meta.exif);
     }
+    meta.exif = meta.exif.filter(fits);
     let with_alpha = opts.alpha && fmt.keeps_alpha() && img.has_alpha();
     let pixels = img.into_pixels(with_alpha, opts.deep());
     let xmp = match &meta.iptc_keywords {
@@ -388,7 +394,8 @@ pub fn encode<'a>(
             out = doc.finish();
         }
         ExportFormat::Gif => {
-            let px = binary_alpha(pixels.into_rgba8());
+            let mut px = binary_alpha(pixels.into_rgba8());
+            reserve_transparent(&mut px);
             GifEncoder::new(&mut out)
                 .encode(&px, px.width(), px.height(), ::image::ExtendedColorType::Rgba8)
                 .map_err(enc_err)?;
@@ -529,6 +536,25 @@ fn binary_alpha(mut img: ::image::RgbaImage) -> ::image::RgbaImage {
         }
     }
     img
+}
+
+/// Com transparência e mais de 255 cores opacas, reduz só as opacas a 255: o índice transparente
+/// fica fora da quantização do `GifEncoder`, que o juntaria a tons escuros opacos (furos).
+fn reserve_transparent(img: &mut ::image::RgbaImage) {
+    let mut colors = std::collections::HashSet::new();
+    let over = img.pixels().any(|p| p[3] != 0 && colors.insert(p.0) && colors.len() > 255);
+    if !over || img.pixels().all(|p| p[3] != 0) {
+        return;
+    }
+    let opaque: Vec<u8> = img.pixels().filter(|p| p[3] != 0).flat_map(|p| p.0).collect();
+    let palette = color_quant::NeuQuant::new(1, 255, &opaque).color_map_rgb();
+    // Comparação exata: a busca do NeuQuant é aproximada e pega cores distantes em áreas escuras.
+    img.par_pixels_mut().filter(|p| p[3] != 0).for_each(|p| {
+        let dist = |c: &&[u8; 3]| (0..3).map(|i| (c[i] as i32 - p[i] as i32).pow(2)).sum::<i32>();
+        if let Some(c) = palette.as_chunks::<3>().0.iter().min_by_key(dist) {
+            p.0[..3].copy_from_slice(c);
+        }
+    });
 }
 
 /// `biXPelsPerMeter`/`biYPelsPerMeter` (mesma posição em todos os cabeçalhos de 40+ bytes).
@@ -1285,5 +1311,79 @@ mod tests {
         let out = encode(&img, &ExportOptions::new(Psd), &meta).unwrap();
         assert_eq!(reopen("a.psd", &out).frames[0].get_pixel(0, 0).0, [200, 100, 50, 255]);
         assert!(out.windows(p3.len()).any(|w| w == p3));
+    }
+
+    /// EXIF com uma ImageDescription de `n` bytes.
+    fn exif_com(n: usize) -> Vec<u8> {
+        let mut e = b"II*\0\x08\0\0\0\x01\0\x0e\x01\x02\0".to_vec();
+        e.extend((n as u32).to_le_bytes());
+        e.extend(26u32.to_le_bytes());
+        e.extend([0; 4]);
+        e.extend(std::iter::repeat_n(b'x', n - 1));
+        e.push(0);
+        e
+    }
+
+    /// O APP1 vai até 65 533 bytes: um EXIF que cresceu com o ppp não pode corromper o JPEG.
+    #[test]
+    fn exif_no_limite_do_app1_nao_corrompe_o_jpeg() {
+        let img = ::image::RgbaImage::from_pixel(16, 16, ::image::Rgba([9, 90, 200, 255]));
+        let jpeg = |exif: &[u8], dpi: Option<f32>| {
+            let meta = MetaCarry { exif: Some(exif.to_vec()), ..MetaCarry::default() };
+            let opts = ExportOptions { dpi, ..ExportOptions::new(ExportFormat::Jpeg) };
+            let d = reopen("a.jpg", &encode(&img, &opts, &meta).unwrap());
+            assert_eq!(d.frames[0].dimensions(), (16, 16));
+            assert!(d.dpi.is_none() || d.dpi.unwrap().0 == dpi.unwrap());
+            d.exif
+        };
+        let max = 65_533 - 6;
+        let at = |len: usize| exif_com(len - 26);
+        // Pequeno: o ppp entra no EXIF.
+        let small = jpeg(&at(1000), Some(300.0)).unwrap();
+        assert!(container::tiff_tag(&small, 282).is_some());
+        // No limite: cresceria além do APP1, então fica o anterior.
+        for len in [max, max - 10] {
+            assert_eq!(jpeg(&at(len), Some(300.0)).as_deref(), Some(&at(len)[..]), "{len}");
+            assert_eq!(jpeg(&at(len), None).as_deref(), Some(&at(len)[..]), "{len}");
+        }
+        // Nem o anterior cabe (veio de um PNG ou TIFF): sai sem EXIF.
+        for len in [max + 1, 65_536 + 30, 200_000] {
+            assert_eq!(jpeg(&at(len), Some(300.0)), None, "{len}");
+            assert_eq!(jpeg(&at(len), None), None, "{len}");
+        }
+    }
+
+    /// Foto escura com mais de 256 cores e pouco alfa: preto opaco não pode virar furo, e a
+    /// área transparente continua transparente.
+    #[test]
+    fn gif_escuro_com_pouco_alfa_nao_fura() {
+        // Lado, pixels transparentes (0,1% e um só), faixa de tons e se há preto em xadrez.
+        for (side, holes, range, chess) in
+            [(64, 4, 60, true), (200, 40, 60, true), (64, 1, 8, false), (64, 1, 20, true), (64, 1, 60, true)]
+        {
+            let mut n = side * 31 + range * 7 + chess as u32 * 2;
+            let img = ::image::RgbaImage::from_fn(side, side, |x, y| {
+                n = n.wrapping_mul(1_103_515_245).wrapping_add(12345);
+                let v = |s: u32| (((n >> 8) & 0xffff) >> s) as u8 as u32 % range;
+                if y * side + x < holes {
+                    ::image::Rgba([0, 0, 0, 0])
+                } else if chess && (x + y) % 2 == 0 {
+                    ::image::Rgba([0, 0, 0, 255])
+                } else {
+                    ::image::Rgba([v(0) as u8, v(4) as u8, v(7) as u8, 255])
+                }
+            });
+            let opts = ExportOptions::new(ExportFormat::Gif);
+            let d = reopen("a.gif", &encode(&img, &opts, &MetaCarry::default()).unwrap());
+            let pairs = || img.pixels().zip(d.frames[0].pixels());
+            let wrong = pairs().filter(|(a, b)| a[3] != b[3]).count();
+            let far = pairs()
+                .filter(|(a, _)| a[3] == 255)
+                .flat_map(|(a, b)| (0..3).map(|c| a[c].abs_diff(b[c])))
+                .max();
+            println!("{side} {holes} {range} {chess}: trocados {wrong}, desvio {far:?}");
+            assert_eq!(wrong, 0, "{side} {holes} {range} {chess}: transparência trocada");
+            assert!(far < Some(32), "{side} {holes} {range} {chess}: cor longe da original");
+        }
     }
 }

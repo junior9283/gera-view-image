@@ -1,6 +1,9 @@
 //! PDF de imagens (Lote 11): uma página por imagem, do tamanho dela na resolução pedida. Os
 //! pixels chegam em sRGB e o perfil sRGB vai embutido (`ICCBased`); a transparência vira `SMask`.
-use super::icc;
+use super::{
+    encode::{DPI_MAX, DPI_MIN},
+    icc,
+};
 use crate::error::{AppError, AppResult};
 use ::image::{DynamicImage, codecs::jpeg::JpegEncoder};
 use flate2::{Compression, write::ZlibEncoder};
@@ -29,14 +32,16 @@ impl Default for Pdf {
     }
 }
 
-/// Pixels em pontos (1/72"); sem ppp (ou inválido), 72.
-pub fn to_points(px: u32, dpi: Option<f32>) -> f64 {
-    px as f64 * 72.0 / dpi.filter(|d| *d > 0.0).unwrap_or(DEFAULT_DPI) as f64
+/// Pixels em pontos (1/72"). Sem ppp, ou com um absurdo (vem do arquivo), 72 nos dois eixos.
+pub fn to_points((w, h): (u32, u32), dpi: Option<(f32, f32)>) -> (f64, f64) {
+    let ok = |d: f32| (DPI_MIN..=DPI_MAX).contains(&d);
+    let (x, y) = dpi.filter(|(x, y)| ok(*x) && ok(*y)).unwrap_or((DEFAULT_DPI, DEFAULT_DPI));
+    (w as f64 * 72.0 / x as f64, h as f64 * 72.0 / y as f64)
 }
 
 /// Tamanho da página em pontos, dentro do limite do formato.
-fn page_size((w, h): (u32, u32), dpi: Option<(f32, f32)>) -> (f64, f64) {
-    let (w, h) = (to_points(w, dpi.map(|d| d.0)), to_points(h, dpi.map(|d| d.1)));
+fn page_size(px: (u32, u32), dpi: Option<(f32, f32)>) -> (f64, f64) {
+    let (w, h) = to_points(px, dpi);
     let k = (MAX_PAGE / w.max(h)).min(1.0);
     (w * k, h * k)
 }
@@ -203,6 +208,24 @@ mod tests {
         }
         assert_eq!(&raw, img.as_raw());
         assert!(!text(&out).contains("SMask"), "opaca não leva máscara");
+    }
+
+    /// Resolução absurda vinda do arquivo não faz uma página de quilômetros nem de zero.
+    #[test]
+    fn ppp_fora_da_faixa_e_ignorado() {
+        let px = DynamicImage::ImageRgb8(gradiente(100, 50));
+        let media = |dpi| {
+            let mut pdf = Pdf::new();
+            pdf.add_page(&px, None, Some(dpi)).unwrap();
+            text(&pdf.finish())
+        };
+        for bad in [0.0, -5.0, 0.5, 10_001.0, 1e30, f32::INFINITY, f32::NAN] {
+            for dpi in [(bad, bad), (bad, 300.0), (300.0, bad)] {
+                assert!(media(dpi).contains("/MediaBox [0 0 100.0000 50.0000]"), "{dpi:?}");
+            }
+        }
+        assert!(media((1.0, 1.0)).contains("/MediaBox [0 0 7200.0000 3600.0000]"));
+        assert!(media((10_000.0, 10_000.0)).contains("/MediaBox [0 0 0.7200 0.3600]"));
     }
 
     #[test]

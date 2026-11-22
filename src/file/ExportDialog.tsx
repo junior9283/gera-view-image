@@ -257,16 +257,25 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
   const bytes = useEstimate(doc.id, opts);
   const heic = useHeicEncoder();
 
+  // Outro destino: o aviso de substituir era sobre o anterior.
+  const rename = (n: string) => {
+    setName(n);
+    setOverwrite(null);
+  };
+  const moveTo = (dir: string) => {
+    setFolder(dir);
+    setOverwrite(null);
+  };
   const changeOpts = (o: ExportOptions) => {
-    if (o.format !== opts.format) setName((n) => withExt(n, o.format));
+    if (o.format !== opts.format) rename(withExt(name, o.format));
     setOpts(o);
   };
 
   const pick = async () => {
     const path = await saveDialog({ defaultPath: join(folder || ".", name) });
     if (!path) return;
-    setFolder(dirname(path));
-    setName(path.slice(path.lastIndexOf("/") + 1));
+    moveTo(dirname(path));
+    rename(path.slice(path.lastIndexOf("/") + 1));
     setConfirmed(path); // o diálogo do sistema já perguntou sobre substituir
   };
 
@@ -275,7 +284,8 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
     if (!folder.trim()) return setError(t("file.export.noFolder"));
     if (!name.trim()) return setError(t("file.export.noName"));
     const dest = join(folder.trim(), name.trim());
-    if (!force && confirmed !== dest && (await ipc.pathExists(dest))) return setOverwrite(dest);
+    const agreed = confirmed === dest || (force && overwrite === dest);
+    if (!agreed && (await ipc.pathExists(dest))) return setOverwrite(dest);
     setBusy(true);
     try {
       const info = await exportDoc(doc.id, dest, opts, tags);
@@ -293,14 +303,14 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
     <Frame title={t(mode === "save" ? "file.export.titleSave" : "file.export.title")} onClose={onClose}>
       <label className="file-row">
         <span>{t("file.export.name")}</span>
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} data-testid="export-name" autoFocus />
+        <input type="text" value={name} onChange={(e) => rename(e.target.value)} data-testid="export-name" autoFocus />
         <button type="button" onClick={() => void pick().catch(notifyError)}>{t("file.export.choose")}</button>
       </label>
       <div className="file-row">
         <span>{t("finder.popover.tags")}</span>
         <TagsInput tags={tags} onChange={setTags} />
       </div>
-      <FolderField folder={folder} setFolder={setFolder} />
+      <FolderField folder={folder} setFolder={moveTo} />
       <OptionsFields opts={opts} onChange={changeOpts} currentDpi={dpi} />
       {doc.format === "heic" && heic === false && <p className="file-hint">{t("file.export.heicEncoderMissing")}</p>}
       <p className="file-hint" data-testid="export-estimate">

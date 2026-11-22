@@ -180,7 +180,7 @@ pub fn place(img: Size, cell: RectF, opts: &PrintOptions) -> Placement {
         && img.w != img.h
         && cell.w != cell.h
         && (img.w > img.h) != (cell.w > cell.h);
-    let natural = (to_points(img.w, img.dpi.map(|d| d.0)), to_points(img.h, img.dpi.map(|d| d.1)));
+    let natural = to_points((img.w, img.h), img.dpi);
     let (w, h) = if rotated { (natural.1, natural.0) } else { natural };
     let (kx, ky) = (cell.w / w, cell.h / h);
     let k = match (opts.scale_percent, opts.fit) {
@@ -332,6 +332,10 @@ mod tests {
         assert_eq!(place(size(100, 100), AREA, &o).rect.w, 50.0);
         let bad = Size { w: 100, h: 100, dpi: Some((0.0, 0.0)) };
         assert_eq!(place(bad, AREA, &o).rect.w, 50.0);
+        for d in [0.01, 1e9, f32::INFINITY, f32::NAN] {
+            let r = place(Size { w: 100, h: 50, dpi: Some((d, 150.0)) }, AREA, &o).rect;
+            assert_eq!((r.w, r.h), (50.0, 25.0), "{d}");
+        }
     }
 
     #[test]

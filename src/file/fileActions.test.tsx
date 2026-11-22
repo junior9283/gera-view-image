@@ -264,6 +264,54 @@ describe("ExportDialog completo (Lote 11)", () => {
   });
 });
 
+describe("Substituir só o arquivo do aviso", () => {
+  const replace = () => screen.queryByRole("button", { name: "Substituir" });
+  const ok = () => act(async () => fireEvent.click(screen.getByTestId("export-ok")));
+  const set = (id: string, value: string) => fireEvent.change(screen.getByTestId(id), { target: { value } });
+
+  beforeEach(() => {
+    ipc.exportDoc.mockResolvedValue(doc);
+    ipc.pathExists.mockResolvedValue(true);
+    render(createElement(ExportDialog, { doc, mode: "export", onClose: () => {} }));
+  });
+  afterEach(() => void ipc.pathExists.mockResolvedValue(false));
+
+  it.each([
+    ["nome", () => set("export-name", "outra.jpg")],
+    ["pasta", () => set("export-folder", "/outra")],
+    ["formato", () => fireEvent.change(screen.getByLabelText("Formato"), { target: { value: "png" } })],
+  ])("mudar %s retira o aviso e o botão", async (_, change) => {
+    await ok();
+    expect(replace()).not.toBeNull();
+    change();
+    expect(replace()).toBeNull();
+    await ok();
+    expect(ipc.exportDoc).not.toHaveBeenCalled();
+    expect(replace()).not.toBeNull();
+  });
+
+  it("mudar outra opção mantém o aviso, e Substituir grava o arquivo avisado", async () => {
+    await ok();
+    fireEvent.click(screen.getByLabelText("Remover metadados (EXIF, GPS, IPTC)"));
+    await act(async () => fireEvent.click(replace()!));
+    expect(ipc.exportDoc).toHaveBeenCalledWith(1, "/fotos/Ação 1.jpg", expect.anything(), null);
+  });
+
+  it("nome trocado durante a checagem: Substituir pergunta pelo novo antes de gravar", async () => {
+    let exists!: (v: boolean) => void;
+    ipc.pathExists.mockImplementationOnce(() => new Promise<boolean>((r) => (exists = r)));
+    await ok();
+    set("export-name", "outra.jpg");
+    await act(async () => exists(true));
+    const b = replace();
+    if (b) await act(async () => fireEvent.click(b));
+    expect(ipc.exportDoc).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain("outra.jpg");
+    await act(async () => fireEvent.click(replace()!));
+    expect(ipc.exportDoc).toHaveBeenCalledWith(1, "/fotos/outra.jpg", expect.anything(), null);
+  });
+});
+
 describe("ExportSelectedDialog", () => {
   it("Esc durante a exportação não fecha o diálogo", async () => {
     let finish!: () => void;

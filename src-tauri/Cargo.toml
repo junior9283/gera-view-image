@@ -58,6 +58,8 @@ kamadak-exif = "0.6.2"
 # WebP com perda (libwebp compilada estática pelo libwebp-sys; nada novo no NEEDED).
 webp = { version = "0.3", default-features = false }
 crc32fast = "1"
+# Quantização do GIF com transparência (a mesma da crate `gif`).
+color_quant = "1.1.0"
 # GUID do XMP estendido do JPEG (MD5 do pacote, exigido pela especificação).
 md5 = "0.8"
 # Gerência de cor (Lote 1): Rust puro, já vinha pela crate `image`; nada novo no NEEDED.
