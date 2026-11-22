@@ -9,14 +9,14 @@ import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
 import { dpr } from "../viewer/paint";
 import { addAnnotation, commit, deleteSelected, endLive, moveSelectedLive } from "./actions";
-import { cloneItems } from "./clipboard";
+import { cloneItems, selectedItems } from "./clipboard";
 import { loadSource } from "./flatten";
 import { cssFont } from "./fontCss";
 import { bounds, hitTest, moveItems, normBox, textBox, textFont, textOf, withText, type Annotation, type Point } from "./model";
 import { onCurrentPage, onPage, pageItems } from "./pages";
 import { render, renderSelection, type Source, type ViewXf } from "./render";
 import { annotationsFocused, getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
-import { LINE_HEIGHT, layoutLines } from "./textLayout";
+import { LINE_HEIGHT, layoutLines, roughWidth } from "./textLayout";
 import { createShape, createStroke, createText, toImageStyle } from "./tools/create";
 import { dragHandle, handlesFor, hitHandle, type HandleId } from "./tools/handles";
 
@@ -71,7 +71,7 @@ function useMarkupKeys() {
         else return;
         used = true;
       } else if (e.key === "Enter" && annotationsFocused(id) && !(e.target as Element | null)?.closest?.("button, a, [role]")) {
-        const [a, ...more] = getItems(id).filter((x) => getSelected(id).includes(x.id));
+        const [a, ...more] = selectedItems(id);
         if (more.length || textOf(a) === null) return;
         st.setEditing(a.id);
         used = true;
@@ -350,7 +350,7 @@ function TextEditor({ docId, item, view }: { docId: number; item: Annotation; vi
       return;
     }
     const lines = text.split("\n");
-    const w = Math.max(b.w, f.size * 2, ...lines.map((l) => l.length * f.size * 0.62));
+    const w = Math.max(b.w, f.size * 2, ...lines.map(roughWidth(f)));
     const next = { ...item, geom: { ...item.geom, text, w, h: lines.length * f.size * LINE_HEIGHT } };
     commit(docId, items.map((a) => (a.id === item.id ? next : a)), before);
   };

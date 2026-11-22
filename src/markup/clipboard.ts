@@ -21,7 +21,7 @@ export function focusedDoc(): DocId | null {
   return annotationsFocused(id) ? id : null;
 }
 
-const selectedItems = (id: DocId): Annotation[] => {
+export const selectedItems = (id: DocId): Annotation[] => {
   const sel = new Set(getSelected(id));
   return getItems(id).filter((a) => sel.has(a.id));
 };
