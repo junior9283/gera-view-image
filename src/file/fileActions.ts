@@ -1,5 +1,5 @@
 // Ações do menu Arquivo (e Colar). Registradas como comandos em `register.ts`.
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "../lib/dialogs";
 import { create } from "zustand";
 import { notify } from "../chrome/notify";
 import i18n from "../i18n";

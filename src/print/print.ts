@@ -1,6 +1,6 @@
 // Imprimir e Exportar como PDF (Lote 11). As duas ações aceitam uma lista de documentos: a
 // multisseleção da barra lateral (Lote 7) chama `printDocs(ids)` e `exportPdf(ids)`.
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { save as saveDialog } from "../lib/dialogs";
 import { create } from "zustand";
 import { notify } from "../chrome/notify";
 import { current, dirname, flattenedCopy, stem } from "../file/fileActions";

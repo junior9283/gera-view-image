@@ -887,6 +887,27 @@
     "moving": "Moving the images…",
     "closing": "Closing the window…",
     "quitting": "Quitting…",
+    "saving": "Saving…",
+    "stillOpening": "The window “{{name}}” is still opening with images. Wait, or close it to bring the images back to another window.",
+    "mergeDeclined": "The window “{{name}}” could not be merged: it has an open dialog or an operation in progress.",
+    "unresponsive": {
+      "title": "A window is not responding",
+      "body": "The window “{{name}}” is not responding. If you quit without waiting for it, its unsaved changes are lost.",
+      "leave": "Quit Without Waiting",
+      "cancel": "Cancel"
+    },
+    "running": {
+      "title": "Operation in progress",
+      "body": "This window is printing, saving or editing. Closing now may interrupt it.",
+      "close": "Close Anyway",
+      "wait": "Wait"
+    },
+    "stuck": {
+      "title": "The window did not finish opening",
+      "body": "The images moved to this window have not appeared yet. If you close it now, their unsaved changes are lost.",
+      "close": "Close Without Saving",
+      "cancel": "Cancel"
+    },
     "answerElsewhere": "If another window is asking about unsaved changes, answer it there.",
     "cancelQuit": "Cancel",
     "busy": "Close the panel or finish the current operation before moving the images.",

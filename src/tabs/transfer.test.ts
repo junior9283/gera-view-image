@@ -11,6 +11,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ onCloseRequested: async () => () => {} }) }));
+const dialog = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 const toast = vi.hoisted(() => vi.fn());
 vi.mock("../chrome/notify", () => ({ notify: toast, notifyError: toast }));
 
@@ -30,7 +32,8 @@ import { resetDocsForTests, useDocs } from "../store/docs";
 import { resetPrefsForTests, getPrefs } from "../store/prefs";
 import { useSelection } from "../store/selection";
 import { resetUiForTests, useUi } from "../store/ui";
-import { resetTabsForTests, useTabs } from "./store";
+import { open as openNative } from "../lib/dialogs";
+import { putVeil, resetTabsForTests, useTabs } from "./store";
 import { sendAllTo } from "./closing";
 import { mergeAllWindows, movable, moveTabToNewWindow, receiveDocs } from "./transfer";
 
@@ -178,6 +181,27 @@ describe("Mover Aba para Nova Janela", () => {
     expect(toast).toHaveBeenCalledTimes(1);
   });
 
+  it("recusa com um seletor de arquivos do sistema aberto", async () => {
+    open(info(1), info(2));
+    let close!: (v: null) => void;
+    dialog.open.mockReturnValueOnce(new Promise((r) => (close = r)));
+    const picking = openNative({ directory: true });
+    await moveTabToNewWindow();
+    expect(sent("new_window")).toEqual([]);
+    expect(toast).toHaveBeenCalledTimes(1);
+    close(null);
+    await picking;
+    await moveTabToNewWindow();
+    expect(sent("new_window")).toHaveLength(1);
+  });
+
+  it("o fim do mover não tira o véu dos outros", async () => {
+    open(info(1), info(2));
+    handlers.new_window = () => void putVeil("closing");
+    await moveTabToNewWindow();
+    expect(useTabs.getState().veil).toBe("closing");
+  });
+
   it("alteração que não há como levar recusa e avisa, sem perder nada", async () => {
     open(info(1), info(2));
     const off = registerDirtySource((id) => id === 1);
@@ -244,6 +268,22 @@ describe("Juntar Todas as Janelas", () => {
     await sendAllTo("doc-3");
     expect(ids()).toEqual([1]);
     expect(sent("seal_window")).toEqual([]);
+    expect(sent("close_window")).toEqual([]);
+    expect(sent("decline_merge")).toEqual([{ to: "doc-3" }]);
+  });
+
+  it("com um diálogo aberto, quem pediu fica sabendo", async () => {
+    open(info(1));
+    document.body.innerHTML = '<div aria-modal="true"></div>';
+    await sendAllTo("doc-3");
+    expect(sent("decline_merge")).toEqual([{ to: "doc-3" }]);
+    expect(sent("move_documents")).toEqual([]);
+  });
+
+  it("vazia, mas com um diálogo aberto, também avisa quem pediu", async () => {
+    document.body.innerHTML = '<div aria-modal="true"></div>';
+    await sendAllTo("doc-3");
+    expect(sent("decline_merge")).toEqual([{ to: "doc-3" }]);
     expect(sent("close_window")).toEqual([]);
   });
 

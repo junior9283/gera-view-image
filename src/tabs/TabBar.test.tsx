@@ -17,7 +17,7 @@ import { getPrefs, resetPrefsForTests, setPrefs } from "../store/prefs";
 import { resetUiForTests, useUi } from "../store/ui";
 import { TabsOverlays } from "./AllTabs";
 import "./register";
-import { resetTabsForTests, setVeil, useTabs } from "./store";
+import { ask, putVeil, resetTabsForTests, useTabs } from "./store";
 import { TabBar } from "./TabBar";
 
 const info = (id: number, extra: Partial<DocInfo> = {}): DocInfo => ({
@@ -232,16 +232,17 @@ describe("Mostrar Todas as Abas", () => {
 
   it("o véu bloqueia os atalhos enquanto move ou fecha", () => {
     render(<TabsOverlays />);
-    act(() => setVeil("moving"));
+    let release!: () => void;
+    act(() => void (release = putVeil("moving")));
     expect(document.querySelector('[aria-modal="true"]')?.getAttribute("aria-busy")).toBe("true");
-    act(() => setVeil(null));
+    act(() => release());
     expect(document.querySelector('[aria-modal="true"]')).toBeNull();
   });
 
   // No Wayland a janela perguntada nem sempre vem para a frente.
   it("saindo com a pergunta em outra janela: avisa onde responder e deixa cancelar", () => {
     render(<TabsOverlays />);
-    act(() => setVeil("quitting"));
+    act(() => void putVeil("quitting"));
     expect(screen.getByRole("dialog").textContent).toContain("outra janela");
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(invoke).toHaveBeenCalledWith("cancel_quit");
@@ -250,10 +251,34 @@ describe("Mostrar Todas as Abas", () => {
     expect(invoke).toHaveBeenCalledWith("cancel_quit");
   });
 
+  it("cada véu cai só pela mão de quem o pôs, uma vez só", () => {
+    const moving = putVeil("moving");
+    const closing = putVeil("closing");
+    moving();
+    moving();
+    expect(useTabs.getState().veil).toBe("closing");
+    closing();
+    expect(useTabs.getState().veil).toBeNull();
+  });
+
+  it("a pergunta começa no Cancelar, e Esc cancela", async () => {
+    render(<TabsOverlays />);
+    let answer!: Promise<boolean>;
+    act(() => void (answer = ask({ title: "Janela travada", body: "Sair?", ok: "Sair sem esperar", cancel: "Cancelar" })));
+    expect(screen.getByRole("alertdialog", { name: "Janela travada" }).textContent).toContain("Sair?");
+    expect(document.activeElement?.textContent).toBe("Cancelar");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(await answer).toBe(false);
+    act(() => void (answer = ask({ title: "b", body: "b", ok: "Sair sem esperar", cancel: "Cancelar" })));
+    fireEvent.click(screen.getByRole("button", { name: "Sair sem esperar" }));
+    expect(await answer).toBe(true);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
   it("mover e fechar uma janela não se cancelam", () => {
     render(<TabsOverlays />);
     for (const kind of ["moving", "closing"] as const) {
-      act(() => setVeil(kind));
+      act(() => void putVeil(kind));
       fireEvent.keyDown(document, { key: "Escape" });
       expect(screen.queryByRole("button")).toBeNull();
     }
