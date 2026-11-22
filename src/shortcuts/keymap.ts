@@ -71,6 +71,8 @@ export const KEYMAP: Record<CommandId, string> = {
   "view.toolbar": "Ctrl+Shift+T",
   "view.customizeToolbar": "",
   "view.imageBackground": "",
+  "view.softProofNone": "",
+  "view.softProofChoose": "",
   "view.tabBar": "",
   // Cmd+Shift+\ no Preview: com Shift, a tecla "\" chega como "|" (US e ABNT2).
   "view.allTabs": "Ctrl+|",

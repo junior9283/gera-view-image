@@ -87,7 +87,7 @@ describe("Viewport", () => {
     const zoom = screen.getByTestId("zoom-level");
     expect(zoom.dataset.scale).toBe("0.2");
     await act(async () => void (await new Promise((r) => setTimeout(r, 120))));
-    expect(invoke).toHaveBeenCalledWith("render_view", expect.objectContaining({ id: 1, frame: 0 }));
+    expect(invoke).toHaveBeenCalledWith("render_view", expect.objectContaining({ id: 1, frame: 0, proof: true }));
     fireEvent.doubleClick(screen.getByTestId("viewport"), { clientX: 400, clientY: 300 });
     expect(zoom.dataset.scale).toBe("1");
     fireEvent.doubleClick(screen.getByTestId("viewport"), { clientX: 400, clientY: 300 });

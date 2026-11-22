@@ -8,7 +8,7 @@ import type { DocId } from "./types";
  */
 const READ_ONLY = new Set([
   "render_view", "thumbnail", "metadata", "histogram", "auto_levels", "preview_adjust", "instant_alpha", "snap_lasso",
-  "estimate_size", "document_dpi", "document_profile", "recognize_text", "detect_codes",
+  "estimate_size", "document_dpi", "document_profile", "list_proof_profiles", "recognize_text", "detect_codes",
   "print_preview", "file_tags", "file_locked", "file_stats", "list_versions", "version_preview", "open_with_apps",
 ]);
 
