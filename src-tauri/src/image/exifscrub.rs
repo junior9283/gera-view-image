@@ -173,15 +173,17 @@ pub fn scrub_with(tiff: &[u8], tags: &Tags, drop_thumb: bool) -> Option<Vec<u8>>
     // Tudo que um leitor seguiria e a limpeza não entende falha fechado.
     let mut dead: Vec<Range<usize>> = Vec::new();
     let mut dead_text: Vec<Range<usize>> = Vec::new();
-    if drop_thumb {
-        let hidden = !t0.has_slot
-            && r.u32(t0.end).filter(|&at| at != 0).is_some_and(|at| table(&r, at as usize, &[], &mut budget).is_some());
-        if (t0.next != 0 && t1.is_none()) || hidden {
-            return None;
-        }
+    // Ponteiro do próximo IFD sob um valor: um leitor poderia segui-lo até outra tabela.
+    let hidden = |t: &Table| !t.has_slot && r.u32(t.end).is_some_and(|at| at != 0);
+    if drop_thumb && ((t0.next != 0 && t1.is_none()) || hidden(&t0)) {
+        return None;
     }
     if drop_thumb && let Some(t) = t1.take() {
-        if t.next != 0 || t.entries.iter().any(|e| e.unknown_type) {
+        // Sub-IFDs (Exif, GPS, interoperabilidade, SubIFDs) ou entradas do tipo IFD num IFD1: não é
+        // uma miniatura simples.
+        let nested = |e: &Entry| matches!(e.tag, TAG_EXIF_IFD | TAG_GPS_IFD | TAG_INTEROP_IFD | 0x014A);
+        let typed_ifd = |e: &Entry| r.u16(e.at + 2) == Some(13);
+        if t.next != 0 || hidden(&t) || t.entries.iter().any(|e| e.unknown_type || nested(e) || typed_ifd(e)) {
             return None;
         }
         dead.push(t.at..t.end + if t.has_slot { 4 } else { 0 });
@@ -229,7 +231,8 @@ pub fn scrub_with(tiff: &[u8], tags: &Tags, drop_thumb: bool) -> Option<Vec<u8>>
     for end in cut {
         out[end..end + 4].fill(0);
     }
-    for d in dead {
+    // Fundidas: cada byte zerado uma vez só (o total fica no tamanho do bloco).
+    for d in merged(dead) {
         out[d].fill(0);
     }
     if dead_text.is_empty() && !tables.iter().any(|t| t.entries.iter().any(|e| e.drop)) {
@@ -282,9 +285,13 @@ const MAX_THUMB_PARTS: usize = 4096;
 /// `None` se os deslocamentos não tiverem comprimentos correspondentes ou forem de tipo inesperado.
 fn image_data(r: &Reader, t: &Table) -> Option<Vec<Range<usize>>> {
     let values = |tag: u16| -> Option<Option<Vec<usize>>> {
-        let Some(e) = t.entries.iter().find(|e| e.tag == tag) else {
+        let mut found = t.entries.iter().filter(|e| e.tag == tag);
+        let Some(e) = found.next() else {
             return Some(None);
         };
+        if found.next().is_some() {
+            return None; // repetida: qual delas um leitor usaria?
+        }
         let (ty, count) = (r.u16(e.at + 2)?, r.u32(e.at + 4)? as usize);
         let size = match ty {
             3 => 2,
@@ -496,21 +503,21 @@ mod tests {
         let tail = b"TIRA-ANTIGA-UM..TIRA-ANTIGA-DOIS";
         for (off, len) in [(0x0111, 0x0117), (0x0144, 0x0145)] {
             let ifd1 = |base: u32| vec![ent(off, longs(&[base, base + 16])), ent(len, longs(&[16, 16]))];
-            let (_, base) = com_ifd1(&[make.clone()], tail, &[], 0);
-            let (f, _) = com_ifd1(&[make.clone()], tail, &ifd1(base as u32), 0);
+            let (_, base) = com_ifd1(std::slice::from_ref(&make), tail, &[], 0);
+            let (f, _) = com_ifd1(std::slice::from_ref(&make), tail, &ifd1(base as u32), 0);
             let out = scrub_with(&f, &SEM, true).unwrap();
             assert!(!tem(&out, "TIRA-ANTIGA"), "tag {off:#x}");
             assert!(tem(&out, "Gera Marca"));
             // Offsets sem comprimentos, ou em número diferente: não dá para saber o que zerar.
-            let (f, _) = com_ifd1(&[make.clone()], tail, &[ent(off, longs(&[base as u32]))], 0);
+            let (f, _) = com_ifd1(std::slice::from_ref(&make), tail, &[ent(off, longs(&[base as u32]))], 0);
             assert_eq!(scrub_with(&f, &SEM, true), None);
             let bad = [ent(off, longs(&[base as u32])), ent(len, longs(&[16, 16]))];
-            assert_eq!(scrub_with(&com_ifd1(&[make.clone()], tail, &bad, 0).0, &SEM, true), None);
+            assert_eq!(scrub_with(&com_ifd1(std::slice::from_ref(&make), tail, &bad, 0).0, &SEM, true), None);
         }
         // Miniatura JPEG com o comprimento em SHORT.
-        let (_, base) = com_ifd1(&[make.clone()], tail, &[], 0);
+        let (_, base) = com_ifd1(std::slice::from_ref(&make), tail, &[], 0);
         let jpeg = [ent(0x0201, longs(&[base as u32])), ent(0x0202, (3, 1, 32u16.to_le_bytes().to_vec()))];
-        let out = scrub_with(&com_ifd1(&[make], tail, &jpeg, 0).0, &SEM, true).unwrap();
+        let out = scrub_with(&com_ifd1(std::slice::from_ref(&make), tail, &jpeg, 0).0, &SEM, true).unwrap();
         assert!(!tem(&out, "TIRA-ANTIGA"));
     }
 
@@ -518,13 +525,13 @@ mod tests {
     #[test]
     fn texto_do_ifd1_descartado_leva_as_copias() {
         let make = ent(0x010F, ascii("Gera Marca"));
-        let (f, _) = com_ifd1(&[make.clone()], b"..SEGREDO-NO-IFD1..", &[ent(0x013B, ascii("SEGREDO-NO-IFD1"))], 0);
+        let (f, _) = com_ifd1(std::slice::from_ref(&make), b"..SEGREDO-NO-IFD1..", &[ent(0x013B, ascii("SEGREDO-NO-IFD1"))], 0);
         let out = scrub_with(&f, &T, true).unwrap();
         assert!(!tem(&out, "SEGREDO"));
         // Tipo desconhecido no IFD1: não dá para saber o tamanho do valor.
         let mut odd = ent(0x9999, ascii("x"));
         odd.1 = 200;
-        let (f, _) = com_ifd1(&[make], b"", &[odd], 0);
+        let (f, _) = com_ifd1(std::slice::from_ref(&make), b"", &[odd], 0);
         assert_eq!(scrub_with(&f, &SEM, true), None);
     }
 
@@ -533,7 +540,7 @@ mod tests {
     fn cadeia_do_ifd1_ambigua_falha_fechada() {
         let make = ent(0x010F, ascii("Gera Marca"));
         // IFD2 depois do IFD1.
-        let (f, _) = com_ifd1(&[make.clone()], b"", &[ent(0x0103, (3, 1, vec![6, 0]))], 8);
+        let (f, _) = com_ifd1(std::slice::from_ref(&make), b"", &[ent(0x0103, (3, 1, vec![6, 0]))], 8);
         assert_eq!(scrub_with(&f, &SEM, true), None);
         // Ponteiro para um IFD1 ilegível.
         let mut f = tiff_le(&[make]);
@@ -542,6 +549,32 @@ mod tests {
         f[slot..slot + 4].copy_from_slice(&broken.to_le_bytes());
         assert_eq!(scrub_with(&f, &SEM, true), None);
         assert!(scrub(&f, &SEM).is_some(), "sem tirar a miniatura, como antes");
+    }
+
+    /// Mais casos em que o IFD1 não é só uma miniatura simples: na dúvida, o EXIF cai inteiro.
+    #[test]
+    fn ifd1_fora_do_comum_falha_fechado() {
+        let make = || ent(0x010F, ascii("Gera Marca"));
+        let jpeg = |o: u32| ent(0x0201, longs(&[o]));
+        let len = ent(0x0202, longs(&[4]));
+        // Tag de dados de imagem repetida.
+        let base = com_ifd1(&[make()], b"DADO", &[], 0).1 as u32;
+        let f = com_ifd1(&[make()], b"DADO", &[jpeg(base), jpeg(base), len.clone()], 0).0;
+        assert_eq!(scrub_with(&f, &SEM, true), None);
+        // Sub-IFD ou entrada do tipo IFD no IFD1.
+        for e in [ent(0x8769, longs(&[8])), ent(0x014A, longs(&[8])), ent(0x1234, (13, 1, 8u32.to_le_bytes().to_vec()))] {
+            let f = com_ifd1(&[make()], b"", &[e], 0).0;
+            assert_eq!(scrub_with(&f, &SEM, true), None);
+        }
+        // Ponteiro do próximo IFD do IFD0 escondido sob um valor: qualquer valor não nulo ali é dúvida.
+        let mut f = tiff_le(&[ent(0x010F, ascii("Gera Marca Longa"))]);
+        let slot = 8 + 2 + 12;
+        f[18..22].copy_from_slice(&(slot as u32).to_le_bytes()); // o valor começa no ponteiro
+        let broken = f.len() as u32 - 1;
+        f[slot..slot + 4].copy_from_slice(&broken.to_le_bytes());
+        assert_eq!(scrub_with(&f, &SEM, true), None);
+        // Sem tirar a miniatura, como antes.
+        assert!(scrub(&f, &SEM).is_some());
     }
 
     #[test]
