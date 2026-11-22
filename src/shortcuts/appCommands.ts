@@ -8,6 +8,8 @@ import { openAdjustColor, openResize } from "../adjust/actions";
 import { canRedo, canUndo, redo, undo } from "../edit/history";
 import type { Op } from "../ipc/types";
 import { toggleInspector } from "../inspector/toggle";
+import { deleteSelected } from "../markup/actions";
+import { copyAnnotations, cutAnnotations, duplicateAnnotations, focusedDoc, selectAllAnnotations } from "../markup/clipboard";
 import { openAbout, openPreferences } from "../prefs/dialogs";
 import * as sel from "../select/actions";
 import { maskBounds } from "../select/lasso";
@@ -52,13 +54,23 @@ function zoomToSelection() {
   if (r) view.zoomToRect(r);
 }
 
-/** Esc: sai da apresentação; senão desmarca; senão sai da tela cheia. */
+/** Esc: sai da apresentação; senão desmarca; senão sai da ferramenta de seleção; senão, da tela cheia. */
 function escape() {
   const ui = useUi.getState();
   if (ui.slideshow) return view.stopSlideshow();
-  if (useSelection.getState().selection) return sel.deselect();
+  const { selection, selectionTool, setSelectionTool } = useSelection.getState();
+  if (selection) return sel.deselect();
+  if (selectionTool) return setSelectionTool(null);
   if (ui.fullscreen) return view.setFullscreen(false);
 }
+
+/** Com anotação selecionada, o comando de edição é dela (`onItems`); sem, da imagem. */
+const onFocus = (onItems: (id: number) => unknown, onImage: () => unknown) => () => {
+  const id = focusedDoc();
+  return id === null ? onImage() : onItems(id);
+};
+const hasAnnotation = () => focusedDoc() !== null;
+const hasTarget = () => hasAnnotation() || hasSelection();
 
 const withActive = (f: (id: number) => unknown) => () => {
   const d = view.activeDoc();
@@ -90,13 +102,15 @@ const ENTRIES: Entry[] = [
 
   ["edit.undo", withActive(undo), activeCan(canUndo)],
   ["edit.redo", withActive(redo), activeCan(canRedo)],
-  ["edit.cut", sel.cutSelection, hasSelection],
-  ["edit.copy", sel.copySelection, hasDoc],
-  ["edit.delete", sel.deleteSelection, hasSelection],
-  ["edit.selectAll", sel.selectAll, hasDoc],
+  ["edit.cut", onFocus(cutAnnotations, sel.cutSelection), hasTarget],
+  ["edit.copy", onFocus(copyAnnotations, sel.copySelection), hasDoc],
+  ["edit.duplicate", onFocus(duplicateAnnotations, () => {}), hasAnnotation],
+  ["edit.delete", onFocus(deleteSelected, sel.deleteSelection), hasTarget],
+  ["edit.selectAll", onFocus(selectAllAnnotations, sel.selectAll), hasDoc],
   ["edit.deselect", escape, () => {
     const { slideshow, fullscreen } = useUi.getState();
-    return slideshow || fullscreen || !!useSelection.getState().selection;
+    const { selection, selectionTool } = useSelection.getState();
+    return slideshow || fullscreen || !!selection || !!selectionTool;
   }],
   ["edit.invertSelection", sel.invertSelection, hasSelection],
   ["edit.preferences", openPreferences],
@@ -125,6 +139,10 @@ const ENTRIES: Entry[] = [
   ["tools.crop", sel.cropToSelection, hasSelection],
   ["tools.adjustColor", openAdjustColor, hasDoc],
   ["tools.resize", openResize, hasDoc],
+  ["tools.selectRect", () => sel.toggleSelectionTool("rect"), hasDoc],
+  ["tools.selectEllipse", () => sel.toggleSelectionTool("ellipse"), hasDoc],
+  ["tools.selectLasso", () => sel.toggleSelectionTool("lasso"), hasDoc],
+  ["tools.selectSmartLasso", () => sel.toggleSelectionTool("smartLasso"), hasDoc],
   ["tools.instantAlpha", sel.startInstantAlpha, hasDoc],
   ["tools.inspector", toggleInspector],
 

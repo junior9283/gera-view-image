@@ -33,6 +33,8 @@ export interface Prefs {
   recentColors: string[];
   /** Lote 12: barra de abas visível. */
   tabBar: boolean;
+  /** Arrastar na imagem a move, em vez de selecionar um retângulo. */
+  dragPans: boolean;
 }
 
 export const MAX_RECENT = 20;
@@ -61,6 +63,7 @@ export const DEFAULT_PREFS: Prefs = {
   showImageBackground: true,
   recentColors: [],
   tabBar: false,
+  dragPans: false,
 };
 
 const oneOf = <T extends string>(...vals: T[]) => (v: unknown): v is T => vals.includes(v as T);
@@ -92,6 +95,7 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => v is Prefs[K] } = {
   recentColors: (v): v is string[] =>
     Array.isArray(v) && v.length <= MAX_RECENT_COLORS && v.every((s) => typeof s === "string" && /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)),
   tabBar: isBool,
+  dragPans: isBool,
 };
 
 const KEYS = Object.keys(DEFAULT_PREFS) as (keyof Prefs)[];

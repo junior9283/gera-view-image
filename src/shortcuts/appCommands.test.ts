@@ -10,6 +10,7 @@ const dialogOpen = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: (...a: unknown[]) => dialogOpen(...a) }));
 
 import { getToasts, resetToastsForTests } from "../chrome/notify";
+import { useMarkup } from "../markup/store";
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { resetUiForTests, useUi } from "../store/ui";
@@ -90,6 +91,38 @@ describe("comandos do app", () => {
     expect(useSelection.getState().selection).not.toBeNull();
     runCommand("edit.deselect");
     expect(useSelection.getState().selection).toBeNull();
+  });
+
+  it("Esc desmarca; de novo, sai da ferramenta de seleção; só depois, da tela cheia", () => {
+    useDocs.getState().add([info(1)]);
+    useSelection.setState({ selection: { type: "rect", data: { x: 0, y: 0, w: 10, h: 10 } }, selectionTool: "lasso" });
+    useUi.setState({ fullscreen: true });
+    runCommand("edit.deselect");
+    expect(useSelection.getState()).toMatchObject({ selection: null, selectionTool: "lasso" });
+    runCommand("edit.deselect");
+    expect(useSelection.getState().selectionTool).toBeNull();
+    expect(useUi.getState().fullscreen).toBe(true);
+    useUi.setState({ fullscreen: false });
+    expect(isEnabled("edit.deselect")).toBe(false);
+    useSelection.setState({ selectionTool: "instantAlpha" });
+    expect(isEnabled("edit.deselect")).toBe(true);
+  });
+
+  it("Ferramentas › Seleção escolhe a ferramenta, larga a de marcação e, de novo, sai dela", () => {
+    expect(isEnabled("tools.selectRect")).toBe(false);
+    useDocs.getState().add([info(1)]);
+    const tools = [
+      ["tools.selectRect", "rect"], ["tools.selectEllipse", "ellipse"], ["tools.selectLasso", "lasso"],
+      ["tools.selectSmartLasso", "smartLasso"], ["tools.instantAlpha", "instantAlpha"],
+    ] as const;
+    for (const [id, tool] of tools) {
+      useMarkup.getState().setTool("arrow");
+      runCommand(id);
+      expect(useSelection.getState().selectionTool, id).toBe(tool);
+      expect(useMarkup.getState().tool).toBe("select");
+      runCommand(id);
+      expect(useSelection.getState().selectionTool, id).toBeNull();
+    }
   });
 
   it("Desmarcar Tudo só fica habilitado com seleção, apresentação ou tela cheia", () => {

@@ -22,7 +22,26 @@ export function toImageStyle(s: Style, scale: number): Style {
 
 const box = (a: Point, b: Point) => boxOf([a, b]);
 
-export function createShape(tool: ShapeTool, a: Point, b: Point, barStyle: Style, scale: number): Annotation {
+/** `to` preso ao múltiplo de 45° mais próximo a partir de `from` (Shift em linhas). */
+export function snap45(from: Point, to: Point): Point {
+  const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
+  const turn = Math.round(Math.atan2(dy, dx) / (Math.PI / 4));
+  const [ux, uy] = [Math.round(Math.cos((turn * Math.PI) / 4)), Math.round(Math.sin((turn * Math.PI) / 4))];
+  // Projeção na direção escolhida (a diagonal tem comprimento √2).
+  const k = (dx * ux + dy * uy) / (ux * ux + uy * uy || 1);
+  return [from[0] + ux * k, from[1] + uy * k];
+}
+
+/** `to` no canto do quadrado com `from` (Shift em formas). */
+function squareTo(from: Point, to: Point): Point {
+  const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
+  const side = Math.max(Math.abs(dx), Math.abs(dy));
+  return [from[0] + (Math.sign(dx) || 1) * side, from[1] + (Math.sign(dy) || 1) * side];
+}
+
+/** `shift`: lados iguais nas formas, ângulos de 45° nas linhas. */
+export function createShape(tool: ShapeTool, a: Point, to: Point, barStyle: Style, scale: number, shift = false): Annotation {
+  const b = !shift ? to : tool === "line" || tool === "arrow" ? snap45(a, to) : tool === "loupe" ? to : squareTo(a, to);
   const style = toImageStyle(barStyle, scale);
   const id = newId();
   const click = Math.hypot(b[0] - a[0], b[1] - a[1]) * scale < CLICK_PX;

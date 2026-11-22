@@ -23,6 +23,11 @@
   line-height: 1.25;
   white-space: pre;
 }
+/* Texto dentro de uma forma: quebra as linhas como no desenho. */
+.markup-text-editor.in-shape {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 /* Barra de Marcação (abaixo da barra de ferramentas). */
 .markup-bar {

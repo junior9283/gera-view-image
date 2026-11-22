@@ -35,14 +35,15 @@ páginas. Arquivo corrompido mostra o erro só nele; os demais continuam navegá
 ![Folha de contatos](docs/screenshots/03-folha-de-contatos.png)
 
 ### Visualizar
-Tamanho Real (Ctrl+0), Ajustar à Janela (Ctrl+9), zoom com Ctrl+roda e pinça do touchpad, arrastar para
-mover, Tela Cheia (F11) e Apresentação (Ctrl+Shift+F). O fundo da área de imagem é configurável, com xadrez
+Tamanho Real (Ctrl+0), Ajustar à Janela (Ctrl+9), zoom com Ctrl+roda e pinça do touchpad, Espaço+arrastar
+ou botão do meio para mover (arrastar seleciona, ou move se marcado nas Preferências), Tela Cheia (F11) e Apresentação (Ctrl+Shift+F). O fundo da área de imagem é configurável, com xadrez
 para transparência. Imagens enormes abrem por uma prévia reduzida e são detalhadas sob demanda.
 
 ### Marcação
 A barra de Marcação (Ctrl+Shift+M) tem esboço com reconhecimento de forma, desenho livre, linha, seta,
 retângulo, oval, balão de fala, estrela, polígono, **Lupa**, **Realce**, texto com estilo e **Assinatura**
-(desenhada ou importada, salva para reutilizar). As anotações continuam editáveis até Salvar ou Exportar,
+(desenhada ou importada, salva para reutilizar). Duplo clique numa forma ou balão escreve dentro dele; anotações
+se copiam, colam e duplicam (Ctrl+D) entre imagens, e as setas as movem. As anotações continuam editáveis até Salvar ou Exportar,
 quando são achatadas na imagem.
 
 ![Barra de marcação com anotações](docs/screenshots/04-marcacao.png)
@@ -57,7 +58,9 @@ resolução (ppp), proporção travada, reamostragem e tamanho resultante em tem
 | ![Ajustar Cor](docs/screenshots/05-ajustar-cor.png) | ![Ajustar Tamanho](docs/screenshots/06-ajustar-tamanho.png) |
 
 ### Seleção e Alfa Instantâneo
-Seleção retangular, elíptica, laço e laço inteligente; copiar, recortar, apagar e inverter a seleção.
+Seleção retangular, elíptica, laço e laço inteligente (menu Ferramentas ou só arrastar na imagem); copiar,
+recortar, apagar e inverter a seleção. Shift soma e Alt subtrai; sem seleção anterior, Shift força quadrado
+ou círculo. Arrastar dentro da seleção ou as setas a movem.
 O **Alfa Instantâneo** torna uma cor transparente: arraste sobre ela, e a distância do arrasto controla a
 tolerância.
 
@@ -105,6 +108,7 @@ Itens de funções ainda em desenvolvimento aparecem desabilitados nos menus, e 
 | Editar | Recortar | `Ctrl+X` |
 | Editar | Copiar | `Ctrl+C` |
 | Editar | Colar | `Ctrl+V` |
+| Editar | Duplicar Anotação | `Ctrl+D` |
 | Editar | Apagar | `Del` ou `Backspace` |
 | Editar | Selecionar Tudo | `Ctrl+A` |
 | Editar | Desmarcar Tudo | `Esc` |

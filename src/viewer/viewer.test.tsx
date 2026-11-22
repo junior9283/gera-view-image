@@ -104,7 +104,8 @@ describe("Viewport", () => {
     expect(call[1].region.w).toBeLessThan(4000);
   });
 
-  it("arraste move a imagem e termina em pointercancel", () => {
+  it("com a preferência, o arraste move a imagem e termina em pointercancel", () => {
+    setPrefs({ dragPans: true });
     useDocs.getState().add([info(1)]);
     render(<Viewport />);
     act(() => useUi.getState().setView({ scale: 1, panX: -100, panY: -100, mode: "actual" }));
@@ -194,6 +195,7 @@ describe("Viewport", () => {
   });
 
   it("com ferramenta de seleção o botão esquerdo não faz pan; o do meio e Espaço+esquerdo fazem", () => {
+    setPrefs({ dragPans: true });
     useDocs.getState().add([info(1)]);
     useSelection.getState().setSelectionTool("rect");
     render(<Viewport />);

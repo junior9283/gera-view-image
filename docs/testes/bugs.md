@@ -2,6 +2,13 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Apagar e Recortar do menu agiam na imagem com anotação selecionada (rodada 3)
+- **Sintoma:** com uma anotação selecionada e uma seleção na imagem, Editar › Apagar ou Recortar apagava pixels da imagem; sem seleção, ficavam desabilitados.
+- **Causa:** os comandos de edição só conheciam a seleção da imagem; só a tecla Delete, tratada na camada de Marcação, chegava às anotações.
+- **Correção:** `onFocus` (`src/shortcuts/appCommands.ts`) leva Copiar, Recortar, Apagar, Duplicar e Selecionar Tudo às anotações quando há anotação selecionada com a barra visível (`annotationsFocused`); o Recortar só apaga depois de a cópia dar certo.
+- **Teste:** "recortar copia e apaga só as copiadas; Apagar do menu apaga a anotação, não a imagem" e "se a cópia falha, o Recortar não apaga nada" (`src/markup/clipboard.test.tsx`).
+- **Lição:** um atalho local da camada esconde que o comando do menu faz outra coisa; testar pelo comando, não só pela tecla.
+
 ## Sair com edição em outra janela parecia travar (Lote 12, antes de publicar)
 - **Sintoma (Wayland aninhado):** Ctrl+Q numa janela sem edições, com outra não salva atrás: a da frente ficava com o véu "Fechando a janela…", Esc não fazia nada e a pergunta ficava escondida.
 - **Causa:** o Wayland não deixa o app trazer outra janela para a frente sem um gesto do usuário nela; o véu não avisava nem cancelava.

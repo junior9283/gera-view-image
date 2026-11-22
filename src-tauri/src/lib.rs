@@ -42,6 +42,7 @@ pub fn run() {
         .manage(startup)
         .manage(doc::windows::WindowRegistry::default())
         .manage(commands::window::Quitting::default())
+        .manage(commands::paste::AnnotationClipboard::default())
         .on_window_event(commands::window::on_event)
         .invoke_handler(commands::window::guard(tauri::generate_handler![
             commands::docs::open_documents,
@@ -87,6 +88,8 @@ pub fn run() {
             commands::paste::clipboard_image,
             commands::paste::image_file_png,
             commands::paste::copy_image,
+            commands::paste::copy_annotations,
+            commands::paste::pasted_annotations,
             commands::ocr::recognize_text,
             commands::ocr::detect_codes,
             commands::ocr::speak,

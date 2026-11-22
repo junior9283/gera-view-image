@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDocs } from "../store/docs";
 import { endLive, restyleSelected, updateSelected, updateSelectedLive } from "./actions";
-import type { Annotation, Dash } from "./model";
-import { editableBox, hasOpacity, opacityPct, withAnnotationOpacity, withBox, withText } from "./properties";
+import { textOf, withText, type Annotation, type Dash } from "./model";
+import { editableBox, hasOpacity, opacityPct, withAnnotationOpacity, withBox } from "./properties";
 import { useItems, useMarkup } from "./store";
 
 const DASHES: Dash[] = ["solid", "dashed", "dotted"];
@@ -66,13 +66,13 @@ export function PropertiesPanel() {
               <NumberField label={t("markup.props.height")} value={box.h} min={1} onCommit={(h) => updateSelected(id, (a) => withBox(a, { h }))} />
             </div>
           )}
-          {one?.kind === "text" && (
+          {one && textOf(one) !== null && (
             <label className="props-field props-text">
               {t("markup.props.text")}
               <textarea
-                key={`${one.id}:${one.geom.text}`}
-                defaultValue={one.geom.text}
-                onBlur={(e) => e.target.value !== one.geom.text && updateSelected(id, (a) => withText(a, e.target.value))}
+                key={`${one.id}:${textOf(one)}`}
+                defaultValue={textOf(one)!}
+                onBlur={(e) => e.target.value !== textOf(one) && updateSelected(id, (a) => withText(a, e.target.value))}
               />
             </label>
           )}

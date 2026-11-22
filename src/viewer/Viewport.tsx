@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { renderView } from "../ipc/commands";
 import type { DocInfo, Rect } from "../ipc/types";
 import { useDocs } from "../store/docs";
-import { usePrefs, type Prefs } from "../store/prefs";
+import { getPrefs, usePrefs, type Prefs } from "../store/prefs";
 import { useUi } from "../store/ui";
 import { panBy, syncView, toggleFitActual, zoomBy } from "./actions";
 import { DocError } from "./DocError";
@@ -99,6 +99,7 @@ export function Viewport() {
   const page = useUi((s) => s.page);
   const background = usePrefs((p) => (p.background === "custom" ? p.customBg : BACKGROUNDS[p.background]));
   const showBg = usePrefs((p) => p.showImageBackground);
+  const dragPans = usePrefs((p) => p.dragPans);
   const animFrame = useAnimatedFrame(doc, page === null);
   const pixelRatio = usePixelRatio();
   const frame = page ?? animFrame;
@@ -212,9 +213,9 @@ export function Viewport() {
     return () => clearTimeout(timer);
   }, [doc, frame, view, viewSize, pixelRatio]);
 
-  // Roda, pinça e arraste (listeners nativos: a roda precisa de passive: false). O botão esquerdo só
-  // faz pan na ferramenta "mover" (nenhuma ferramenta de seleção) ou com Espaço pressionado; com uma
-  // ferramenta de seleção, o ponteiro é da camada de seleção. O botão do meio sempre faz pan.
+  // Roda, pinça e arraste (listeners nativos: a roda precisa de passive: false). O botão esquerdo faz
+  // pan com Espaço pressionado ou com a preferência "arrastar move a imagem" e nenhuma ferramenta de
+  // seleção; fora disso, o arraste é da camada de seleção. O botão do meio sempre faz pan.
   useEffect(() => {
     const el = box.current!;
     let drag: { x: number; y: number; id: number } | null = null;
@@ -249,7 +250,7 @@ export function Viewport() {
       }
     };
     const onDown = (e: PointerEvent) => {
-      if (e.button !== 1 && (e.button !== 0 || selecting())) return;
+      if (e.button !== 1 && (e.button !== 0 || selecting() || (!space && !getPrefs().dragPans))) return;
       drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
       el.classList.add("dragging");
       try {
@@ -295,7 +296,7 @@ export function Viewport() {
 
 
   return (
-    <div ref={box} className="viewport" data-testid="viewport" aria-label={t("viewer.label")} style={{ background }}>
+    <div ref={box} className={`viewport${dragPans ? "" : " drag-selects"}`} data-testid="viewport" aria-label={t("viewer.label")} style={{ background }}>
       <canvas ref={canvas} className="viewport-canvas" />
       {overlay && (
         <div className="viewport-overlay">

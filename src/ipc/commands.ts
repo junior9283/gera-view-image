@@ -135,6 +135,11 @@ export const imageFilePng = async (path: string) => new Uint8Array(await invoke<
 export const copyImage = (id: DocId, mask: Mask | null, png: Uint8Array | number[], frame = 0) =>
   invoke<void>("copy_image", { id, mask, png: Array.from(png), ...onFrame(frame) });
 
+/** Copia anotações: `data` (JSON) fica no núcleo, para qualquer janela colar, e `png` vai para o sistema. */
+export const copyAnnotations = (data: string, png: Uint8Array) => invoke<void>("copy_annotations", { data, png: Array.from(png) });
+/** As anotações copiadas, se a cópia delas ainda for a última do sistema. */
+export const pastedAnnotations = () => invoke<string | null>("pasted_annotations");
+
 // Lote 3: Texto ao Vivo e fala
 export const recognizeText = (id: DocId, frame: number) => invoke<TextLine[]>("recognize_text", { id, frame });
 export const detectCodes = (id: DocId, frame: number) => invoke<DetectedCode[]>("detect_codes", { id, frame });

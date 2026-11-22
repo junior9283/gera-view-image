@@ -124,8 +124,25 @@ export function maskBounds(mask: Mask, w: number, h: number): Rect | null {
     const [x0, y0, x1, y1] = [Math.max(0, x), Math.max(0, y), Math.min(w, x + rw), Math.min(h, y + rh)];
     return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
   }
-  const cov = rasterize(mask, w, h);
   let [x0, y0, x1, y1] = [w, h, 0, 0];
+  if (mask.type === "bitmap") {
+    // Pelas corridas, sem expandir a imagem inteira (roda a cada seta que move a seleção).
+    const { w: mw, h: mh, rle } = mask.data;
+    let pos = 0;
+    rle.forEach((run, i) => {
+      const end = Math.min(pos + run, mw * mh);
+      if (i % 2 && end > pos) {
+        const [top, bottom] = [Math.floor(pos / mw), Math.floor((end - 1) / mw)];
+        const left = top === bottom ? pos % mw : 0;
+        const right = top === bottom ? ((end - 1) % mw) + 1 : mw;
+        [x0, y0, x1, y1] = [Math.min(x0, left), Math.min(y0, top), Math.max(x1, right), Math.max(y1, bottom + 1)];
+      }
+      pos = end;
+    });
+    [x1, y1] = [Math.min(x1, w), Math.min(y1, h)];
+    return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+  }
+  const cov = rasterize(mask, w, h);
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++)
       if (cov[y * w + x]) [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x + 1), Math.max(y1, y + 1)];

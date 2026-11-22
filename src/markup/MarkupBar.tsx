@@ -1,6 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { cropToSelection } from "../select/actions";
+import { chooseSelectionTool, cropToSelection } from "../select/actions";
 import type { SelectionTool } from "../select/tools";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
@@ -83,10 +83,9 @@ export function MarkupBar() {
     st().setMenu(null);
   };
   const toggleMenu = (m: BarMenu) => st().setMenu(menu === m ? null : m);
-  /** Ferramenta de seleção da imagem (Task 7): a camada de marcação larga o ponteiro. */
   const pickSelection = (s: SelectionTool) => {
-    setTool("select");
-    useSelection.getState().setSelectionTool(s);
+    chooseSelectionTool(s);
+    st().setMenu(null);
   };
 
   // Fecha o menu ao clicar fora da barra.

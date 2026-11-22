@@ -80,6 +80,10 @@ export const getItems = (id: DocId): Annotation[] => useMarkup.getState().docs[i
 export const getSelected = (id: DocId): string[] => useMarkup.getState().selected[id] ?? [];
 export const useItems = (id: DocId | null) => useMarkup((s) => (id === null ? EMPTY : (s.docs[id] ?? EMPTY)));
 
+/** Há anotação selecionada e o ponteiro é delas: copiar, apagar e as setas são das anotações. */
+export const annotationsFocused = (id: DocId | null): id is DocId =>
+  id !== null && useMarkup.getState().visible && !useSelection.getState().selectionTool && getSelected(id).length > 0;
+
 /** Mostra/oculta a barra de Marcação (a Toolbar e o Ctrl+Shift+M disparam `gvi:toggle-markup`). */
 export const toggleMarkupBar = () => useMarkup.getState().toggle();
 

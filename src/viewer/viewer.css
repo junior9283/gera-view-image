@@ -8,6 +8,13 @@
   touch-action: none;
   user-select: none;
 }
+/* Arrastar seleciona (Preferências): mira, salvo com Espaço armado. */
+.viewport.drag-selects {
+  cursor: crosshair;
+}
+.viewport.space-pan {
+  cursor: grab;
+}
 .viewport.dragging {
   cursor: grabbing;
 }
