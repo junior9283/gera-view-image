@@ -5,9 +5,11 @@ vi.mock("../ipc/commands", () => ({ editMetadata: (...a: unknown[]) => editMetad
 vi.mock("../viewer/actions", () => ({ activeDoc: () => null, viewable: () => false }));
 
 import { runBeforeSave } from "../file/beforeSave";
+import { hasUncarried } from "../file/dirty";
+import { dumpDocs, dropDocs, loadDocs } from "../lib/docState";
 import { isEnabled } from "../shortcuts/commands";
 import "./register";
-import { resetTextEditsForTests, seedTexts, setText } from "./textEdits";
+import { currentText, hasPendingTextEdits, resetTextEditsForTests, seedTexts, setText } from "./textEdits";
 
 beforeEach(() => {
   editMetadata.mockReset().mockResolvedValue(undefined);
@@ -27,6 +29,26 @@ describe("registro do Lote 9", () => {
     expect(editMetadata).toHaveBeenLastCalledWith(1, {}); // limpa o que o Rust guardava
     await runBeforeSave(1);
     expect(editMetadata).toHaveBeenCalledTimes(2);
+  });
+
+  it("a edição e o aviso de que ela já foi ao Rust acompanham a aba", async () => {
+    seedTexts(2, { title: "A", description: null, author: null, altText: null });
+    setText(2, "title", "B");
+    await runBeforeSave(2);
+    const state = dumpDocs([2]);
+    dropDocs([2]);
+    expect(currentText(2, "title")).toBe("");
+    editMetadata.mockClear();
+    await runBeforeSave(2);
+    expect(editMetadata).not.toHaveBeenCalled(); // a origem esqueceu
+
+    loadDocs(state);
+    expect(currentText(2, "title")).toBe("B");
+    expect(hasUncarried(2)).toBe(false);
+    setText(2, "title", "A"); // de volta ao original, na janela nova
+    expect(hasPendingTextEdits(2)).toBe(false);
+    await runBeforeSave(2);
+    expect(editMetadata).toHaveBeenLastCalledWith(2, {}); // senão o Rust gravaria o título antigo
   });
 
   it("erro do Rust interrompe a gravação", async () => {

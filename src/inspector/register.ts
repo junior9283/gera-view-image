@@ -3,6 +3,7 @@
 import { registerBeforeSave } from "../file/beforeSave";
 import { editMetadata } from "../ipc/commands";
 import type { DocId } from "../ipc/types";
+import { registerDocState } from "../lib/docState";
 import { registerCommand } from "../shortcuts/commands";
 import { activeDoc, viewable } from "../viewer/actions";
 import { getPendingTextEdits } from "./textEdits";
@@ -12,6 +13,12 @@ registerCommand("tools.imageDescription", () => openInspectorTab("description"),
 
 /** Documentos cujas edições já foram para o Rust: um envio vazio só é preciso para limpá-las. */
 const sent = new Set<DocId>();
+// Acompanha a aba: sem isso, desfazer a edição na outra janela não limparia o que o Rust guarda.
+registerDocState("textsSent", {
+  dump: (id) => sent.has(id) || undefined,
+  load: (id) => void sent.add(id),
+  drop: (id) => void sent.delete(id),
+});
 
 registerBeforeSave(async (id) => {
   const pending = getPendingTextEdits(id);
