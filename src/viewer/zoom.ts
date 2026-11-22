@@ -84,6 +84,9 @@ export function visibleRegion(state: ViewState, img: Size, view: Size): Rect {
   return { x, y, w: Math.max(0, x1 - x), h: Math.max(0, y1 - y) };
 }
 
+/** `a` cobre `b`. */
+export const contains = (a: Rect, b: Rect) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
+
 /** Enquadra o retângulo `r` (px da imagem) centralizado na view, dentro dos limites de escala. */
 export function rectState(r: Rect, view: Size, k = 1): ViewState {
   const scale = clampScale(Math.min(view.w / Math.max(1, r.w), view.h / Math.max(1, r.h)), k);

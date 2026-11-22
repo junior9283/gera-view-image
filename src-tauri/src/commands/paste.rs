@@ -23,7 +23,7 @@ use tauri::{AppHandle, State, image::Image, ipc::Response};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 /// PNG rápido (a camada colada vira `data:` URL na interface).
-fn png_bytes(img: &RgbaImage) -> AppResult<Vec<u8>> {
+pub(super) fn png_bytes(img: &RgbaImage) -> AppResult<Vec<u8>> {
     let mut out = Vec::new();
     PngEncoder::new_with_quality(&mut out, CompressionType::Fast, FilterType::Adaptive)
         .write_image(img.as_raw(), img.width(), img.height(), ExtendedColorType::Rgba8)

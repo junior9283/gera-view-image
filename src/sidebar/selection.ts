@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { DocId, DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
+import { useUi } from "../store/ui";
 import { viewable } from "../viewer/actions";
 
 export interface Pick {
@@ -64,21 +65,11 @@ export function selectionAfterClick(
   return { next: { picked: [id], anchor: id }, activate: id };
 }
 
-export type NavKey = "ArrowUp" | "ArrowDown" | "Home" | "End";
-
-/** Setas/Home/End: movem o cursor (documento ativo); com Shift, estendem a partir da âncora. */
-export function selectionAfterKey(
-  docs: DocInfo[],
-  activeId: DocId | null,
-  cur: Pick,
-  key: NavKey,
-  shift: boolean,
-): Change | null {
-  if (!docs.length) return null;
-  const at = Math.max(0, docs.findIndex((d) => d.id === activeId));
-  const to = key === "Home" ? 0 : key === "End" ? docs.length - 1 : Math.max(0, Math.min(docs.length - 1, at + (key === "ArrowDown" ? 1 : -1)));
-  const id = docs[to].id;
+/** O teclado levou o cursor ao índice `to`; com Shift, estende a partir da âncora. */
+export function selectionAfterMove(docs: DocInfo[], activeId: DocId | null, cur: Pick, to: number, shift: boolean): Change {
+  const { id } = docs[to];
   if (!shift) return { next: { picked: [id], anchor: id }, activate: id };
+  const at = Math.max(0, docs.findIndex((d) => d.id === activeId));
   const anchor = cur.anchor !== null && effectiveSelection(docs, activeId, cur.picked).includes(cur.anchor) ? cur.anchor : docs[at].id;
   const from = docs.findIndex((d) => d.id === anchor);
   return { next: { picked: range(docs, from < 0 ? at : from, to), anchor }, activate: id };
@@ -94,3 +85,24 @@ export function batchTargets(): DocId[] {
 
 /** Alvos de um diálogo que abriu para `activeId`: a seleção, se ela contém o documento; senão, só ele. */
 export const withActive = (ids: DocId[], activeId: DocId): DocId[] => (ids.includes(activeId) ? ids : [activeId]);
+
+/**
+ * Documentos em que agem Mover para o Lixo e Compartilhar: a seleção, inclusive os que não abriram.
+ * Com as miniaturas escondidas, só o ativo: uma seleção que não se vê não pode ir para o Lixo.
+ */
+export function selectedDocs(): DocInfo[] {
+  const { docs, activeId } = useDocs.getState();
+  const { sidebar, slideshow } = useUi.getState();
+  const picked = sidebar === "hidden" || slideshow ? [] : useThumbSelection.getState().picked;
+  const ids = new Set(effectiveSelection(docs, activeId, picked));
+  return docs.filter((d) => ids.has(d.id));
+}
+
+/** Editar › Selecionar Tudo na folha de contatos. */
+export function selectAllThumbs(): void {
+  const { docs } = useDocs.getState();
+  useThumbSelection.setState({ picked: docs.map((d) => d.id), anchor: docs[0]?.id ?? null });
+}
+
+/** A folha de contatos está no lugar do visor. */
+export const sheetOpen = () => useUi.getState().sidebar === "contact";

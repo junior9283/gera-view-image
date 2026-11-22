@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: (...a: unknown[]) => dialogO
 
 import { getToasts, resetToastsForTests } from "../chrome/notify";
 import { useMarkup } from "../markup/store";
+import { useThumbSelection } from "../sidebar/selection";
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { resetUiForTests, useUi } from "../store/ui";
@@ -177,5 +178,22 @@ describe("comandos do app", () => {
     expect(useUi.getState().sidebar).toBe("contact");
     runCommand("view.hideSidebar");
     expect(useUi.getState().sidebar).toBe("hidden");
+  });
+
+  it("na folha de contatos, Selecionar Tudo e o zoom agem nas miniaturas", () => {
+    useDocs.setState({ docs: [info(1), info(2)], activeId: 1 });
+    useThumbSelection.setState({ picked: [], anchor: null });
+    useUi.setState({ sidebar: "contact", contactSize: 160 });
+    runCommand("edit.selectAll");
+    expect(useThumbSelection.getState().picked).toEqual([1, 2]);
+    expect(useSelection.getState().selection).toBeNull();
+    runCommand("view.zoomIn");
+    expect(useUi.getState().contactSize).toBe(200);
+    runCommand("view.zoomOut");
+    expect(useUi.getState().contactSize).toBe(160);
+
+    useUi.setState({ sidebar: "thumbs" });
+    runCommand("edit.selectAll");
+    expect(useSelection.getState().selection?.type).toBe("rect");
   });
 });

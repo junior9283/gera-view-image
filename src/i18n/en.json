@@ -134,6 +134,8 @@
     "itemMenu": "Thumbnail menu",
     "menu": {
       "open": "Open",
+      "copy": "Copy",
+      "copyMany": "Copy {{count}} Images",
       "rotateLeft": "Rotate Left",
       "rotateRight": "Rotate Right",
       "flipH": "Flip Horizontal",
@@ -146,6 +148,7 @@
       "printMany": "Print {{count}} Images…",
       "reveal": "Show in Folder",
       "trash": "Move to Trash",
+      "trashMany": "Move {{count}} Images to Trash",
       "close": "Close",
       "closeMany": "Close {{count}} Images"
     },
@@ -843,6 +846,7 @@
   "share": {
     "sent": "Sent to {{name}}.",
     "noDevice": "No KDE Connect device available.",
+    "leftOut": "Not sent because they are not saved to disk: {{names}}.",
     "pickDevice": "Send to which device?",
     "cancel": "Cancel"
   },
@@ -869,8 +873,10 @@
     },
     "trash": {
       "confirmUnsaved": "{{name}} has unsaved changes. Move it to the Trash and discard them?",
+      "confirmUnsavedMany": "These images have unsaved changes: {{name}}. Move to Trash and discard them?",
       "ok": "Move to Trash",
       "cancel": "Cancel",
+      "doneMany": "{{count}} images moved to Trash",
       "done": "{{name}} was moved to the Trash"
     },
     "saveAs": {

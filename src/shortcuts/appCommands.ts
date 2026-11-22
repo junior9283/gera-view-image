@@ -14,7 +14,8 @@ import { openAbout, openPreferences } from "../prefs/dialogs";
 import * as sel from "../select/actions";
 import { maskBounds } from "../select/lasso";
 import { applyToTargets } from "../sidebar/batch";
-import { batchTargets } from "../sidebar/selection";
+import { copyAsFiles } from "../sidebar/files";
+import { batchTargets, selectAllThumbs, sheetOpen } from "../sidebar/selection";
 import { useDocs } from "../store/docs";
 import { quit } from "../tabs/closing";
 import { openFiles } from "../file/openFiles";
@@ -80,6 +81,13 @@ const activeCan = (f: (id: number) => boolean) => () => {
   const d = editable();
   return !!d && f(d.id);
 };
+/** Na folha de contatos não há imagem à vista: o comando age nas miniaturas. */
+const onSheet = (sheet: () => unknown, viewer: () => unknown) => () => (sheetOpen() ? sheet() : viewer());
+const THUMB_STEP = 1.25;
+function stepThumbs(dir: 1 | -1) {
+  const { contactSize, setContactSize } = useUi.getState();
+  setContactSize(contactSize * THUMB_STEP ** dir);
+}
 const nav = (dir: "next" | "prev") => () => view[dir]({ wrap: useUi.getState().slideshow });
 
 type Entry = [CommandId, () => unknown, (() => boolean)?];
@@ -101,10 +109,10 @@ const ENTRIES: Entry[] = [
   ["edit.undo", withActive(undo), activeCan(canUndo)],
   ["edit.redo", withActive(redo), activeCan(canRedo)],
   ["edit.cut", onFocus(cutAnnotations, sel.cutSelection), hasTarget],
-  ["edit.copy", onFocus(copyAnnotations, sel.copySelection), hasDoc],
+  ["edit.copy", onFocus(copyAnnotations, () => copyAsFiles() ?? sel.copySelection()), hasDoc],
   ["edit.duplicate", onFocus(duplicateAnnotations, () => {}), hasAnnotation],
   ["edit.delete", onFocus(deleteSelected, sel.deleteSelection), hasTarget],
-  ["edit.selectAll", onFocus(selectAllAnnotations, sel.selectAll), hasDoc],
+  ["edit.selectAll", onFocus(selectAllAnnotations, onSheet(selectAllThumbs, sel.selectAll)), hasDoc],
   ["edit.deselect", escape, () => {
     const { slideshow, fullscreen } = useUi.getState();
     const { selection, selectionTool } = useSelection.getState();
@@ -118,8 +126,8 @@ const ENTRIES: Entry[] = [
   ["view.contactSheet", () => view.toggleSidebar("contact")],
   ["view.actualSize", view.actualSize, hasDoc],
   ["view.fit", view.fitToWindow, hasDoc],
-  ["view.zoomIn", view.zoomIn, hasDoc],
-  ["view.zoomOut", view.zoomOut, hasDoc],
+  ["view.zoomIn", onSheet(() => stepThumbs(1), view.zoomIn), hasDoc],
+  ["view.zoomOut", onSheet(() => stepThumbs(-1), view.zoomOut), hasDoc],
   ["view.zoomToSelection", zoomToSelection, hasSelection],
   ["view.markupBar", fire(TOGGLE_MARKUP_EVENT)],
   ["view.slideshow", view.startSlideshow, hasDocs],

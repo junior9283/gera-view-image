@@ -94,6 +94,16 @@ registerSlot("viewport-overlay", "magnifier", Magnifier);
   `src/sidebar/selection.ts`) devolve os ids em que uma ação em lote age. Girar/Espelhar, Ajustar Cor e
   Ajustar Tamanho passam por `applyToTargets` (`src/sidebar/batch.ts`): cada imagem recebe a própria
   `apply_op`, uma falha não interrompe as outras e `reportBatch` dá um só aviso.
+  `useThumbs` (`src/sidebar/useThumbs.ts`) reúne o comportamento das miniaturas da barra lateral e da
+  folha de contatos (seleção, teclado, menu, arraste, soltar numa posição); a geometria está em
+  `order.ts`. Lixo e Compartilhar usam `selectedDocs()`, que ignora a seleção com as miniaturas
+  escondidas. Copiar/colar como arquivos: `files.ts` e `commands/clipfiles.rs` (GTK, sem crate nova).
+  `registerDropHover` (`viewer/fileDrop.ts`) avisa onde os arquivos arrastados estão.
+- **Ajustar Cor ao vivo.** O painel grava o ajuste em `src/adjust/preview.ts`; `AdjustPreviewLayer`
+  (slot `viewport-overlay`, abaixo das outras camadas) pede `preview_adjust` da região visível, um
+  pedido ao vivo por vez (até 1 MP) e um nítido parado (até 8 MP, teto também no Rust), e esconde o
+  canvas do visor enquanto o cobre. Depois do OK, a prévia fica até `data-shown` ("id:rev") do canvas
+  do visor passar da revisão em que o ajuste foi aplicado.
 - **Lote 8.** `file.closeAll` (Ctrl+Alt+W) fecha todos os documentos e passa pelo diálogo de não
   salvo (`confirmAndSave`). Mostrar Lupa usa a tecla `` ` ``. No ABNT2 ela é tecla morta, e o lote
   pode acrescentar um alias em `ALIASES`.

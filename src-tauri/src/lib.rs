@@ -80,6 +80,8 @@ pub fn run() {
             commands::theme::compositing_available,
             commands::theme::screen_ppi,
             commands::drag::start_drag,
+            commands::clipfiles::copy_files,
+            commands::clipfiles::clipboard_files,
             // Lotes de paridade: stubs do Lote 0 (`AppError::Unsupported` até o lote implementar).
             commands::color::display_profile,
             commands::color::list_profiles,

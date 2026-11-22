@@ -2,6 +2,7 @@
 
 ## Comandos
 - `npm run test:release` (script de versão, `node --test`), `npm run lint`, `npm run typecheck`, `npm test` (Vitest/jsdom, `vmThreads`), `npm run test:rust`.
+- Área de transferência de arquivos (ida e volta pelo GTK): `xvfb-run -a cargo test --test clipfiles -- --ignored`, com HOME e XDG_* temporários. Nunca na sessão do usuário: troca o que ele copiou.
 - Build: `npm run tauri build -- --bundles deb,rpm,appimage` (exporte `TAURI_SIGNING_PRIVATE_KEY` e `_PASSWORD` a partir de `~/.tauri/gera-view-image.*` para gerar os `.sig`) (não usar `tauri dev` em paralelo: porta 1420).
 
 ## Marco 0: validação WebKitGTK (spec §13.2)

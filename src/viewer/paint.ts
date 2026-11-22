@@ -32,6 +32,39 @@ export function checkerPattern(ctx: CanvasRenderingContext2D, size: number): Can
   return pattern;
 }
 
+/**
+ * Pinta `b` em `dest` (px CSS) num canvas do tamanho da área `size`, com o xadrez atrás da
+ * transparência se `checker` (Visualizar › Mostrar Fundo da Imagem). `null` só limpa.
+ */
+export function paintBuffer(
+  cv: HTMLCanvasElement,
+  size: { w: number; h: number },
+  b: { canvas: HTMLCanvasElement; dest: { x: number; y: number; w: number; h: number } } | null,
+  checker: boolean,
+): void {
+  const ctx = cv.getContext("2d");
+  if (!ctx) return;
+  const k = dpr();
+  const w = Math.round(size.w * k);
+  const h = Math.round(size.h * k);
+  if (cv.width !== w || cv.height !== h) {
+    cv.width = w;
+    cv.height = h;
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (!b) return;
+  const { dest } = b;
+  ctx.setTransform(k, 0, 0, k, 0, 0);
+  if (checker) {
+    ctx.fillStyle = checkerPattern(ctx, 8) ?? "#fff";
+    ctx.fillRect(dest.x, dest.y, dest.w, dest.h);
+  }
+  // Ampliação forte: pixels nítidos; o resto suavizado.
+  ctx.imageSmoothingEnabled = (dest.w * k) / b.canvas.width < 2;
+  ctx.drawImage(b.canvas, dest.x, dest.y, dest.w, dest.h);
+}
+
 /** Atraso de quem ainda não manda `delaysMs` (contrato antigo); o núcleo já normaliza os demais. */
 const DEFAULT_FRAME_MS = 100;
 

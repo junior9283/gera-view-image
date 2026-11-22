@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DocInfo } from "../ipc/types";
 import { resetDocsForTests, useDocs } from "../store/docs";
-import { batchTargets, effectiveSelection, selectionAfterClick, selectionAfterKey, useThumbSelection } from "./selection";
+import { gridIndex } from "./order";
+import { batchTargets, effectiveSelection, selectionAfterClick, selectionAfterMove, useThumbSelection, type Pick } from "./selection";
 
 const doc = (id: number, over: Partial<DocInfo> = {}): DocInfo => ({
   id, path: `/p/${id}.png`, name: `${id}.png`, format: "png", width: 10, height: 10, frames: 1,
@@ -9,6 +10,12 @@ const doc = (id: number, over: Partial<DocInfo> = {}): DocInfo => ({
 });
 const docs = [1, 2, 3, 4, 5].map((i) => doc(i));
 const none = { picked: [], anchor: null };
+
+/** Teclado numa lista de uma coluna, como na barra lateral. */
+const selectionAfterKey = (list: DocInfo[], activeId: number | null, cur: Pick, key: string, shift: boolean) => {
+  const to = gridIndex(key, list.findIndex((d) => d.id === activeId), list.length, 1, 1);
+  return to === null ? null : selectionAfterMove(list, activeId, cur, to, shift);
+};
 
 describe("effectiveSelection", () => {
   it("sem escolha, a seleção é o documento ativo", () => {

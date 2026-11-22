@@ -1,5 +1,6 @@
 //! Comandos Tauri. Cada tarefa acrescenta seus módulos aqui e registra em `lib.rs`.
 pub mod capture;
+pub mod clipfiles;
 pub mod docs;
 pub mod drag;
 pub mod edit;

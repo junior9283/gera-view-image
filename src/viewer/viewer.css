@@ -23,6 +23,7 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  isolation: isolate; /* a prévia de Ajustar Cor fica abaixo das outras camadas */
 }
 /* Espaço pressionado: o arraste é pan mesmo com uma ferramenta de seleção ativa. */
 .viewport.space-pan .viewport-overlay * {

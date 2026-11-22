@@ -4,6 +4,7 @@ import "./chrome/theme.css";
 import App from "./App";
 import "./i18n";
 import "./markup/register";
+import "./adjust/register";
 // Pontos de registro dos lotes de paridade (docs/arquitetura/extensao.md). Lote 2 usa
 // `select/register` (importado pelo App) e Lote 10, `markup/register`.
 import "./color/register";

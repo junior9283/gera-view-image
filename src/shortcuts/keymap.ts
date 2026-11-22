@@ -140,6 +140,7 @@ export const ALIASES: Partial<Record<CommandId, string[]>> = {
   "view.zoomIn": ["Ctrl++"],
   "view.fullscreen": ["Ctrl+Meta+F"],
   "edit.delete": ["Backspace"],
+  "file.moveToTrash": ["Ctrl+Delete"],
 };
 
 const MODIFIERS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "OS"]);
