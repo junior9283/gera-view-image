@@ -5,11 +5,14 @@ pub mod decode;
 pub mod encode;
 pub mod encode_heic;
 pub mod encode_jp2;
+pub mod encode_psd; // Lote 11
 pub mod heic;
 pub mod icc;
 pub mod metadata;
 pub mod ocr; // Lote 3
 pub mod ops;
+pub mod pdf; // Lote 11
+pub mod print_layout; // Lote 11
 pub mod raster;
 pub mod segment; // Lote 4
 pub mod select;

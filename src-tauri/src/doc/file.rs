@@ -152,6 +152,20 @@ impl DocStore {
         self.with_doc(id, Document::dpi)
     }
 
+    /// Tamanho de cada página a imprimir ou exportar em PDF: todas as de um TIFF, só o primeiro
+    /// quadro de uma animação. Com operações, as demais páginas são aproximadas pela primeira.
+    pub fn page_sizes(&self, id: DocId) -> AppResult<Vec<(u32, u32)>> {
+        self.with_doc(id, |d| {
+            let pages = if d.info.delays_ms.is_empty() { d.source.frames.len() } else { 1 };
+            (0..pages)
+                .map(|f| match d.source.frames.get(f) {
+                    Some(img) if f > 0 && d.ops.is_empty() => img.dimensions(),
+                    _ => d.size_after_ops(),
+                })
+                .collect()
+        })
+    }
+
     /// Ver [`Document::disk_change`].
     pub fn disk_change(&self, id: DocId) -> AppResult<Option<bool>> {
         self.with_doc(id, Document::disk_change)
@@ -283,6 +297,7 @@ impl DocStore {
             strip_metadata: false,
             resize: None,
             color_profile: None,
+            ..ExportOptions::new(ExportFormat::Png)
         };
         let bytes = match &deep {
             Some(d) => encode::encode(d, &opts, &meta)?,
@@ -324,9 +339,9 @@ impl DocStore {
             return Err(changed_on_disk(&path, removed));
         }
         let (px, meta, file, state) = self.render_for_write(id, keywords, true)?;
-        // Exportar em 16 bits de uma origem de 16 bits usa os 16 bits de verdade.
+        // Exportar em 16 bits (ou EXR) de uma origem de 16 bits usa os 16 bits de verdade.
         let deep = opts
-            .depth16
+            .deep()
             .then(|| self.render_deep(id, file.as_deref(), &px, state))
             .flatten();
         let bytes = match &deep {
@@ -361,7 +376,8 @@ impl DocStore {
         let (px, meta, ..) = self.render_for_write(id, None, false)?;
         let (w, h) = opts.resize.unwrap_or(px.dimensions());
         let area = w as u64 * h as u64;
-        if area <= ESTIMATE_MAX_PIXELS {
+        // O ICO é sempre pequeno (o codificador reduz a 256 px): nada a extrapolar.
+        if area <= ESTIMATE_MAX_PIXELS || opts.format == ExportFormat::Ico {
             return Ok(encode::encode(&*px, opts, &meta)?.len() as u64);
         }
         let k = (ESTIMATE_MAX_PIXELS as f64 / area as f64).sqrt();
@@ -511,7 +527,7 @@ fn webp_is_lossy(b: &[u8]) -> bool {
     b.windows(4).take(4096).any(|w| w == b"VP8 ")
 }
 
-/// Bytes PNG (rápido) do quadro 0 com as operações, em sRGB: usado pela impressão e pelo arraste.
+/// Bytes PNG (rápido) do quadro 0 com as operações, em sRGB: usado pelo arraste.
 pub fn render_png(store: &DocStore, id: DocId) -> AppResult<Vec<u8>> {
     use ::image::{
         ImageEncoder,

@@ -150,6 +150,7 @@ mod tests {
             strip_metadata: false,
             resize: None,
             color_profile: Some("display-p3".into()),
+            ..ExportOptions::new(ExportFormat::Png)
         };
         let img = solid(4, 3, [215, 93, 31, 255]);
         std::fs::write(&path, encode(&img, &opts, &MetaCarry::default()).unwrap()).unwrap();

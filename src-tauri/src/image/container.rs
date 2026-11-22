@@ -339,6 +339,18 @@ pub fn tiff_with_meta(tiff: &[u8], m: &TiffMeta) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// EXIF (bloco TIFF) com a resolução `dpi` no IFD0; sem EXIF, um bloco só com ela. O IFD0 é
+/// regravado no fim, sem o IFD1 (a miniatura embutida). `None` se o bloco for ilegível.
+pub fn exif_with_dpi(exif: Option<&[u8]>, dpi: f32) -> Option<Vec<u8>> {
+    // IFD0 vazio: zero entradas e nenhum IFD seguinte.
+    const EMPTY: &[u8] = b"II*\0\x08\0\0\0\0\0\0\0\0\0";
+    let meta = TiffMeta {
+        dpi: Some((dpi, dpi)),
+        ..TiffMeta::default()
+    };
+    tiff_with_meta(exif.unwrap_or(EMPTY), &meta)
+}
+
 /// EXIF com `PixelXDimension`/`PixelYDimension` (sub-IFD EXIF) iguais a `w`x`h`, quando as
 /// tags existem. Bloco ilegível volta como veio.
 pub fn exif_set_pixel_dims(tiff: &[u8], (w, h): (u32, u32)) -> Vec<u8> {

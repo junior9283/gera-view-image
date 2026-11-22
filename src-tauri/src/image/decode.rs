@@ -484,16 +484,11 @@ fn tiff_dpi<R: std::io::Read + std::io::Seek>(
     };
     let x = rational(dec.find_tag(Tag::XResolution).ok()??)?;
     let y = rational(dec.find_tag(Tag::YResolution).ok()??).unwrap_or(x);
-    // ResolutionUnit: 2 = polegada (padrão), 3 = centímetro.
-    let k = if dec
-        .find_tag_unsigned::<u16>(Tag::ResolutionUnit)
-        .ok()
-        .flatten()
-        == Some(3)
-    {
-        2.54
-    } else {
-        1.0
+    // ResolutionUnit: 1 = sem unidade (só a proporção), 2 = polegada (padrão), 3 = centímetro.
+    let k = match dec.find_tag_unsigned::<u16>(Tag::ResolutionUnit).ok().flatten() {
+        Some(1) => return None,
+        Some(3) => 2.54,
+        _ => 1.0,
     };
     Some((x * k, y * k))
 }

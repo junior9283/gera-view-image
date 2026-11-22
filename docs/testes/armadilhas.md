@@ -75,3 +75,12 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
   `image/segment.rs`) e rode `GVI_U2NETP=/caminho/u2netp.onnx cargo test u2netp_real -- --ignored`.
 - **O cancelamento é global** (`segment::cancel_all`): testes que cancelam usam `Job::on(&contador_próprio)`,
   senão derrubam o trabalho de outro teste rodando em paralelo.
+
+## Impressão (GtkPrintOperation)
+
+- **Nunca mande trabalho à impressora nos testes.** `tests/print.rs` roda a mesma `PrintOperation` do app com
+  `Target::Export` (PDF numa pasta temporária), sem diálogo. Precisa de um display: `xvfb-run -a cargo test --test
+  print`; sem display, só a parte do GTK é pulada. O PDF é conferido com `pdfinfo`/`pdftoppm` quando existem.
+- **O GTK só pode ser iniciado numa thread.** Por isso os casos nativos ficam num único `#[test]`.
+- **A pausa do laço do GTK é medida** com um `timeout_add_local` de 5 ms durante a impressão de uma imagem grande: é o
+  que pega decodificação ou compressão voltando para a thread da interface.

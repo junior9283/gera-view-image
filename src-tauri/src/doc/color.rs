@@ -232,6 +232,7 @@ mod tests {
             strip_metadata: false,
             resize: None,
             color_profile: None,
+            ..encode::ExportOptions::new(encode::ExportFormat::Png)
         };
         let meta = encode::MetaCarry {
             icc: Some(p3()),

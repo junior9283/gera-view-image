@@ -86,7 +86,7 @@ impl<'a> Raster<'a> {
 }
 
 /// RGB8 com a transparência composta sobre branco (formatos sem alfa), numa passada só.
-fn rgb_on_white(img: &RgbaImage) -> ::image::RgbImage {
+pub(super) fn rgb_on_white(img: &RgbaImage) -> ::image::RgbImage {
     ::image::RgbImage::from_fn(img.width(), img.height(), |x, y| {
         let p = img.get_pixel(x, y);
         let a = p[3] as u32;

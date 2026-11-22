@@ -32,6 +32,7 @@ fn heic_sem_libkvazaar_nao_grava_e_salvar_leva_a_exportar() {
         strip_metadata: false,
         resize: None,
         color_profile: None,
+        ..ExportOptions::new(ExportFormat::Png)
     };
     let e = encode(&RgbaImage::new(8, 8), &opts, &MetaCarry::default()).unwrap_err();
     assert_eq!(e.code(), "unsupported");

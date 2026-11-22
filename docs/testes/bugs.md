@@ -42,3 +42,17 @@ Formato: sintoma, causa, correção, teste, lição.
 - **Correção:** `doc::finder::overwrite` lê os `user.*` antes e os grava no arquivo novo (Salvar e Exportar por cima). O mesmo ponto guarda a versão anterior.
 - **Teste:** `sobrescrever_mantem_atributos_de_usuario` (`src-tauri/src/doc/finder.rs`).
 - **Lição:** troca atômica por `rename` muda o inode: tudo o que é do inode (xattr, ACL, dono, hard links) precisa ser levado de propósito.
+
+## TIFF sem unidade de resolução era lido como 1 ppp (Lote 11)
+- **Sintoma (achado pelo teste do PDF de TIFF com duas páginas):** a página de 80×40 px saía no PDF com 5760×2880 pontos (2 m de largura).
+- **Causa:** `tiff_dpi` ignorava `ResolutionUnit = 1` (sem unidade: X/YResolution são só a proporção do pixel) e tratava o 1/1 gravado pelo codificador como 1 ppp.
+- **Correção:** com unidade 1, o documento fica sem ppp (a página usa 72).
+- **Teste:** `pdf_tem_uma_pagina_por_imagem_e_por_pagina_de_tiff` (`src-tauri/tests/print.rs`).
+- **Lição:** metadado numérico com unidade só vale depois de conferir a unidade.
+
+## ICO exportado de imagem opaca não reabria (Lote 11, antes de publicar)
+- **Sintoma (achado pelo teste de ida e volta):** "The PNG is not in RGBA format!" ao reabrir o ICO de uma imagem sem alfa.
+- **Causa:** o `IcoEncoder` embute o PNG como veio (RGB), e leitores de ICO exigem RGBA de 32 bits.
+- **Correção:** o ICO é sempre codificado em RGBA.
+- **Teste:** `ico_tga_e_psd_voltam_identicos` (`src-tauri/src/image/encode.rs`).
+- **Lição:** todo formato de exportação precisa de teste de ida e volta, com e sem alfa.

@@ -78,6 +78,9 @@ sha2 = "0.10"
 rten = { version = "0.28", default-features = false, features = ["onnx_format"] }
 rten-tensor = "0.28"
 rqrr = { version = "0.11", default-features = false }
+# Lote 11 (Exportar): EXR half/float e o Flate do PDF. Rust puro, já vinham pela crate `image`.
+exr = { version = "1.74", default-features = false }
+flate2 = "1"
 # Reconstrói os links lidos da imagem antes de abrir (já vem pelo reqwest).
 url = "2"
 

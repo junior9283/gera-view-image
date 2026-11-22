@@ -96,6 +96,7 @@ fn previa_da_versao_converte_o_perfil() {
         strip_metadata: false,
         resize: None,
         color_profile: Some("display-p3".into()),
+        ..ExportOptions::new(ExportFormat::Png)
     };
     let img = RgbaImage::from_pixel(8, 6, Rgba([215, 93, 31, 255]));
     fs::write(&p, encode(&img, &opts, &MetaCarry::default()).unwrap()).unwrap();
@@ -127,6 +128,7 @@ fn salvar_como_passa_a_ser_o_arquivo_novo() {
         strip_metadata: false,
         resize: None,
         color_profile: None,
+        ..ExportOptions::new(ExportFormat::Png)
     };
     let info = store.save_as(id, &s(&dest), &opts, None).unwrap();
     assert_eq!(info.path, s(&dest));
