@@ -260,7 +260,7 @@ impl DocStore {
         };
         let out = ops[start..]
             .iter()
-            .filter(|op| !op.keeps_pixels())
+            .filter(|op| op.touches(0))
             .fold(base, |img, op| raster::apply16(&img, op));
         (out.dimensions() == px.dimensions()).then_some(out)
     }

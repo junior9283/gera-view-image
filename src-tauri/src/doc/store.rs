@@ -565,10 +565,11 @@ impl DocStore {
                 icc::profile_bytes(&profile)?;
                 Op::AssignProfile { profile }
             }
-            Op::Composite { png } => {
+            Op::Composite { png, frame } => {
                 self.wait_ready(id)?;
                 Op::Composite {
                     png: self.png_from_display(id, png),
+                    frame,
                 }
             }
             op => op,
@@ -675,12 +676,12 @@ impl DocStore {
         }
         let tail: Vec<Op> = doc.ops[k..n]
             .iter()
-            .filter(|op| !op.keeps_pixels())
+            .filter(|op| op.touches(frame))
             .cloned()
             .collect();
         let source = doc.source.clone();
         drop(map);
-        // Só operações que não mexem nos pixels (Atribuir Perfil): vale a base ou o original.
+        // Só operações que não mexem neste quadro (Atribuir Perfil): vale a base ou o original.
         if tail.is_empty() {
             let px = base.map_or(Pixels::Source(source, f), Pixels::Owned);
             return Ok((px, size, 1.0, state));

@@ -6,6 +6,7 @@ import type { DocInfo, PrintOptions, PrintPreview } from "../ipc/types";
 const ipc = vi.hoisted(() => ({
   duplicate: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   applyOp: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
+  undo: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   closeDocument: vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => {}),
   thumbnail: vi.fn(async () => ({ width: 1, height: 1, data: new Uint8ClampedArray(4) })),
   printPreview: vi.fn<(ids: number[], opts: unknown) => Promise<unknown>>(),
@@ -23,11 +24,16 @@ vi.mock("../markup/render", async (orig) => ({
 
 import { getToasts, resetToastsForTests } from "../chrome/notify";
 import { Slot } from "../lib/slots";
+import { addAnnotation } from "../markup/actions";
+import { flattenAnnotations } from "../markup/flatten";
+import { resetHistoryForTests, undo } from "../markup/history";
 import type { Annotation } from "../markup/model";
+import { flattenToPng } from "../markup/render";
 import { getItems, useMarkup } from "../markup/store";
 import { isEnabled, runCommand } from "../shortcuts/commands";
 import { useDocs } from "../store/docs";
 import { setPrefs } from "../store/prefs";
+import { useUi } from "../store/ui";
 import { defaultPaper, resetPrintOptionsForTests } from "./PrintDialog";
 import { closePrint, exportPdf, printDocs, usePrintUi } from "./print";
 import "./register";
@@ -52,6 +58,7 @@ beforeEach(() => {
   resetPrintOptionsForTests();
   useDocs.setState({ docs: [a, b, broken], activeId: 1 });
   useMarkup.setState({ docs: {}, selected: {} });
+  resetHistoryForTests();
   ipc.printPreview.mockImplementation(async (ids) => preview(ids));
   ipc.duplicate.mockImplementation(async () => doc(8, "cópia", { path: "", dirty: true }));
   ipc.applyOp.mockImplementation(async (id) => doc(id as number, "cópia", { path: "", rev: 2 }));
@@ -208,6 +215,73 @@ describe("anotações não achatadas", () => {
     expect(ipc.exportPdf).toHaveBeenCalledWith([8], "/f/x.pdf");
     expect(ipc.closeDocument).toHaveBeenCalledWith(8);
     expect(getItems(1)).toEqual([rect]);
+  });
+});
+
+describe("anotações em TIFF de várias páginas", () => {
+  const tiff = doc(5, "t.tiff", { format: "tiff", frames: 3, writable: false });
+  const gif = doc(6, "g.gif", { format: "gif", frames: 3 });
+  const frames = () => ipc.applyOp.mock.calls.map(([id, op]) => [id, (op as { data: { frame?: number } }).data.frame]);
+
+  beforeEach(() => {
+    useDocs.setState({ docs: [tiff, gif], activeId: 5 });
+    useUi.setState({ page: null });
+  });
+
+  it("cada uma sai só na página em que foi feita", async () => {
+    addAnnotation(5, { ...rect, id: "a" });
+    useUi.setState({ page: 2 });
+    addAnnotation(5, { ...rect, id: "b" });
+    addAnnotation(5, { ...rect, id: "c" });
+    useUi.setState({ page: 1 });
+    dialog.save.mockResolvedValue("/f/x.pdf");
+    await exportPdf([5]);
+    expect(frames()).toEqual([[8, 0], [8, 2]]);
+    expect(vi.mocked(flattenToPng).mock.calls.map(([items]) => items.map((i) => i.id))).toEqual([["a"], ["b", "c"]]);
+    expect(ipc.exportPdf).toHaveBeenCalledWith([8], "/f/x.pdf");
+    expect(getItems(5)).toHaveLength(3);
+  });
+
+  it("a impressão usa a mesma cópia por página", async () => {
+    useUi.setState({ page: 1 });
+    addAnnotation(5, { ...rect, id: "a" });
+    await openDialog([5]);
+    await waitFor(() => expect(ipc.printPreview).toHaveBeenCalledWith([8], expect.anything()));
+    expect(frames()).toEqual([[8, 1]]);
+  });
+
+  it("numa animação a anotação vale para todos os quadros", async () => {
+    useDocs.setState({ activeId: 6 });
+    useUi.setState({ page: 2 });
+    addAnnotation(6, { ...rect, id: "a" });
+    dialog.save.mockResolvedValue("/f/x.pdf");
+    await exportPdf([6]);
+    expect(frames()).toEqual([[8, undefined]]);
+  });
+
+  it("se uma página falha, a cópia é fechada e nada é exportado", async () => {
+    addAnnotation(5, { ...rect, id: "a" });
+    useUi.setState({ page: 2 });
+    addAnnotation(5, { ...rect, id: "b" });
+    ipc.applyOp.mockImplementationOnce(async () => doc(8, "cópia")).mockRejectedValueOnce(new Error("x"));
+    dialog.save.mockResolvedValue("/f/x.pdf");
+    await expect(exportPdf([5])).rejects.toThrow("x");
+    expect(ipc.closeDocument).toHaveBeenCalledWith(8);
+    expect(ipc.exportPdf).not.toHaveBeenCalled();
+  });
+
+  it("Salvar/Exportar achata por página, e cada passo desfaz só as anotações da sua página", async () => {
+    addAnnotation(5, { ...rect, id: "a" });
+    useUi.setState({ page: 2 });
+    addAnnotation(5, { ...rect, id: "b" });
+    await flattenAnnotations(5);
+    expect(frames()).toEqual([[5, 0], [5, 2]]);
+    expect(getItems(5)).toEqual([]);
+    ipc.undo.mockResolvedValue(tiff);
+    await undo(5);
+    expect(getItems(5).map((i) => i.id)).toEqual(["b"]);
+    await undo(5);
+    expect(getItems(5).map((i) => i.id)).toEqual(["a", "b"]);
   });
 });
 

@@ -156,6 +156,31 @@ fn pdf_converte_para_srgb_leva_alfa_e_as_operacoes() {
     }
 }
 
+/// Anotações de uma página só saem nela, na impressão e no PDF.
+#[test]
+fn anotacao_so_sai_na_sua_pagina() {
+    let dir = tmp("pdf-anotacao");
+    let store = DocStore::new();
+    let tiff = dir.join("t.tiff");
+    tiff_duas_paginas(&tiff);
+    let id = abre(&store, &tiff);
+    let mut png = std::io::Cursor::new(Vec::new());
+    lisa(80, 40, [0, 0, 255, 255]).write_to(&mut png, image::ImageFormat::Png).unwrap();
+    let op = serde_json::json!({"type": "composite", "data": {"png": png.into_inner(), "frame": 1}});
+    store.apply_op(id, serde_json::from_value(op).unwrap()).unwrap();
+    let px = |f| store.render_full(id, f).unwrap().get_pixel(5, 5).0;
+    assert_eq!((px(0), px(1)), ([200, 10, 10, 255], [0, 0, 255, 255]));
+    // Outra ordem e o cache não misturam as páginas.
+    store.apply_op(id, Op::FlipH).unwrap();
+    assert_eq!((px(1), px(0)), ([0, 0, 255, 255], [200, 10, 10, 255]));
+    let dest = dir.join("a.pdf");
+    write_pdf(&store, &[id], &dest).unwrap();
+    if let Some(a) = pagina(&dest, 1, 72) {
+        perto(a.get_pixel(5, 5), [200, 10, 10], 1);
+        perto(pagina(&dest, 2, 72).unwrap().get_pixel(5, 5), [0, 0, 255], 1);
+    }
+}
+
 #[test]
 fn pdf_recusa_destino_que_nao_e_pdf_e_documento_fechado() {
     let dir = tmp("pdf-destino");
@@ -338,6 +363,19 @@ fn impressao_nativa_exporta_para_pdf() {
     eprintln!("24 MP: maior pausa do laço do GTK = {pausa:?}");
     assert!(pausa < Duration::from_millis(700), "o GTK ficou parado por {pausa:?}");
     assert!(has(&fs::read(&dest).unwrap(), b"/DCTDecode"));
+
+    // A impressora é lembrada; o que era só daquele trabalho, não.
+    let s = gtk::PrintSettings::new();
+    s.set("printer", Some("Sala"));
+    for key in ["print-pages", "page-ranges", "number-up", "output-uri"] {
+        s.set(key, Some("2"));
+    }
+    native::remember(Some(s));
+    let next = native::next_settings();
+    assert_eq!(next.get("printer").as_deref(), Some("Sala"));
+    for key in ["print-pages", "page-ranges", "number-up", "output-uri"] {
+        assert_eq!(next.get(key), None, "{key}");
+    }
 
     // Documento fechado no meio: erro, sem travar nem deixar a operação pendurada.
     let x = abre(&store, &grava(&dir, "x.png", &duas, &png, 72.0));

@@ -62,7 +62,7 @@ pub fn copied_region(
 
 /// Região de `img` com as anotações (`png`, no tamanho da imagem) compostas por cima.
 fn flattened_region(img: &RgbaImage, mask: Option<&Mask>, png: Option<Vec<u8>>) -> Option<RgbaImage> {
-    let flat = png.map(|png| ops::apply(img, &Op::Composite { png }));
+    let flat = png.map(|png| ops::apply(img, &Op::Composite { png, frame: None }));
     select::extract_region(flat.as_ref().unwrap_or(img), mask)
 }
 
@@ -186,7 +186,7 @@ mod tests {
         let copied = copied_region(&store, id, None, None).unwrap();
         near(&copied.get_pixel(1, 1).0, [215, 93, 31], 2);
         let png = layer_png(copied).unwrap();
-        store.apply_op(id, Op::Composite { png }).unwrap();
+        store.apply_op(id, Op::Composite { png, frame: None }).unwrap();
         near(
             &store.render_view(id, 0, 4, 3, None).unwrap()[8..12],
             [seen[0], seen[1], seen[2]],

@@ -304,7 +304,7 @@ pub mod native {
                 let result = match (failure.borrow_mut().take(), result) {
                     (Some(e), _) => Err(e),
                     (None, gtk::PrintOperationResult::Apply) => {
-                        LAST.with_borrow_mut(|l| *l = op.print_settings());
+                        remember(op.print_settings());
                         Ok(true)
                     }
                     (None, gtk::PrintOperationResult::Error) => Err(AppError::Io(
@@ -340,6 +340,24 @@ pub mod native {
         glib::idle_add_local_once(move || ACTIVE.with_borrow_mut(|a| a.retain(|o| *o != op)));
     }
 
+    /// Escolhas que só valem para um trabalho: na próxima impressão, omitiriam páginas ou
+    /// gravariam por cima do mesmo arquivo.
+    const ONE_JOB: [&str; 4] = ["print-pages", "page-ranges", "number-up", "output-uri"];
+
+    /// Guarda a impressora e os ajustes da impressão que terminou.
+    pub fn remember(settings: Option<gtk::PrintSettings>) {
+        let settings = settings.and_then(|s| s.copy());
+        if let Some(s) = &settings {
+            ONE_JOB.iter().for_each(|key| s.unset(key));
+        }
+        LAST.set(settings);
+    }
+
+    /// Ajustes para a próxima impressão.
+    pub fn next_settings() -> gtk::PrintSettings {
+        LAST.with_borrow(|l| l.as_ref().and_then(gtk::PrintSettings::copy)).unwrap_or_default()
+    }
+
     fn configure(op: &gtk::PrintOperation, opts: &PrintOptions, title: &str) {
         let paper = gtk::PaperSize::new(Some(&opts.paper));
         let orientation = match opts.orientation {
@@ -351,9 +369,7 @@ pub mod native {
         setup.set_orientation(orientation);
         op.set_default_page_setup(Some(&setup));
 
-        let settings = LAST
-            .with_borrow(|l| l.as_ref().and_then(gtk::PrintSettings::copy))
-            .unwrap_or_default();
+        let settings = next_settings();
         settings.set_n_copies(opts.copies as i32);
         settings.set_paper_size(&paper);
         settings.set_orientation(orientation);

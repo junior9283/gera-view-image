@@ -220,7 +220,7 @@ fn orcamento_de_raw_usa_o_sensor_e_nao_a_miniatura_do_ifd0() {
 fn composite_aceita_png_como_lista_de_bytes() {
     let json = r#"{"type":"composite","data":{"png":[137,80,78,71]}}"#;
     let op: Op = serde_json::from_str(json).unwrap();
-    assert!(matches!(&op, Op::Composite { png } if png == &[137, 80, 78, 71]));
+    assert!(matches!(&op, Op::Composite { png, frame: None } if png == &[137, 80, 78, 71]));
     assert_eq!(serde_json::to_string(&op).unwrap(), json);
 }
 

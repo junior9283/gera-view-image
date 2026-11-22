@@ -2,6 +2,7 @@
 import type { DocId } from "../ipc/types";
 import { pushMarkup } from "./history";
 import { moveItems, restyle, type Annotation, type StylePatch } from "./model";
+import { onCurrentPage } from "./pages";
 import { getItems, getSelected, useMarkup } from "./store";
 
 const same = (a: Annotation[], b: Annotation[]) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -20,7 +21,7 @@ export function commit(id: DocId, next: Annotation[], before: Annotation[] = get
 }
 
 export function addAnnotation(id: DocId, a: Annotation, select = true): void {
-  commit(id, [...getItems(id), a]);
+  commit(id, [...getItems(id), onCurrentPage(id, a)]);
   if (select) useMarkup.getState().select(id, [a.id]);
 }
 

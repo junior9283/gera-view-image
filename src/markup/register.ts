@@ -7,12 +7,14 @@ import { setAnnotationSource } from "../inspector/annotations";
 import { registerSlot } from "../lib/slots";
 import { TOGGLE_MARKUP_EVENT } from "../shortcuts/events";
 import { useDocs } from "../store/docs";
+import { useUi } from "../store/ui";
 import { registerMarkupCommands } from "./commands";
 import { flattenAnnotations } from "./flatten";
 import { installHistory } from "./history";
 import { MarkupBar } from "./MarkupBar";
 import { MarkupLayer } from "./MarkupLayer";
 import "./markup.css";
+import { docOf, hasPages } from "./pages";
 import { getItems, toggleMarkupBar, useMarkup } from "./store";
 
 installHistory();
@@ -23,6 +25,12 @@ registerDirtySource(
   (id) => getItems(id).length > 0,
   (cb) => useMarkup.subscribe((s, prev) => s.docs !== prev.docs && cb()),
 );
+// Em outra página as selecionadas não aparecem: ficam desmarcadas (Delete e estilo não as alcançam).
+useUi.subscribe((s, prev) => {
+  const { activeId } = useDocs.getState();
+  const moved = (s.page ?? 0) !== (prev.page ?? 0);
+  if (moved && activeId !== null && hasPages(docOf(activeId))) useMarkup.getState().select(activeId, []);
+});
 registerSlot("below-toolbar", "markup-bar", MarkupBar);
 // Ouvinte de módulo (não de componente): a Toolbar e o Ctrl+Shift+M (Task 6) alternam a
 // barra mesmo que nenhum slot esteja montado no momento.
@@ -37,6 +45,9 @@ setAnnotationSource({
     })),
   subscribe: (cb) => useMarkup.subscribe((s, prev) => s.docs !== prev.docs && cb()),
   select: (id, annotationId) => {
+    if (hasPages(docOf(id))) {
+      useUi.getState().setPage(getItems(id).find((a) => a.id === annotationId)?.page ?? 0);
+    }
     const st = useMarkup.getState();
     st.setVisible(true);
     st.setTool("select");

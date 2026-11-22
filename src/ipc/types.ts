@@ -85,7 +85,7 @@ export type Op =
   | { type: "erase"; data: Mask }
   | { type: "makeTransparent"; data: Mask }
   /** PNG das anotações achatadas. No Rust é `serde_bytes`; pela IPC JSON vai como lista de bytes. */
-  | { type: "composite"; data: { png: Uint8Array | number[] } }
+  | { type: "composite"; data: { png: Uint8Array | number[]; /** Só nesta página (ausente = todas). */ frame?: number } }
   /** Lote 1: Atribuir Perfil… (`profile` como em `ColorProfile.id`); não muda os pixels. */
   | { type: "assignProfile"; data: { profile: string } };
 

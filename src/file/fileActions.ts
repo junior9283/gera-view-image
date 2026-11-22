@@ -5,7 +5,7 @@ import { notify } from "../chrome/notify";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
 import * as ipc from "../ipc/commands";
-import { annotationsPng } from "../markup/flatten";
+import { annotationLayers } from "../markup/flatten";
 import { forgetHistory } from "../markup/history";
 import { useMarkup } from "../markup/store";
 import type { CaptureMode, DocId, DocInfo, ExportOptions, RevertTarget } from "../ipc/types";
@@ -157,11 +157,11 @@ async function addAndShow(info: DocInfo | null): Promise<void> {
  * anotações continuam editáveis e o estado de "sujo" fica igual. Se o achatamento falhar, a cópia é fechada.
  */
 export async function flattenedCopy(id: DocId, name: string): Promise<DocInfo> {
-  const png = await annotationsPng(id);
-  const copy = await ipc.duplicate(id, name);
-  if (!png) return copy;
+  const layers = await annotationLayers(id);
+  let copy = await ipc.duplicate(id, name);
   try {
-    return await ipc.applyOp(copy.id, { type: "composite", data: { png } });
+    for (const { op } of layers) copy = await ipc.applyOp(copy.id, op);
+    return copy;
   } catch (e) {
     await ipc.closeDocument(copy.id).catch(() => {});
     throw e;
