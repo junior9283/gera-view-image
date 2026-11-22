@@ -125,7 +125,7 @@ fn pdf_tem_uma_pagina_por_imagem_e_por_pagina_de_tiff() {
     assert!(!text.contains("/DCTDecode"), "PNG e TIFF saem sem perdas");
     if let Some((pages, size)) = pdf_info(&dest) {
         assert_eq!(pages, 3);
-        assert!(size.starts_with("150 x 75"), "{size}");
+        assert!(size.starts_with("150.008 x 75"), "{size}");
         perto(pagina(&dest, 1, 72).unwrap().get_pixel(70, 30), [10, 200, 30], 1);
     }
 }
