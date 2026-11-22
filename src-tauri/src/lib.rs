@@ -140,6 +140,7 @@ pub fn run() {
             ));
             // Lote 5: versões guardadas a cada Salvar (~/.local/share/gera-view-image/versions).
             doc::versions::configure(app.path().data_dir()?.join("gera-view-image").join("versions"));
+            commands::camera::install(app.handle());
             theme::watch::start(app.handle().clone());
             commands::file::start_watch(
                 app.handle().clone(),

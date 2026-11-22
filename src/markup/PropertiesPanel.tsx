@@ -1,12 +1,11 @@
 // Inspetor de Marcação: propriedades da anotação selecionada (posição, tamanho, texto,
 // espessura, tracejado, sombra e opacidade). Valores em pixels da imagem.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDocs } from "../store/docs";
-import { restyleSelected, updateSelected } from "./actions";
-import { opacityOf, withOpacity } from "./colors";
+import { endLive, restyleSelected, updateSelected, updateSelectedLive } from "./actions";
 import type { Annotation, Dash } from "./model";
-import { editableBox, withBox, withText } from "./properties";
+import { editableBox, hasOpacity, opacityPct, withAnnotationOpacity, withBox, withText } from "./properties";
 import { useItems, useMarkup } from "./store";
 
 const DASHES: Dash[] = ["solid", "dashed", "dotted"];
@@ -46,6 +45,10 @@ export function PropertiesPanel() {
   const one: Annotation | undefined = chosen.length === 1 ? chosen[0] : undefined;
   const box = one ? editableBox(one) : null;
   const first = chosen[0];
+  const opacityOwner = chosen.find(hasOpacity) ?? first;
+  const opacityShown = !!first && hasOpacity(opacityOwner);
+  // Fechar o painel no meio do arrasto grava o que já mudou.
+  useEffect(() => endLive, []);
 
   return (
     <div role="dialog" aria-label={t("markup.props.title")} className="markup-menu props-panel" data-testid="props-panel">
@@ -86,20 +89,25 @@ export function PropertiesPanel() {
             <input type="checkbox" checked={first.style.shadow} onChange={(e) => restyleSelected(id, { shadow: e.target.checked })} />
             {t("markup.shadow")}
           </label>
-          <label className="props-field">
-            {t("markup.colors.opacity")}
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={opacityOf(first.style.stroke)}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                updateSelected(id, (a) => ({ ...a, style: { ...a.style, stroke: withOpacity(a.style.stroke, v), fill: a.style.fill && withOpacity(a.style.fill, v) } }));
-              }}
-            />
-            <output>{opacityOf(first.style.stroke)}%</output>
-          </label>
+          {opacityShown && (
+            <label className="props-field">
+              {t("markup.colors.opacity")}
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={opacityPct(opacityOwner)}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  updateSelectedLive(id, (a) => withAnnotationOpacity(a, v));
+                }}
+                onPointerUp={endLive}
+                onKeyUp={endLive}
+                onBlur={endLive}
+              />
+              <output>{opacityPct(opacityOwner)}%</output>
+            </label>
+          )}
           <button type="button" onClick={() => useMarkup.getState().setMenu("colors")}>{t("markup.props.colors")}</button>
         </>
       )}

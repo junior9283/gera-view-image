@@ -8,7 +8,7 @@ import * as ipc from "../ipc/commands";
 import { alphaBounds } from "./signatures";
 import type { Box } from "./model";
 
-export type CameraErrorCode = "unsupported" | "denied" | "notFound" | "busy" | "failed";
+export type CameraErrorCode = "unsupported" | "denied" | "notFound" | "busy" | "disconnected" | "failed";
 
 export class CameraError extends Error {
   constructor(readonly code: CameraErrorCode, readonly detail?: unknown) {
@@ -44,17 +44,25 @@ export interface CameraSession {
   stop(): Promise<void>;
 }
 
+/** Sessão mais recente: só ela desarma o consentimento ao parar (a antiga não pode derrubar a nova). */
+let generation = 0;
+
+/** Desarma o consentimento (câmera ainda ligando, ou sessão encerrada). */
+export const disarmCamera = (): Promise<void> => ipc.cameraAllow(false).catch(() => {});
+
 /**
  * Liga a câmera (só vídeo, nunca áudio). Precisa ser chamada logo depois do clique de
  * consentimento do usuário. Sem câmera, sem permissão ou sem suporte lança `CameraError`.
+ * `onEnded` avisa quando a câmera some sozinha (webcam desconectada).
  */
-export async function startCamera(): Promise<CameraSession> {
+export async function startCamera(onEnded?: () => void): Promise<CameraSession> {
+  const mine = ++generation;
   try {
     await ipc.cameraAllow(true);
   } catch (e) {
     throw new CameraError("unsupported", e);
   }
-  const disarm = () => ipc.cameraAllow(false).catch(() => {});
+  const disarm = () => (mine === generation ? disarmCamera() : Promise.resolve());
   const md = navigator.mediaDevices;
   if (!md?.getUserMedia) {
     await disarm();
@@ -68,6 +76,7 @@ export async function startCamera(): Promise<CameraSession> {
     throw new CameraError(classifyCameraError(e), e);
   }
   let stopped = false;
+  stream.getTracks().forEach((t) => t.addEventListener("ended", () => !stopped && onEnded?.()));
   return {
     stream,
     async stop() {

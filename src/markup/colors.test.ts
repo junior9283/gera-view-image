@@ -59,9 +59,9 @@ describe("conta-gotas", () => {
 
   it("lê o pixel já em cor de tela pelo renderView, 1×1, dentro da imagem", async () => {
     renderView.mockResolvedValue({ width: 1, height: 1, data: new Uint8ClampedArray([200, 100, 50, 255]) });
-    expect(await sampleScreenColor(7, 3.9, 4.2, 10, 10)).toBe("#c86432");
-    expect(renderView).toHaveBeenCalledWith(7, 0, 1, 1, { x: 3, y: 4, w: 1, h: 1 });
-    await sampleScreenColor(7, 99, -5, 10, 10);
+    expect(await sampleScreenColor(7, 2, 3.9, 4.2, 10, 10)).toBe("#c86432");
+    expect(renderView).toHaveBeenCalledWith(7, 2, 1, 1, { x: 3, y: 4, w: 1, h: 1 });
+    await sampleScreenColor(7, 0, 99, -5, 10, 10);
     expect(renderView).toHaveBeenLastCalledWith(7, 0, 1, 1, { x: 9, y: 0, w: 1, h: 1 });
   });
 });

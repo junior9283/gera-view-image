@@ -10,7 +10,7 @@ import { CameraError, classifyCameraError, inkBounds, inkPixels, otsuThreshold, 
 
 /** Câmera falsa: os testes NUNCA tocam a câmera real. */
 function fakeStream() {
-  const track = { stop: vi.fn(() => calls.push("track.stop")) };
+  const track = { stop: vi.fn(() => calls.push("track.stop")), addEventListener: vi.fn() };
   return { stream: { getTracks: () => [track, track] } as unknown as MediaStream, track };
 }
 
@@ -66,6 +66,28 @@ describe("câmera da assinatura", () => {
     cameraAllow.mockRejectedValueOnce(new Error("sem janela"));
     await expect(startCamera()).rejects.toMatchObject({ code: "unsupported" });
     expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("sessão antiga que para depois não desarma o consentimento da nova", async () => {
+    const stream = () => ({ getTracks: () => [{ stop: vi.fn(), addEventListener: vi.fn() }] }) as unknown as MediaStream;
+    setMediaDevices({ getUserMedia: vi.fn().mockResolvedValueOnce(stream()).mockResolvedValueOnce(stream()) });
+    const a = await startCamera();
+    const b = await startCamera();
+    calls.length = 0;
+    await a.stop();
+    expect(calls).not.toContain("allow:false");
+    await b.stop();
+    expect(calls).toContain("allow:false");
+  });
+
+  it("avisa quando a trilha termina (webcam desconectada)", async () => {
+    let onEnd: () => void = () => {};
+    const track = { stop: vi.fn(), addEventListener: (_: string, f: () => void) => (onEnd = f) };
+    setMediaDevices({ getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) });
+    const ended = vi.fn();
+    await startCamera(ended);
+    onEnd();
+    expect(ended).toHaveBeenCalledTimes(1);
   });
 
   it("classifica os erros do getUserMedia", () => {

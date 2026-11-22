@@ -93,7 +93,10 @@ export function MarkupBar() {
   useEffect(() => {
     if (!menu) return;
     const close = (e: PointerEvent) => {
-      if (!bar.current?.contains(e.target as Node)) useMarkup.getState().setMenu(null);
+      if (bar.current?.contains(e.target as Node)) return;
+      // O campo em edição perde o foco ANTES de o painel sair (o blur grava o valor digitado).
+      if (document.activeElement instanceof HTMLElement && bar.current?.contains(document.activeElement)) document.activeElement.blur();
+      useMarkup.getState().setMenu(null);
     };
     window.addEventListener("pointerdown", close, true);
     return () => window.removeEventListener("pointerdown", close, true);

@@ -1,10 +1,10 @@
 // Painel Cores (⇧⌘C no Pré-Visualização): cor da borda, do preenchimento ou do texto, com
 // conta-gotas, opacidade e cores recentes.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDocs } from "../store/docs";
 import { setPrefs, usePrefs } from "../store/prefs";
-import { applyStyle } from "./actions";
+import { applyStyle, applyStyleLive, endLive } from "./actions";
 import { PALETTE, opacityOf, opaque, pushRecent, withOpacity } from "./colors";
 import { startEyedropper } from "./Eyedropper";
 import { DEFAULT_FONT, type Style, type StylePatch } from "./model";
@@ -44,11 +44,13 @@ export function ColorsPanel() {
   const apply = (color: string | null) => applyStyle(patchFor(target, color));
   const remember = (color: string) => setPrefs({ recentColors: pushRecent(recent, color) });
   /** Cor nova: mantém a opacidade que estava valendo. */
-  const choose = (hex: string, store = true) => {
+  const choose = (hex: string) => {
     const c = withOpacity(hex, pct);
     apply(c);
-    if (store) remember(c);
+    remember(c);
   };
+  // Fechar o painel no meio do arrasto grava o que já mudou.
+  useEffect(() => endLive, []);
 
   return (
     <div role="dialog" aria-label={t("markup.colors.title")} className="markup-menu colors-panel" data-testid="colors-panel">
@@ -65,8 +67,11 @@ export function ColorsPanel() {
           type="color"
           aria-label={t("markup.customColor")}
           value={rgb}
-          onChange={(e) => choose(e.target.value, false)}
-          onBlur={(e) => remember(withOpacity(e.target.value, pct))}
+          onChange={(e) => applyStyleLive(patchFor(target, withOpacity(e.target.value, pct)))}
+          onBlur={(e) => {
+            endLive();
+            remember(withOpacity(e.target.value, pct));
+          }}
         />
         <button type="button" data-testid="colors-eyedropper" onClick={() => startEyedropper((hex) => choose(hex))}>
           {t("markup.colors.eyedropper")}
@@ -86,7 +91,10 @@ export function ColorsPanel() {
           value={pct}
           disabled={!current}
           aria-valuetext={`${pct}%`}
-          onChange={(e) => current && apply(withOpacity(current, Number(e.target.value)))}
+          onChange={(e) => current && applyStyleLive(patchFor(target, withOpacity(current, Number(e.target.value))))}
+          onPointerUp={endLive}
+          onKeyUp={endLive}
+          onBlur={endLive}
         />
         <output>{pct}%</output>
       </label>

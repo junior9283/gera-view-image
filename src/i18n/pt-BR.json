@@ -286,6 +286,7 @@
       "pad": "Área de desenho da assinatura",
       "cameraTab": "Câmera",
       "camera": {
+        "saveFailed": "Não foi possível salvar a assinatura. Tente de novo.",
         "hint": "Assine num papel branco e mostre à câmera. A câmera só liga quando você pedir.",
         "start": "Usar a câmera…",
         "consentTitle": "Ligar a câmera?",
@@ -307,7 +308,8 @@
           "unsupported": "Esta janela não permite usar a câmera (falta suporte de mídia no WebKitGTK/GStreamer).",
           "denied": "Permissão da câmera negada.",
           "notFound": "Nenhuma câmera encontrada. Conecte uma e tente de novo.",
-          "busy": "A câmera está em uso por outro programa.",
+          "disconnected": "A câmera foi desconectada.",
+        "busy": "A câmera está em uso por outro programa.",
           "failed": "Não foi possível ligar a câmera."
         }
       }

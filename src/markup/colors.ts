@@ -60,10 +60,10 @@ export function pixelColor(data: ArrayLike<number>): string | null {
   return data.length >= 4 && data[3] > 0 ? formatColor({ r: data[0], g: data[1], b: data[2], a: 255 }) : null;
 }
 
-/** Cor do pixel (x, y) da imagem `id` como o usuário o vê (cor de tela). */
-export async function sampleScreenColor(id: DocId, x: number, y: number, w: number, h: number): Promise<string | null> {
+/** Cor do pixel (x, y) do quadro/página `frame` da imagem `id` como o usuário o vê (cor de tela). */
+export async function sampleScreenColor(id: DocId, frame: number, x: number, y: number, w: number, h: number): Promise<string | null> {
   const px = Math.min(w - 1, Math.max(0, Math.floor(x)));
   const py = Math.min(h - 1, Math.max(0, Math.floor(y)));
-  const v = await ipc.renderView(id, 0, 1, 1, { x: px, y: py, w: 1, h: 1 });
+  const v = await ipc.renderView(id, frame, 1, 1, { x: px, y: py, w: 1, h: 1 });
   return pixelColor(v.data);
 }

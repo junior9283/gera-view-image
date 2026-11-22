@@ -30,7 +30,10 @@ export function FontsPanel() {
   const state = useSystemFonts();
   const [q, setQ] = useState("");
   const font = useCurrentFont();
-  const all = state.status === "ready" ? state.fonts : BASE_FONTS;
+  const all = useMemo(
+    () => (state.status === "ready" ? [...BASE_FONTS, ...state.fonts.filter((f) => !BASE_FONTS.includes(f))] : BASE_FONTS),
+    [state],
+  );
   const list = useMemo(() => {
     const n = q.trim().toLowerCase();
     return n ? all.filter((f) => f.toLowerCase().includes(n)) : all;

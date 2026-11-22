@@ -7,6 +7,7 @@ import type { OverlayProps } from "../lib/slots";
 import { throttle } from "../lib/throttle";
 import { create } from "zustand";
 import { useDocs } from "../store/docs";
+import { useUi } from "../store/ui";
 import { sampleScreenColor } from "./colors";
 
 interface EyedropperState {
@@ -22,11 +23,14 @@ export const useEyedropper = create<EyedropperState>(() => ({ onPick: null, hove
 export const startEyedropper = (onPick: (hex: string) => void) => useEyedropper.setState({ onPick, hover: null });
 export const stopEyedropper = () => useEyedropper.setState({ onPick: null, hover: null });
 
+/** Página escolhida na barra lateral (TIFF/GIF); sem escolha, o primeiro quadro. */
+const shownFrame = () => useUi.getState().page ?? 0;
+
 let peekSeq = 0;
 /** A amostra ao passar o mouse é limitada: cada uma é uma chamada ao núcleo. */
 const peek = throttle((id: number, ix: number, iy: number, w: number, h: number, x: number, y: number) => {
   const n = ++peekSeq;
-  void sampleScreenColor(id, ix, iy, w, h)
+  void sampleScreenColor(id, shownFrame(), ix, iy, w, h)
     .then((color) => n === peekSeq && useEyedropper.setState({ hover: color ? { x, y, color } : null }))
     .catch(() => {});
 }, 80);
@@ -75,7 +79,7 @@ export function Eyedropper({ scale, panX, panY, imageW, imageH }: OverlayProps) 
         e.stopPropagation();
         const { ix, iy } = at(e);
         if (!inside(ix, iy)) return;
-        void sampleScreenColor(id, ix, iy, imageW, imageH)
+        void sampleScreenColor(id, shownFrame(), ix, iy, imageW, imageH)
           .then((hex) => {
             if (!hex) return;
             const cb = useEyedropper.getState().onPick;

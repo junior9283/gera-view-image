@@ -1,10 +1,11 @@
 //! Lote 10 (Marcação extra): consentimento da câmera para capturar a assinatura.
 //!
-//! O WebKitGTK só libera `getUserMedia` se o app responder ao sinal `permission-request`
-//! (o Tauri não responde) e se `enable-media-stream` estiver ligado. A câmera fica desligada
-//! por padrão: a interface só arma depois de um clique explícito do usuário e de uma
-//! confirmação própria. O armamento vale para UM pedido de vídeo, por poucos segundos; todo o
-//! resto (áudio, localização, notificações, pedido sem armamento) é negado.
+//! O WebKitGTK só libera `getUserMedia` se o app responder ao sinal `permission-request` (o
+//! Tauri não responde). O handler é instalado no setup do app e é a única barreira: a interface
+//! só arma depois de um clique explícito do usuário e de uma confirmação própria. O armamento
+//! vale para UM pedido de vídeo, por poucos segundos; todo o resto (áudio, captura de tela,
+//! localização, notificações, pedido sem armamento) é negado. A propriedade
+//! `enable-media-stream` do WebKit não é alterada.
 use crate::error::AppResult;
 use std::time::{Duration, Instant};
 
@@ -32,10 +33,10 @@ impl Consent {
     }
 }
 
-/// Decide o pedido de mídia: só vídeo, sem áudio, e só se armado. Um pedido recusado por ser
+/// Decide o pedido de mídia: só vídeo de câmera (nem áudio nem captura de tela), e só se armado. Um pedido recusado por ser
 /// de áudio (ou sem vídeo) não gasta o armamento.
-pub(crate) fn decide(consent: &mut Consent, video: bool, audio: bool, now: Instant) -> bool {
-    video && !audio && consent.take(now)
+pub(crate) fn decide(consent: &mut Consent, video: bool, audio: bool, display: bool, now: Instant) -> bool {
+    video && !audio && !display && consent.take(now)
 }
 
 #[cfg(target_os = "linux")]
@@ -47,20 +48,26 @@ mod webkit {
     };
     use tauri::{AppHandle, Manager};
     use webkit2gtk::{
-        glib::Cast, PermissionRequestExt, SettingsExt, UserMediaPermissionRequest,
-        UserMediaPermissionRequestExt, WebView, WebViewExt,
+        PermissionRequestExt, UserMediaPermissionRequest, UserMediaPermissionRequestExt, WebView,
+        WebViewExt,
+        glib::{Cast, ObjectExt},
     };
 
     static CONSENT: Mutex<Consent> = Mutex::new(Consent { until: None });
     static HOOKED: AtomicBool = AtomicBool::new(false);
 
+    /// Pedido de captura de tela/janela (`is-for-display-device`, só nas versões novas do WebKit).
+    fn for_display(m: &UserMediaPermissionRequest) -> bool {
+        m.find_property("is-for-display-device").is_some() && m.property::<bool>("is-for-display-device")
+    }
+
     fn on_request(req: &webkit2gtk::PermissionRequest) -> bool {
         let allow = match req.downcast_ref::<UserMediaPermissionRequest>() {
             Some(m) => {
                 let mut c = CONSENT.lock().unwrap_or_else(|e| e.into_inner());
-                decide(&mut c, m.is_for_video_device(), m.is_for_audio_device(), Instant::now())
+                decide(&mut c, m.is_for_video_device(), m.is_for_audio_device(), for_display(m), Instant::now())
             }
-            None => false,
+            _ => false,
         };
         if allow {
             req.allow();
@@ -70,16 +77,21 @@ mod webkit {
         true
     }
 
-    fn setup(view: &WebView, allowed: bool) {
+    fn hook(view: &WebView) {
         if !HOOKED.swap(true, Ordering::SeqCst) {
             view.connect_permission_request(|_, req| on_request(req));
         }
-        if let Some(s) = WebViewExt::settings(view) {
-            s.set_enable_media_stream(allowed);
+    }
+
+    /// Instala o handler de permissões no webview principal (uma vez, no setup do app). Sem ele o
+    /// WebKitGTK nega tudo; com ele, só o pedido de vídeo armado passa.
+    pub fn install(app: &AppHandle) {
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.with_webview(|w| hook(&w.inner()));
         }
     }
 
-    pub fn allow(app: &AppHandle, allowed: bool) -> bool {
+    pub fn allow(app: &AppHandle, allowed: bool) {
         {
             let mut c = CONSENT.lock().unwrap_or_else(|e| e.into_inner());
             if allowed {
@@ -88,11 +100,19 @@ mod webkit {
                 c.disarm();
             }
         }
-        let Some(win) = app.get_webview_window("main") else {
-            return false;
-        };
-        win.with_webview(move |w| setup(&w.inner(), allowed)).is_ok()
+        // Reforço: se o setup não achou a janela, instala agora (idempotente).
+        if allowed && !HOOKED.load(Ordering::SeqCst) {
+            install(app);
+        }
     }
+}
+
+/// Instala a barreira de permissão da câmera. Chamado no `setup`, antes de qualquer uso.
+pub fn install(app: &tauri::AppHandle) {
+    #[cfg(target_os = "linux")]
+    webkit::install(app);
+    #[cfg(not(target_os = "linux"))]
+    let _ = app;
 }
 
 /// Arma (`true`) ou desarma (`false`) a câmera. A interface chama depois do clique de
@@ -100,9 +120,7 @@ mod webkit {
 #[tauri::command]
 pub async fn camera_allow(app: tauri::AppHandle, allowed: bool) -> AppResult<()> {
     #[cfg(target_os = "linux")]
-    if !webkit::allow(&app, allowed) {
-        return Err(crate::error::AppError::Unsupported("camera_allow: sem janela".into()));
-    }
+    webkit::allow(&app, allowed);
     #[cfg(not(target_os = "linux"))]
     let _ = (app, allowed);
     Ok(())
@@ -115,33 +133,41 @@ mod tests {
     #[test]
     fn sem_armar_nega() {
         let mut c = Consent::default();
-        assert!(!decide(&mut c, true, false, Instant::now()));
+        assert!(!decide(&mut c, true, false, false, Instant::now()));
     }
 
     #[test]
     fn armado_libera_um_pedido_de_video() {
         let (mut c, t) = (Consent::default(), Instant::now());
         c.arm(t);
-        assert!(decide(&mut c, true, false, t));
-        assert!(!decide(&mut c, true, false, t), "o armamento vale uma vez só");
+        assert!(decide(&mut c, true, false, false, t));
+        assert!(!decide(&mut c, true, false, false, t), "o armamento vale uma vez só");
     }
 
     #[test]
     fn nunca_libera_audio_nem_pedido_sem_video() {
         let (mut c, t) = (Consent::default(), Instant::now());
         c.arm(t);
-        assert!(!decide(&mut c, true, true, t));
-        assert!(!decide(&mut c, false, false, t));
-        assert!(decide(&mut c, true, false, t), "pedido recusado não gasta o armamento");
+        assert!(!decide(&mut c, true, true, false, t));
+        assert!(!decide(&mut c, false, false, false, t));
+        assert!(decide(&mut c, true, false, false, t), "pedido recusado não gasta o armamento");
+    }
+
+    #[test]
+    fn nunca_libera_captura_de_tela_e_nao_gasta_o_armamento() {
+        let (mut c, t) = (Consent::default(), Instant::now());
+        c.arm(t);
+        assert!(!decide(&mut c, true, false, true, t));
+        assert!(decide(&mut c, true, false, false, t));
     }
 
     #[test]
     fn armamento_expira_e_desarmar_cancela() {
         let (mut c, t) = (Consent::default(), Instant::now());
         c.arm(t);
-        assert!(!decide(&mut c, true, false, t + TTL + Duration::from_secs(1)));
+        assert!(!decide(&mut c, true, false, false, t + TTL + Duration::from_secs(1)));
         c.arm(t);
         c.disarm();
-        assert!(!decide(&mut c, true, false, t));
+        assert!(!decide(&mut c, true, false, false, t));
     }
 }

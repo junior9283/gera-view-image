@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CameraError,
+  disarmCamera,
   frameToSignature,
   grabFrame,
   otsuThreshold,
@@ -35,18 +36,22 @@ export function CameraTab() {
   const session = useRef<CameraSession | null>(null);
   const video = useRef<HTMLVideoElement>(null);
   const alive = useRef(true);
+  const starting = useRef(false);
+  const [saveFailed, setSaveFailed] = useState(false);
 
   const stop = () => {
     const s = session.current;
     session.current = null;
     void s?.stop();
+    // Ainda ligando: desarma já; a sessão que chegar depois é desligada em `turnOn`.
+    if (!s && starting.current) void disarmCamera();
   };
 
   // Desliga a câmera ao sair da aba/painel e quando a janela fica escondida.
   useEffect(() => {
     alive.current = true;
     const hidden = () => {
-      if (document.hidden && session.current) {
+      if (document.hidden && (session.current || starting.current)) {
         stop();
         setPhase({ name: "idle" });
       }
@@ -65,12 +70,24 @@ export function CameraTab() {
 
   const turnOn = async () => {
     setPhase({ name: "starting" });
+    starting.current = true;
     try {
-      const s = await startCamera();
-      if (!alive.current) return void s.stop();
+      const s = await startCamera(() => {
+        // Webcam desconectada com a câmera ligada.
+        stop();
+        if (alive.current) setPhase({ name: "error", code: "disconnected" });
+      });
+      starting.current = false;
+      // Fechou o painel ou escondeu a janela enquanto ligava: não deixa a câmera ligada.
+      if (!alive.current || document.hidden) {
+        void s.stop();
+        if (alive.current) setPhase({ name: "idle" });
+        return;
+      }
       session.current = s;
       setPhase({ name: "live" });
     } catch (e) {
+      starting.current = false;
       if (alive.current) setPhase({ name: "error", code: e instanceof CameraError ? e.code : "failed" });
     }
   };
@@ -90,11 +107,13 @@ export function CameraTab() {
   const save = async () => {
     if (!png) return;
     setSaving(true);
+    setSaveFailed(false);
     try {
       await addSignature(png);
       setPhase({ name: "idle" });
     } catch (e) {
       console.error("falha ao salvar a assinatura da câmera:", e);
+      setSaveFailed(true);
     } finally {
       setSaving(false);
     }
@@ -140,6 +159,7 @@ export function CameraTab() {
             {t("markup.sig.camera.sensitivity")}
             <input type="range" min={20} max={235} value={threshold} onChange={(e) => setLevel(Number(e.target.value))} />
           </label>
+          {saveFailed && <p className="sig-error" role="alert" data-testid="camera-save-error">{t("markup.sig.camera.saveFailed")}</p>}
           <div className="sig-actions">
             <button type="button" onClick={() => setPhase({ name: "idle" })}>{t("markup.sig.camera.retry")}</button>
             <button type="button" data-testid="camera-save" disabled={!png || saving} onClick={() => void save()}>{t("markup.sig.save")}</button>

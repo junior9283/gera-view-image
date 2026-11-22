@@ -44,6 +44,15 @@ export function deleteSelected(id: DocId): boolean {
   return true;
 }
 
+/** Estilo da barra (px de tela) → px da imagem, pela escala atual. */
+function toImagePatch(patch: StylePatch): StylePatch {
+  const scale = useUi.getState().view?.scale ?? 1;
+  const img: StylePatch = { ...patch };
+  if (patch.width !== undefined) img.width = patch.width / scale;
+  if (patch.font?.size !== undefined) img.font = { ...patch.font, size: patch.font.size / scale };
+  return img;
+}
+
 /**
  * Aplica o estilo às próximas anotações e às selecionadas. A barra fala em px de tela;
  * as selecionadas recebem o valor convertido pela escala atual.
@@ -51,12 +60,7 @@ export function deleteSelected(id: DocId): boolean {
 export function applyStyle(patch: StylePatch): void {
   useMarkup.getState().setStyle(patch);
   const id = useDocs.getState().activeId;
-  if (id === null) return;
-  const scale = useUi.getState().view?.scale ?? 1;
-  const img: StylePatch = { ...patch };
-  if (patch.width !== undefined) img.width = patch.width / scale;
-  if (patch.font?.size !== undefined) img.font = { ...patch.font, size: patch.font.size / scale };
-  restyleSelected(id, img);
+  if (id !== null) restyleSelected(id, toImagePatch(patch));
 }
 
 /** Troca as selecionadas por `f(anotação)` como um passo só do desfazer (inspetor de propriedades). */
@@ -64,3 +68,35 @@ export function updateSelected(id: DocId, f: (a: Annotation) => Annotation): voi
   const sel = new Set(getSelected(id));
   if (sel.size) commit(id, getItems(id).map((a) => (sel.has(a.id) ? f(a) : a)));
 }
+
+// ---- edição ao vivo (arrastar slider ou escolher cor): um passo só do desfazer ----
+
+let live: { id: DocId; before: Annotation[] } | null = null;
+
+function setLive(id: DocId, next: Annotation[]): void {
+  if (live && live.id !== id) endLive();
+  live ??= { id, before: getItems(id) };
+  useMarkup.getState().setItems(id, next);
+}
+
+/** Como `applyStyle`, mas sem passo no desfazer até `endLive` (o estilo das próximas já muda). */
+export function applyStyleLive(patch: StylePatch): void {
+  useMarkup.getState().setStyle(patch);
+  const id = useDocs.getState().activeId;
+  const sel = id === null ? [] : getSelected(id);
+  if (id !== null && sel.length) setLive(id, restyle(getItems(id), sel, toImagePatch(patch)));
+}
+
+/** Como `updateSelected`, mas sem passo no desfazer até `endLive`. */
+export function updateSelectedLive(id: DocId, f: (a: Annotation) => Annotation): void {
+  const sel = new Set(getSelected(id));
+  if (sel.size) setLive(id, getItems(id).map((a) => (sel.has(a.id) ? f(a) : a)));
+}
+
+/** Fecha a edição ao vivo: tudo o que mudou desde o começo vira um único passo do desfazer. */
+export function endLive(): void {
+  const l = live;
+  live = null;
+  if (l) commit(l.id, getItems(l.id), l.before);
+}
+

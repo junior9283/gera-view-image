@@ -16,7 +16,7 @@ vi.mock("../ipc/commands", () => ({
 }));
 vi.mock("@tauri-apps/plugin-store", () => ({ load: vi.fn(async () => { throw new Error("sem store"); }) }));
 const startCamera = vi.fn();
-vi.mock("./camera", async (orig) => ({ ...(await orig<typeof import("./camera")>()), startCamera: () => startCamera() }));
+vi.mock("./camera", async (orig) => ({ ...(await orig<typeof import("./camera")>()), startCamera: (cb?: () => void) => startCamera(cb) }));
 
 import i18n from "../i18n";
 import { Slot } from "../lib/slots";
@@ -128,7 +128,7 @@ describe("painel Fontes", () => {
   it("lista as fontes devolvidas pelo sistema e aplica a escolhida ao texto", async () => {
     open("Fontes");
     await screen.findByRole("option", { name: "Alfa Serif" });
-    expect(within(screen.getByRole("listbox")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Zeta Sans", "Alfa Serif", "3270 Mono"]);
+    expect(within(screen.getByRole("listbox")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Inter", "sans-serif", "serif", "monospace", "Zeta Sans", "Alfa Serif", "3270 Mono"]);
     fireEvent.click(screen.getByRole("button", { name: "3270 Mono" }));
     expect(useMarkup.getState().style.font?.family).toBe("3270 Mono");
   });
@@ -136,7 +136,7 @@ describe("painel Fontes", () => {
   it("a busca filtra", async () => {
     open("Fontes");
     await screen.findByRole("option", { name: "Alfa Serif" });
-    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "serif" } });
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "alfa" } });
     expect(within(screen.getByRole("listbox")).getAllByRole("option")).toHaveLength(1);
   });
 

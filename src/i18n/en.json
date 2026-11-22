@@ -286,6 +286,7 @@
       "pad": "Signature drawing area",
       "cameraTab": "Camera",
       "camera": {
+        "saveFailed": "Could not save the signature. Try again.",
         "hint": "Sign on white paper and show it to the camera. The camera only turns on when you ask.",
         "start": "Use the camera…",
         "consentTitle": "Turn on the camera?",
@@ -307,7 +308,8 @@
           "unsupported": "This window cannot use the camera (no media support in WebKitGTK/GStreamer).",
           "denied": "Camera permission denied.",
           "notFound": "No camera found. Connect one and try again.",
-          "busy": "The camera is in use by another program.",
+          "disconnected": "The camera was disconnected.",
+        "busy": "The camera is in use by another program.",
           "failed": "Could not turn the camera on."
         }
       }
