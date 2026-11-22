@@ -146,3 +146,10 @@ Formato: sintoma, causa, correção, teste, lição.
 ### ppp absurdo do arquivo na página do PDF e na impressão
 - **Correção:** ppp não finito ou fora de 1 a 10 000 é ignorado (72), nos dois eixos juntos para não distorcer.
 - **Teste:** `ppp_fora_da_faixa_e_ignorado` (`src-tauri/src/image/pdf.rs`) e `escala_em_porcentagem_do_tamanho_natural` (`src-tauri/src/image/print_layout.rs`).
+
+### OpenEXR exportado com alfa reto
+- **Sintoma:** um EXR semitransparente exportado aparecia com halo claro em outros programas (a especificação pede cor pré-multiplicada pelo alfa).
+- **Causa:** `encode::exr` gravava a cor sem multiplicar, e o teste da época fixava esse valor.
+- **Correção:** multiplica pelo alfa ao gravar; a leitura (`hdr::decode_exr`) desfaz.
+- **Teste:** `exr_half_e_float` (`src-tauri/src/image/encode.rs`, valores corrigidos pela especificação) e `exr_exportado_volta_igual` (`src-tauri/tests/formatos.rs`).
+- **Lição:** valor esperado se tira da especificação, não do que o código produz.
