@@ -202,6 +202,7 @@ impl DocStore {
             iptc,
             xmp,
             iptc_keywords: keywords,
+            text_edits: self.meta_edits(id),
             dpi,
         };
         Ok((px, meta, file, state))

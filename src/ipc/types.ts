@@ -121,6 +121,23 @@ export interface Metadata {
   iptc: [string, string][];
   gps: Gps | null;
   keywords: string[];
+  /** Lote 9: abas por formato que o arquivo tem (`image/formatinfo.rs`). */
+  sections: MetaSection[];
+  /** Lote 9: aba do fabricante (MakerNote) e dados da lente. */
+  maker: { name: string; rows: [string, string][] } | null;
+  lens: [string, string][];
+  /** Lote 9: textos como estão no arquivo (XMP, depois IPTC e EXIF). */
+  texts: MetaTexts;
+}
+
+export type MetaSectionId = "tiff" | "jfif" | "png" | "gif" | "heif";
+export interface MetaSection { id: MetaSectionId; rows: [string, string][] }
+
+export interface MetaTexts {
+  title: string | null;
+  description: string | null;
+  author: string | null;
+  altText: string | null;
 }
 
 // ---------- Arquivo (Task 11): espelho de `image/encode.rs` e `doc/file.rs` ----------

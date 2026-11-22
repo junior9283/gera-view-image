@@ -12,7 +12,9 @@ import { useDocs } from "../store/docs";
 import { InspectorHost } from "./Inspector";
 import { setAnnotationSource } from "./annotations";
 import { getPendingKeywords, resetKeywordsForTests } from "./keywords";
-import { toggleInspector } from "./toggle";
+import { getPendingTextEdits, resetTextEditsForTests } from "./textEdits";
+import { openInspectorTab, toggleInspector } from "./toggle";
+import { useSelection } from "../store/selection";
 
 const info: DocInfo = {
   id: 7, path: "/x/a.jpg", name: "a.jpg", format: "jpeg", width: 32, height: 24, frames: 1,
@@ -28,6 +30,10 @@ const meta: Metadata = {
   iptc: [["Title", "Praia"]],
   gps: { lat: 48.858333, lon: -122.419444, alt: 15.5 },
   keywords: ["mar"],
+  sections: [],
+  maker: null,
+  lens: [],
+  texts: { title: null, description: null, author: null, altText: null },
 };
 
 async function abrir() {
@@ -40,6 +46,8 @@ beforeEach(() => {
   metadata.mockReset().mockResolvedValue(meta);
   openUrl.mockReset();
   resetKeywordsForTests();
+  resetTextEditsForTests();
+  useSelection.setState({ selection: null });
   setAnnotationSource(null);
   useDocs.setState({ docs: [info], activeId: 7 });
 });
@@ -120,5 +128,73 @@ describe("Inspector", () => {
     metadata.mockRejectedValue({ code: "io", message: "x" });
     await abrir();
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+  });
+
+  it("abas do formato, do fabricante e da lente só aparecem quando o arquivo as tem", async () => {
+    metadata.mockResolvedValue({
+      ...meta,
+      sections: [{ id: "jfif", rows: [["JFIF Version", "1.02"]] }, { id: "tiff", rows: [["Software", "<b>x</b>"]] }],
+      maker: { name: "Canon", rows: [["Lens Model", "EF50mm"]] },
+      lens: [["Lens Model", "EF50mm"]],
+    });
+    await abrir();
+    expect(await screen.findByRole("tab", { name: "JFIF" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "PNG" })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "JFIF" }));
+    expect(await screen.findByText("1.02")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "TIFF" }));
+    // Texto vindo do arquivo nunca vira HTML.
+    expect(await screen.findByText("<b>x</b>")).toBeTruthy();
+    expect(document.querySelector(".inspector-body b")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Canon" }));
+    expect((await screen.findAllByText("EF50mm")).length).toBe(1);
+    fireEvent.click(screen.getByRole("tab", { name: "Lente" }));
+    expect(await screen.findByText("EF50mm")).toBeTruthy();
+  });
+
+  it("aba Descrição edita título, descrição, autor e texto alternativo e deixa pendente", async () => {
+    metadata.mockResolvedValue({ ...meta, texts: { ...meta.texts, title: "Praia" } });
+    await abrir();
+    fireEvent.click(screen.getByRole("tab", { name: "Descrição" }));
+    const title = (await screen.findByLabelText("Título")) as HTMLInputElement;
+    expect(title.value).toBe("Praia");
+    expect(getPendingTextEdits(7)).toBeNull();
+    fireEvent.change(title, { target: { value: "Mar" } });
+    fireEvent.change(screen.getByLabelText("Autor"), { target: { value: "Ana" } });
+    fireEvent.change(screen.getByLabelText("Descrição da Imagem (texto alternativo)"), { target: { value: "Um gato" } });
+    expect(getPendingTextEdits(7)).toEqual({ title: "Mar", author: "Ana", altText: "Um gato" });
+  });
+
+  it("openInspectorTab abre o Inspetor direto na aba pedida", async () => {
+    render(createElement(InspectorHost));
+    act(() => openInspectorTab("description"));
+    expect(await screen.findByLabelText("Título")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Descrição", selected: true })).toBeTruthy();
+  });
+
+  it("aba Recorte: sem seleção avisa; com retângulo mostra e edita posição e tamanho", async () => {
+    await abrir();
+    fireEvent.click(screen.getByRole("tab", { name: "Recorte" }));
+    expect(await screen.findByText(/Sem seleção/)).toBeTruthy();
+    act(() => useSelection.setState({ selection: { type: "rect", data: { x: 4, y: 6, w: 10, h: 8 } } }));
+    const w = (await screen.findByLabelText("Largura")) as HTMLInputElement;
+    expect(w.value).toBe("10");
+    expect((screen.getByLabelText("Posição X") as HTMLInputElement).value).toBe("4");
+    fireEvent.change(w, { target: { value: "99" } });
+    fireEvent.blur(w);
+    // limitada à imagem (32 de largura, a partir de x=4)
+    expect(useSelection.getState().selection).toEqual({ type: "rect", data: { x: 4, y: 6, w: 28, h: 8 } });
+    // unidade: 1 pol = 72 px com 72 ppp
+    fireEvent.change(screen.getByLabelText("Unidade"), { target: { value: "in" } });
+    expect((screen.getByLabelText("Posição X") as HTMLInputElement).value).toBe("0.06");
+  });
+
+  it("aba Recorte: seleção livre mostra a caixa, só para leitura", async () => {
+    useSelection.setState({ selection: { type: "polygon", data: [[2, 3], [12, 3], [7, 13]] } });
+    await abrir();
+    fireEvent.click(screen.getByRole("tab", { name: "Recorte" }));
+    const h = (await screen.findByLabelText("Altura")) as HTMLInputElement;
+    expect(h.value).toBe("10");
+    expect(h.disabled).toBe(true);
   });
 });

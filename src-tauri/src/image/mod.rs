@@ -7,7 +7,10 @@ pub mod encode_heic;
 pub mod encode_jp2;
 pub mod heic;
 pub mod icc;
+pub mod formatinfo; // Lote 9
+pub mod makernote; // Lote 9
 pub mod metadata;
+pub mod metaedit; // Lote 9
 pub mod ocr; // Lote 3
 pub mod ops;
 pub mod raster;

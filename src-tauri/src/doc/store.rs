@@ -12,6 +12,7 @@ use super::{
     model::{DocId, DocInfo, Op, Rect, SourceFormat},
 };
 use crate::{
+    commands::describe::MetadataEdits,
     error::{AppError, AppResult},
     image::{
         decode::{self, Decoded},
@@ -289,6 +290,8 @@ struct Inner {
     pipeline_runs: AtomicUsize,
     /// Cache de 1 entrada da base reduzida da prévia de ajuste (`preview_base`).
     preview: Mutex<Option<(PreviewKey, Arc<Vec<u8>>)>>,
+    /// Título, descrição, autor e texto alternativo editados no Inspetor (Lote 9), por documento.
+    meta_edits: Mutex<HashMap<DocId, MetadataEdits>>,
 }
 
 /// Documentos abertos (`Mutex<HashMap<DocId, Document>>`), compartilhável entre threads.
@@ -370,8 +373,27 @@ impl DocStore {
                 inflight: Mutex::new(HashMap::new()),
                 pipeline_runs: AtomicUsize::new(0),
                 preview: Mutex::new(None),
+                meta_edits: Mutex::new(HashMap::new()),
             }),
         }
+    }
+
+    /// Guarda (ou, vazio, esquece) as edições de texto do documento para o próximo Salvar/Exportar.
+    /// O front reenvia o conjunto inteiro antes de cada gravação.
+    pub fn set_meta_edits(&self, id: DocId, edits: &MetadataEdits) {
+        let e = edits.cleaned();
+        let mut map = self.inner.meta_edits.lock().unwrap_or_else(|p| p.into_inner());
+        if e.is_empty() {
+            map.remove(&id);
+        } else {
+            map.insert(id, e);
+        }
+    }
+
+    /// Edições de texto a gravar para `id`, se houver.
+    pub fn meta_edits(&self, id: DocId) -> Option<MetadataEdits> {
+        let map = self.inner.meta_edits.lock().unwrap_or_else(|p| p.into_inner());
+        map.get(&id).cloned()
     }
 
     /// Chamado (fora de qualquer trava) quando um documento muda sozinho.

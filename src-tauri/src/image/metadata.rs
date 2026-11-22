@@ -1,6 +1,11 @@
 //! Metadados para o inspetor: geral, EXIF (rótulos legíveis), IPTC (APP13), GPS e palavras-chave.
 //! Tudo é tolerante: bloco corrompido vira lista vazia, nunca erro nem pânico.
-use super::decode::Decoded;
+use super::{
+    decode::Decoded,
+    formatinfo::{self, Section},
+    makernote::{self, Maker},
+    metaedit::{self, Texts, xml_unescape},
+};
 use crate::error::AppResult;
 use ::image::{ImageDecoder, ImageFormat, ImageReader};
 use exif::{Context, In, Reader, Tag, Value};
@@ -45,6 +50,11 @@ pub struct Blocks {
     pub iptc: Vec<(String, String)>,
     pub gps: Option<Gps>,
     pub keywords: Vec<String>,
+    /// Aba do fabricante (MakerNote) e dados da lente.
+    pub maker: Option<Maker>,
+    pub lens: Vec<(String, String)>,
+    /// Título, descrição, autor e texto alternativo como estão no arquivo.
+    pub texts: Texts,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -55,6 +65,11 @@ pub struct Metadata {
     pub iptc: Vec<(String, String)>,
     pub gps: Option<Gps>,
     pub keywords: Vec<String>,
+    /// Abas por formato: `tiff`, `jfif`, `png`, `gif` ou `heif` (só as que o arquivo tem).
+    pub sections: Vec<Section>,
+    pub maker: Option<Maker>,
+    pub lens: Vec<(String, String)>,
+    pub texts: Texts,
 }
 
 /// Lê os metadados de `path`. `decoded` traz EXIF, ICC e DPI já extraídos na abertura.
@@ -88,6 +103,10 @@ pub fn read_metadata(path: &Path, decoded: &Decoded) -> AppResult<Metadata> {
         iptc: b.iptc,
         gps: b.gps,
         keywords: b.keywords,
+        sections: formatinfo::sections(&bytes, decoded.exif.as_deref()),
+        maker: b.maker,
+        lens: b.lens,
+        texts: b.texts,
     })
 }
 
@@ -103,6 +122,8 @@ pub fn parse_blocks(file: &[u8], exif_tiff: Option<&[u8]>) -> Blocks {
             out.exif.push((f.tag.to_string(), unquote(&value)));
         }
         out.gps = gps_of(&exif);
+        out.maker = makernote::maker_of(&exif);
+        out.lens = makernote::lens_rows(&exif, out.maker.as_ref());
     }
     let (iim, xmp) = file_iim_xmp(file);
     let mut keywords = Vec::new();
@@ -115,6 +136,7 @@ pub fn parse_blocks(file: &[u8], exif_tiff: Option<&[u8]>) -> Blocks {
         }
     }
     out.keywords = keywords;
+    out.texts = metaedit::texts_of(xmp.as_deref(), &out.iptc, &out.exif);
     out
 }
 
@@ -162,7 +184,7 @@ fn gps_of(exif: &exif::Exif) -> Option<Gps> {
 }
 
 /// Segmentos APP de um JPEG: `(marcador, payload)`, parando no início dos dados (SOS).
-fn jpeg_segments(b: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {
+pub(super) fn jpeg_segments(b: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {
     let mut pos = 2usize;
     std::iter::from_fn(move || {
         loop {
@@ -314,14 +336,6 @@ fn xmp_keywords(xmp: &str) -> Vec<String> {
         }
     }
     out
-}
-
-fn xml_unescape(s: &str) -> String {
-    s.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&amp;", "&")
 }
 
 /// Nome do perfil ICC: tag `desc` (v2 `desc`, v4 `mluc`).

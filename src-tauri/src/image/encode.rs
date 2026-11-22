@@ -3,10 +3,11 @@
 use super::{
     container::{self, TiffMeta},
     encode_heic, encode_jp2,
-    icc,
+    icc, metaedit,
     raster::Raster,
 };
 use crate::{
+    commands::describe::MetadataEdits,
     doc::model::SourceFormat,
     error::{AppError, AppResult},
 };
@@ -128,6 +129,8 @@ pub struct MetaCarry {
     pub xmp: Option<String>,
     /// Palavras-chave editadas: substituem IPTC 2:25 e XMP `dc:subject`.
     pub iptc_keywords: Option<Vec<String>>,
+    /// Título, descrição, autor e texto alternativo editados no inspetor (Lote 9).
+    pub text_edits: Option<MetadataEdits>,
     pub dpi: Option<(f32, f32)>,
 }
 
@@ -201,14 +204,7 @@ pub fn encode<'a>(
         with_alpha,
         opts.depth16 && matches!(fmt, ExportFormat::Png | ExportFormat::Tiff),
     );
-    let xmp = match &meta.iptc_keywords {
-        Some(k) => Some(xmp_with_keywords(meta.xmp.as_deref(), k)),
-        None => meta.xmp.clone(),
-    };
-    let iptc = match &meta.iptc_keywords {
-        Some(k) => Some(iim_with_keywords(meta.iptc.as_deref(), k)),
-        None => meta.iptc.clone(),
-    };
+    let (xmp, iptc) = edited_blocks(&meta);
 
     let mut out = Vec::new();
     match fmt {
@@ -404,6 +400,20 @@ pub fn exif_reset_orientation(tiff: &[u8]) -> Vec<u8> {
 
 // ---------- IPTC / XMP ----------
 
+/// XMP e IPTC a gravar: os do original com as palavras-chave e os textos editados aplicados.
+fn edited_blocks(meta: &MetaCarry) -> (Option<String>, Option<Vec<u8>>) {
+    let (mut xmp, mut iptc) = (meta.xmp.clone(), meta.iptc.clone());
+    if let Some(k) = &meta.iptc_keywords {
+        xmp = Some(xmp_with_keywords(xmp.as_deref(), k));
+        iptc = Some(iim_with_keywords(iptc.as_deref(), k));
+    }
+    if let Some(e) = meta.text_edits.as_ref().filter(|e| !e.is_empty()) {
+        xmp = Some(metaedit::xmp_with_edits(xmp.as_deref(), e));
+        iptc = Some(metaedit::iim_with_edits(iptc.as_deref(), e));
+    }
+    (xmp, iptc)
+}
+
 /// IIM com os registros 2:25 trocados por `keywords` (e 1:90 = UTF-8).
 pub fn iim_with_keywords(orig: Option<&[u8]>, keywords: &[String]) -> Vec<u8> {
     let rec = |r: u8, n: u8, v: &[u8]| {
@@ -432,7 +442,7 @@ pub fn iim_with_keywords(orig: Option<&[u8]>, keywords: &[String]) -> Vec<u8> {
     out
 }
 
-fn xml_escape(s: &str) -> String {
+pub(crate) fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

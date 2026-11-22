@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { notify } from "../chrome/notify";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
+import { hasPendingTextEdits } from "../inspector/textEdits";
 import * as ipc from "../ipc/commands";
 import { annotationsPng } from "../markup/flatten";
 import { forgetHistory } from "../markup/history";
@@ -89,7 +90,7 @@ const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "tiff", "png", "we
  * grava; senão continuam pendentes e o usuário é avisado (`format` nulo = metadados removidos).
  */
 export function settleKeywords(id: DocId, format: string | null): void {
-  if (!getPendingKeywords(id)) return;
+  if (!getPendingKeywords(id) && !hasPendingTextEdits(id)) return;
   if (format && KEYWORD_FORMATS.has(format)) clearKeywords(id);
   else notify(t("file.keywordsNotSaved"));
 }

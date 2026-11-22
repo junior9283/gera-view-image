@@ -111,3 +111,29 @@
   padding: 4px 0;
   cursor: pointer;
 }
+.inspector-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inspector-form label,
+.inspector-unit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.inspector-unit {
+  margin-bottom: 8px;
+}
+.inspector-form input,
+.inspector-form textarea,
+.inspector-unit select {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  resize: vertical;
+}
+.inspector-form span,
+.inspector-unit span {
+  color: #aaa;
+}
