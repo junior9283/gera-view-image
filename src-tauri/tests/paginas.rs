@@ -413,3 +413,38 @@ fn reverter_recalcula_formato_paginas_e_se_da_para_gravar() {
     assert!(!info.writable);
     assert!(matches!(store.save(id, None).unwrap(), SaveOutcome::NeedsExport));
 }
+
+// ---------- arquivos hostis ----------
+
+/// Páginas demais: recusado, em vez de abrir só a primeira (que o Salvar gravaria sozinha).
+#[test]
+fn tiff_com_paginas_demais_nao_abre_como_uma_pagina() {
+    let path = tmp("paginas-demais").join("t.tiff");
+    let mut out = Cursor::new(Vec::new());
+    let mut e = TiffEncoder::new(&mut out).unwrap();
+    for _ in 0..=gera_view_image_lib::image::decode::MAX_PAGES {
+        e.write_image::<ct::Gray8>(1, 1, &[7]).unwrap();
+    }
+    fs::write(&path, out.into_inner()).unwrap();
+    assert!(decode(&path).is_err());
+}
+
+/// A segunda página só o decodificador de uma página lê: abrir só a primeira perderia a outra.
+#[test]
+fn tiff_de_varias_paginas_nao_cai_no_leitor_de_uma_pagina() {
+    let path = tmp("paginas-fallback").join("t.tiff");
+    let mut out = Cursor::new(Vec::new());
+    let mut e = TiffEncoder::new(&mut out).unwrap();
+    e.write_image::<ct::RGB8>(2, 2, &[9; 12]).unwrap();
+    e.write_image::<ct::CMYK8>(2, 2, &[9; 16]).unwrap();
+    fs::write(&path, out.into_inner()).unwrap();
+    if let Ok(d) = decode(&path) {
+        assert_eq!(d.frames.len(), 2, "abriu só uma página");
+    }
+    // Uma página só continua abrindo pelo leitor alternativo.
+    let um = path.with_file_name("u.tiff");
+    let mut out = Cursor::new(Vec::new());
+    TiffEncoder::new(&mut out).unwrap().write_image::<ct::CMYK8>(2, 2, &[9; 16]).unwrap();
+    fs::write(&um, out.into_inner()).unwrap();
+    assert_eq!(decode(&um).map(|d| d.frames.len()).ok(), Some(1));
+}

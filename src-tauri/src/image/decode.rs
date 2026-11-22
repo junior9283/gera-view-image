@@ -277,9 +277,13 @@ fn decode_format(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
         Tga => decode_image_crate(bytes, ImageFormat::Tga, format),
         Gif => decode_gif(bytes),
         Webp => decode_webp(bytes),
-        Tiff => {
-            decode_tiff(bytes).or_else(|_| decode_image_crate(bytes, ImageFormat::Tiff, format))
-        }
+        // O leitor alternativo só lê a primeira página: só vale para um arquivo de uma página só,
+        // senão o documento abriria sem as outras (e o Salvar as apagaria). Teto e cadeia de IFDs
+        // inválida também não caem nele.
+        Tiff => decode_tiff(bytes).or_else(|e| match super::container::tiff_pages(bytes) {
+            Some(pages) if pages.len() == 1 => decode_image_crate(bytes, ImageFormat::Tiff, format),
+            _ => Err(e),
+        }),
         Heic | Avif => decode_heif(bytes, format),
         Svg => decode_svg(bytes),
         Psd => decode_psd(bytes),
