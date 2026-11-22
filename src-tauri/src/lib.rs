@@ -42,6 +42,7 @@ pub fn run() {
         .manage(startup)
         .manage(doc::windows::WindowRegistry::default())
         .manage(commands::window::Quitting::default())
+        .manage(commands::window::Pongs::default())
         .on_window_event(commands::window::on_event)
         .invoke_handler(commands::window::guard(tauri::generate_handler![
             commands::docs::open_documents,
@@ -141,6 +142,8 @@ pub fn run() {
             commands::window::close_other_windows,
             commands::window::confirm_quit,
             commands::window::answer_close,
+            commands::window::pong,
+            commands::window::decline_merge,
             commands::window::cancel_quit,
             commands::window::quit_app
         ]))
