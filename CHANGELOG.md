@@ -27,9 +27,16 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Arquivo › Mover para o Lixo (Ctrl+Backspace): usa o portal `org.freedesktop.portal.Trash` e, sem portal, a especificação freedesktop Trash (crate `trash`). Nunca apaga o arquivo: se não houver Lixo, mostra o erro e o arquivo fica onde está. Com alterações não salvas, pergunta antes. Um link simbólico vai para o Lixo como link, e o alvo fica.
 - Arquivo › Salvar Como… (Ctrl+Shift+Alt+S): grava em outro arquivo (JPEG, PNG, TIFF, WebP, AVIF ou BMP, pela extensão), que passa a ser o documento.
 - Reverter Para › Procurar Todas as Versões…: cada Salvar guarda antes a versão anterior do arquivo numa pasta privada do app (`~/.local/share/gera-view-image/versions`, 0700, arquivos 0600), até 500 MB no total (`versionsMaxMb`; as mais antigas saem primeiro). O navegador mostra a versão atual ao lado da escolhida, e Restaurar troca o conteúdo do documento sem gravar: o arquivo só muda no próximo Salvar. As versões são do caminho do arquivo e não acompanham Renomear/Mover.
+- Arquivo › Exportar como PDF…: uma página por imagem (todas as páginas de um TIFF ou PSD aberto), no tamanho físico dado pela resolução do arquivo (72 ppp quando ele não diz). As cores são sRGB, a transparência é mantida e as anotações não salvas saem no PDF sem mudar o documento.
+- Exportar também em PDF e, com a tecla Alt (ou Alt+clique no formato), em GIF, ICO (reduzido a 256 px), TGA e Photoshop (PSD achatado). GIF, ICO, TGA e PDF saem em sRGB; o PSD leva o perfil da imagem.
+- Exportar › Resolução (ppp), gravada em JPEG, PNG, TIFF, BMP, EXR, PSD, no EXIF de WebP, AVIF e HEIC, e usada no tamanho da página do PDF. Há também compressão do TIFF (nenhuma, LZW, PackBits ou Deflate), OpenEXR de 16 (half) ou 32 bits (float) e etiquetas (`user.xdg.tags`).
+
+### Alterado
+- Imprimir passou do diálogo do WebKit para o do sistema (`GtkPrintOperation`), com um diálogo próprio antes: prévia da página, cópias, papel, orientação, girar automaticamente, escala em %, Imprimir imagem inteira ou Preencher o papel, de 1 a 16 imagens por página (uma só imagem se repete) e mostrar ou não as marcações.
 
 ### Corrigido
 - Salvar (e Exportar por cima de um arquivo) não apaga mais os atributos estendidos `user.*` do arquivo, como etiquetas, comentário e nota do Dolphin. A gravação atômica cria um arquivo novo, e agora eles são copiados para ele.
+- TIFF com resolução sem unidade (só a proporção) não é mais lido como 1 ppp, o que fazia as páginas impressas e em PDF terem metros de lado.
 
 ### Limitações conhecidas (o que falta para a 1.0)
 - AVIF salvo leva só o EXIF: o codificador (ravif/avif-serialize) não grava perfil ICC nem XMP, então as palavras-chave ficam pendentes; as cores são convertidas para sRGB. JPEG CMYK é regravado em RGB, sem perfil, com a conversão simples do decodificador (sem gestão de cor pelo perfil CMYK).
