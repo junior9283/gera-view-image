@@ -278,10 +278,11 @@ describe("Exportar em documento de várias páginas", () => {
     useUi.setState({ page: null });
   });
 
-  it("avisa e grava a página exibida, também depois de trocar o formato", async () => {
+  it("o TIFF guarda todas; noutro formato, avisa e grava a página exibida", async () => {
     open(1);
-    expect(screen.getByTestId("export-page").textContent).toBe("Só a página 2 de 3 será gravada.");
+    expect(screen.queryByTestId("export-page")).toBeNull();
     fireEvent.change(screen.getByLabelText("Formato"), { target: { value: "png" } });
+    expect(screen.getByTestId("export-page").textContent).toBe("Só a página 2 de 3 será gravada.");
     await act(async () => fireEvent.click(screen.getByTestId("export-ok")));
     expect(ipc.exportDoc).toHaveBeenCalledWith(1, expect.any(String), expect.objectContaining({ format: "png", frame: 1 }), null);
   });

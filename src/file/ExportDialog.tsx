@@ -17,6 +17,7 @@ import {
   ALT_FORMATS, EXTENSIONS, defaultOptions, exportFormatOf, exportFormats, formatBytes, useEstimate, useHeicEncoder,
 } from "./estimate";
 import { dirname, exportDoc, stem } from "./fileActions";
+import { annotationsLoss, metadataLoss } from "./loss";
 import "./file.css";
 
 const LOSSY: ExportFormat[] = ["jpeg", "heic", "webp", "avif", "jp2", "pdf"];
@@ -238,6 +239,21 @@ function FolderField({ folder, setFolder }: { folder: string; setFolder: (f: str
   );
 }
 
+/** O que a exportação deixa de fora além das páginas (que têm o aviso próprio). */
+function useLosses(doc: DocInfo, o: ExportOptions): string[] {
+  const [meta, setMeta] = useState<{ key: string; lines: string[] } | null>(null);
+  const { format, stripMetadata } = o;
+  const key = `${doc.id}:${format}:${stripMetadata}`;
+  useEffect(() => {
+    let live = true;
+    void metadataLoss(doc, { format, stripMetadata }).then((lines) => live && setMeta({ key, lines }));
+    return () => {
+      live = false;
+    };
+  }, [doc, format, stripMetadata, key]);
+  return [...annotationsLoss(doc, o), ...(meta?.key === key ? meta.lines : [])];
+}
+
 /** Exportar… (e "Salvar Como" para o que não dá para regravar no lugar). */
 export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "export" | "save"; onClose: () => void }) {
   const { t, i18n } = useTranslation();
@@ -249,17 +265,22 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
+  // Como no app da Apple: exporta o que está na tela.
+  const [frame] = useState(() => shownPage(doc.id));
   const [dpi, setDpi] = useState<number | null>(null);
   useEffect(() => {
     let live = true;
-    ipc.documentDpi(doc.id).then((d) => live && setDpi(d), () => {});
+    ipc.documentDpi(doc.id, frame).then((d) => live && setDpi(d), () => {});
     return () => {
       live = false;
     };
-  }, [doc.id]);
-  // Como no app da Apple: exporta o que está na tela.
-  const [frame] = useState(() => shownPage(doc.id));
-  const bytes = useEstimate(doc.id, { ...opts, frame });
+  }, [doc.id, frame]);
+  // Um TIFF guarda todas as páginas do documento.
+  const [allPages, setAllPages] = useState(true);
+  const paged = hasPages(doc);
+  const out: ExportOptions = { ...opts, frame, ...(paged && opts.format === "tiff" ? { allPages } : {}) };
+  const bytes = useEstimate(doc.id, out);
+  const losses = useLosses(doc, out);
   const heic = useHeicEncoder();
 
   // Outro destino: o aviso de substituir era sobre o anterior.
@@ -293,7 +314,7 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
     if (!agreed && (await ipc.pathExists(dest))) return setOverwrite(dest);
     setBusy(true);
     try {
-      const info = await exportDoc(doc.id, dest, { ...opts, frame }, tags);
+      const info = await exportDoc(doc.id, dest, out, tags);
       lastFolder = folder.trim();
       if (info.path === dest) addRecent(dest);
       notify(t("file.exported", { name: name.trim() }));
@@ -317,9 +338,16 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
       </div>
       <FolderField folder={folder} setFolder={moveTo} />
       <OptionsFields opts={opts} onChange={changeOpts} currentDpi={dpi} />
-      {hasPages(doc) && (
+      {paged && opts.format === "tiff" && (
+        <label className="file-check">
+          <input type="checkbox" checked={allPages} onChange={(e) => setAllPages(e.target.checked)} />
+          {t("file.export.allPages")}
+        </label>
+      )}
+      {paged && !out.allPages && (
         <p className="file-hint" data-testid="export-page">{t("file.export.onlyPage", { page: frame + 1, total: doc.frames })}</p>
       )}
+      {losses.length > 0 && <p className="file-hint" data-testid="export-losses">{losses.join(" ")}</p>}
       {doc.format === "heic" && heic === false && <p className="file-hint">{t("file.export.heicEncoderMissing")}</p>}
       <p className="file-hint" data-testid="export-estimate">
         {bytes === null ? t("file.export.estimating") : t("file.export.estimate", { size: formatBytes(bytes, i18n.language) })}
@@ -372,6 +400,8 @@ export function ExportSelectedDialog({ onClose }: { onClose: () => void }) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const firstOnly = opts.format !== "tiff" && docs.some((d) => chosen.has(d.id) && hasPages(d));
+
   const toggle = (id: number) =>
     setChosen((s) => {
       const n = new Set(s);
@@ -389,7 +419,12 @@ export function ExportSelectedDialog({ onClose }: { onClose: () => void }) {
     for (const [i, d] of list.entries()) {
       try {
         const dest = await freeName(folder.trim(), stem(d.name), EXTENSIONS[opts.format]);
-        await exportDoc(d.id, dest, { ...opts, resize: fitLongest(d.width, d.height, Number(longest)) });
+        const max = Number(longest);
+        // TIFF de várias páginas: todas, cada uma limitada ao lado maior.
+        const pages = opts.format === "tiff" && hasPages(d);
+        await exportDoc(d.id, dest, pages
+          ? { ...opts, allPages: true, resize: max ? [max, max] : null }
+          : { ...opts, resize: fitLongest(d.width, d.height, max) });
         ok++;
       } catch (e) {
         console.error(e);
@@ -417,6 +452,7 @@ export function ExportSelectedDialog({ onClose }: { onClose: () => void }) {
       </fieldset>
       <FolderField folder={folder} setFolder={setFolder} />
       <OptionsFields opts={opts} onChange={setOpts} />
+      {firstOnly && <p className="file-hint" data-testid="export-pages-lost">{t("file.export.firstPageOnly")}</p>}
       <label className="file-row">
         <span>{t("file.export.resize")}</span>
         <input type="number" min={1} value={longest} onChange={(e) => setLongest(e.target.value)} />

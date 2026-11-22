@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as ipc from "../ipc/commands";
 import type { DocId, DocInfo, Rect } from "../ipc/types";
 import { confirmAndSave } from "../file/unsaved";
+import { pageSize } from "../lib/pages";
 import { useDocs } from "../store/docs";
 import { getPrefs } from "../store/prefs";
 import { openHere } from "../tabs/open";
@@ -15,7 +16,7 @@ export function activeDoc(): DocInfo | null {
   return docs.find((d) => d.id === activeId) ?? null;
 }
 
-const imgSize = (d: DocInfo): Size => ({ w: d.width, h: d.height });
+const imgSize = (d: DocInfo): Size => pageSize(d, useUi.getState().page);
 
 /** Documento que dá para mostrar no Viewport (sem erro e com tamanho). */
 export const viewable = (d: DocInfo | null): d is DocInfo => !!d && !d.error && d.width > 0 && d.height > 0;

@@ -32,6 +32,8 @@ const ANTS_PHASES = 8;
 interface Props extends ViewTransform {
   docId: number;
   format?: SourceFormat;
+  /** Página mostrada (documento de várias páginas). */
+  frame?: number;
   imageWidth: number;
   imageHeight: number;
 }
@@ -75,7 +77,7 @@ function sizeLabelStyle(r: Rect, view: ViewTransform, area: { w: number; h: numb
 
 /** Camada de seleção: formigas marchando, alças, laço, laço magnético e Alfa Instantâneo.
  *  Autocontida: sobreponha à área da imagem do Viewport (pai com `position: relative`). */
-export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih, scale, panX, panY }: Props) {
+export function SelectionLayer({ docId, format, frame, imageWidth: iw, imageHeight: ih, scale, panX, panY }: Props) {
   const { t } = useTranslation();
   const selection = useSelection((s) => s.selection);
   const tool = useSelection((s) => s.selectionTool);
@@ -286,7 +288,7 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
       const gen = ++alphaSeq.current;
       // Uma chamada por vez ao Rust; tolerâncias novas se reduzem à última.
       const request = latestOnly(
-        (tol: number) => ipc.instantAlpha(docId, seed[0], seed[1], tol),
+        (tol: number) => ipc.instantAlpha(docId, seed[0], seed[1], tol, frame),
         (m, _tol, last) => {
           if (gen !== alphaSeq.current) return; // arrasto cancelado ou substituído
           setAlpha(m);
@@ -341,7 +343,7 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
       const pts = simplifyPath(d.points, 1 / scale);
       if (pts.length < 3) return setSelection(null);
       if (!d.snap) return setSelection({ type: "polygon", data: pts });
-      void ipc.snapLasso(docId, pts).then((snapped) => {
+      void ipc.snapLasso(docId, pts, frame).then((snapped) => {
         if (snapped.length >= 3) setSelection({ type: "polygon", data: snapped });
       });
     } else if (committed && isBox(committed) && committed.data.w > 0 && committed.data.h > 0) {

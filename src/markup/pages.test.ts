@@ -20,6 +20,7 @@ import { defaultOptions } from "../file/estimate";
 import { duplicateActive, exportDoc, flattenedCopy, saveDoc, useFileUi } from "../file/fileActions";
 import { registerFileCommands } from "../file/register";
 import { saveAsActive } from "../finder/actions";
+import { answerConfirm, useFinderUi } from "../finder/store";
 import { copySelection } from "../select/actions";
 import { useDocs } from "../store/docs";
 import { setPrefs } from "../store/prefs";
@@ -48,6 +49,14 @@ const composites = () =>
   });
 const opts = (frame?: number) => ({ ...defaultOptions("png"), frame });
 const pendingWarning = () => getToasts().some((t) => t.text.includes("outras páginas"));
+
+/** Salvar Como, aceitando o aviso de que as outras páginas ficam de fora. */
+async function saveAsConfirmed() {
+  const done = saveAsActive();
+  await vi.waitFor(() => expect(useFinderUi.getState().confirm).not.toBeNull());
+  answerConfirm(true);
+  await done;
+}
 
 let off: () => void;
 let rev = 1;
@@ -134,7 +143,7 @@ describe("gravar uma página não consome as anotações das outras", () => {
 
   it("Salvar Como grava a página exibida e o documento não fica limpo", async () => {
     dialog.save.mockResolvedValue("/f/n.png");
-    await saveAsActive();
+    await saveAsConfirmed();
     expect(composites()).toEqual([[5, "bc", 2]]);
     expect(calls("save_as")[0].opts).toMatchObject({ frame: 2 });
     expect(ids(5)).toEqual(["a"]);
@@ -150,7 +159,7 @@ describe("gravar uma página não consome as anotações das outras", () => {
     });
     useDocs.getState().setActive(6);
     dialog.save.mockResolvedValue("/f/n.png");
-    await saveAsActive();
+    await saveAsConfirmed();
     expect(pendingWarning()).toBe(true);
   });
 

@@ -4,6 +4,7 @@ import i18n from "../i18n";
 import * as ipc from "../ipc/commands";
 import { notify, notifyError } from "../chrome/notify";
 import { useModal } from "../lib/modal";
+import { shownPage } from "../markup/pages";
 import { useUi } from "../store/ui";
 import { activeDoc, panBy } from "../viewer/actions";
 import { useConfirm } from "./actions";
@@ -15,7 +16,7 @@ import "./livetext.css";
 async function searchImage() {
   const doc = activeDoc();
   if (!doc) return;
-  await ipc.copyRegion(doc.id, null);
+  await ipc.copyRegion(doc.id, null, shownPage(doc.id));
   await ipc.openWeb("images", "", "");
   notify(i18n.t("livetext.imageCopied"));
 }

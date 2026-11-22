@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo, Rect } from "../../ipc/types";
+import { pageSize, useShownPage } from "../../markup/pages";
 import { useSelection } from "../../store/selection";
 import { CROP_UNITS, formatUnit, isEditable, maskBounds, toPx, withField, type CropUnit } from "../crop";
 
@@ -11,6 +12,7 @@ export function CropTab({ doc, dpi }: { doc: DocInfo; dpi: number | null }) {
   const { t } = useTranslation();
   const selection = useSelection((s) => s.selection);
   const setSelection = useSelection((s) => s.setSelection);
+  const page = useShownPage(doc);
   const [unit, setUnit] = useState<CropUnit>("px");
   const bounds = selection ? maskBounds(selection) : null;
   if (!selection || !bounds) return <p className="inspector-empty">{t("inspector.crop.none")}</p>;
@@ -20,7 +22,8 @@ export function CropTab({ doc, dpi }: { doc: DocInfo; dpi: number | null }) {
   const commit = (field: keyof Rect, raw: string): Rect => {
     if (!isEditable(selection) || raw.trim() === "") return bounds;
     const px = toPx(Number(raw.replace(",", ".")), unit, dpi);
-    const data = withField(selection.data, field, px, doc.width, doc.height);
+    const { w, h } = pageSize(doc, page);
+    const data = withField(selection.data, field, px, w, h);
     setSelection({ type: selection.type, data });
     return data;
   };

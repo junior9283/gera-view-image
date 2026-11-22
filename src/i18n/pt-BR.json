@@ -66,6 +66,7 @@
     "heic_decoder_missing": "Para abrir HEIC, instale a libde265 (no Fedora: RPM Fusion)",
     "empty_selection": "Faça uma seleção primeiro",
     "clipboard_empty": "A área de transferência não tem imagem",
+    "too_large": "A imagem é grande demais para gravar assim",
     "doc": {
       "title": "Não foi possível abrir esta imagem",
       "corrupt": "O arquivo está corrompido ou incompleto.",
@@ -610,7 +611,16 @@
     "pasted": "Colada",
     "capture": "Captura de tela",
     "saved": "Salvo: {{name}}",
+    "loss": {
+      "title": "Gravar “{{name}}” sem tudo?",
+      "ok": "Gravar Assim Mesmo",
+      "pages": "Só a página {{page}} de {{total}} será gravada: as outras não vão para este formato. Para manter todas, use TIFF.",
+      "annotations": "As anotações das outras páginas não vão para o arquivo; elas continuam no documento, não salvas.",
+      "exif": "Este formato não guarda o EXIF (data, câmera, localização).",
+      "text": "Este formato não guarda XMP nem IPTC (título, descrição, autor, palavras-chave)."
+    },
     "metaNote": {
+      "exifTooBig": "O EXIF (data, câmera, localização) passa dos 64 KB que um JPEG aceita e não foi gravado. Para mantê-lo, exporte em TIFF, PNG ou WebP.",
       "xmpRebuilt": "O XMP do arquivo não pôde ser editado com segurança e foi refeito: ele guarda só título, descrição, autor e texto alternativo, e o restante do XMP (como classificação) não foi mantido.",
       "exifDropped": "Não foi possível limpar o texto antigo do EXIF com segurança, então o EXIF inteiro (data, câmera, localização) não foi gravado.",
       "textNotSaved": "Este formato não guarda título, descrição, autor nem texto alternativo: o texto novo não foi gravado. Exporte em JPEG, TIFF, PNG ou WebP."
@@ -647,6 +657,8 @@
       "pixels": "px",
       "estimate": "Tamanho estimado: {{size}}",
       "onlyPage": "Só a página {{page}} de {{total}} será gravada.",
+      "allPages": "Todas as páginas",
+      "firstPageOnly": "Dos documentos de várias páginas, só a primeira página será gravada. Para manter todas, exporte em TIFF.",
       "estimating": "Calculando tamanho…",
       "images": "Imagens",
       "progress": "Exportando {{done}} de {{total}}…",

@@ -66,6 +66,7 @@
     "heic_decoder_missing": "To open HEIC, install libde265 (on Fedora: RPM Fusion)",
     "empty_selection": "Make a selection first",
     "clipboard_empty": "The clipboard has no image",
+    "too_large": "The image is too large to be written this way",
     "doc": {
       "title": "This image could not be opened",
       "corrupt": "The file is corrupted or incomplete.",
@@ -610,7 +611,16 @@
     "pasted": "Pasted",
     "capture": "Screenshot",
     "saved": "Saved: {{name}}",
+    "loss": {
+      "title": "Write “{{name}}” without everything?",
+      "ok": "Write Anyway",
+      "pages": "Only page {{page}} of {{total}} will be written: the others do not fit this format. To keep them all, use TIFF.",
+      "annotations": "The annotations on the other pages do not go to the file; they stay in the document, unsaved.",
+      "exif": "This format does not store EXIF (date, camera, location).",
+      "text": "This format does not store XMP or IPTC (title, description, author, keywords)."
+    },
     "metaNote": {
+      "exifTooBig": "The EXIF (date, camera, location) is larger than the 64 KB a JPEG accepts and was not written. To keep it, export as TIFF, PNG or WebP.",
       "xmpRebuilt": "The file's XMP could not be edited safely and was rebuilt: it holds only title, description, author and alt text, and the rest of the XMP (such as rating) was not kept.",
       "exifDropped": "The old text could not be removed from the EXIF safely, so the whole EXIF (date, camera, location) was not written.",
       "textNotSaved": "This format does not store title, description, author or alt text: the new text was not written. Export as JPEG, TIFF, PNG or WebP."
@@ -647,6 +657,8 @@
       "pixels": "px",
       "estimate": "Estimated size: {{size}}",
       "onlyPage": "Only page {{page}} of {{total}} will be written.",
+      "allPages": "All pages",
+      "firstPageOnly": "For documents with several pages, only the first page will be written. To keep them all, export as TIFF.",
       "estimating": "Estimating size…",
       "images": "Images",
       "progress": "Exporting {{done}} of {{total}}…",

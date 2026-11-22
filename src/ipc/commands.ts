@@ -44,36 +44,39 @@ export const thumbnail = async (id: DocId, frame: number, size: number) =>
 const toWire = (op: Op): Op =>
   op.type === "composite" && op.data.png instanceof Uint8Array ? { ...op, data: { ...op.data, png: Array.from(op.data.png) } } : op;
 
-export const applyOp = (id: DocId, op: Op) => invoke<DocInfo>("apply_op", { id, op: toWire(op) });
+/** `frame`: só essa página (documento de várias páginas); ausente = a imagem toda, como sempre. */
+export const applyOp = (id: DocId, op: Op, frame?: number) =>
+  invoke<DocInfo>("apply_op", { id, op: toWire(op), ...(frame === undefined ? {} : { frame }) });
 
 export const undo = (id: DocId) => invoke<DocInfo>("undo", { id });
 
 export const redo = (id: DocId) => invoke<DocInfo>("redo", { id });
 
-/** Alfa Instantâneo: máscara contígua à cor do pixel (x, y); tolerância 0..1. */
-export const instantAlpha = (id: DocId, x: number, y: number, tolerance: number) =>
-  invoke<Mask>("instant_alpha", { id, x, y, tolerance });
-
-/** Laço magnético: devolve o caminho colado nas bordas. */
-export const snapLasso = (id: DocId, points: [number, number][]) =>
-  invoke<[number, number][]>("snap_lasso", { id, points });
-
 /** A primeira página é o padrão no Rust. */
 const onFrame = (frame: number) => (frame ? { frame } : {});
+
+/** Alfa Instantâneo: máscara contígua à cor do pixel (x, y); tolerância 0..1. */
+export const instantAlpha = (id: DocId, x: number, y: number, tolerance: number, frame = 0) =>
+  invoke<Mask>("instant_alpha", { id, x, y, tolerance, ...onFrame(frame) });
+
+/** Laço magnético: devolve o caminho colado nas bordas. */
+export const snapLasso = (id: DocId, points: [number, number][], frame = 0) =>
+  invoke<[number, number][]>("snap_lasso", { id, points, ...onFrame(frame) });
 
 /** Copia a região da página (ou ela toda, sem máscara) para a área de transferência como PNG. */
 export const copyRegion = (id: DocId, mask: Mask | null, frame = 0) =>
   invoke<void>("copy_region", { id, mask, ...onFrame(frame) });
 
 /** Prévia de um ajuste de cor em resolução reduzida; não altera o documento. */
-export const previewAdjust = async (id: DocId, adjust: ColorAdjust, maxW: number, maxH: number) =>
-  decodeViewBuffer(await invoke<ArrayBuffer>("preview_adjust", { id, adjust, maxW, maxH }));
+export const previewAdjust = async (id: DocId, adjust: ColorAdjust, maxW: number, maxH: number, frame = 0) =>
+  decodeViewBuffer(await invoke<ArrayBuffer>("preview_adjust", { id, adjust, maxW, maxH, ...onFrame(frame) }));
 
-export const histogram = (id: DocId) => invoke<Histogram>("histogram", { id });
+export const histogram = (id: DocId, frame = 0) => invoke<Histogram>("histogram", { id, ...onFrame(frame) });
 
-export const autoLevels = (id: DocId) => invoke<ColorAdjust>("auto_levels", { id });
+export const autoLevels = (id: DocId, frame = 0) => invoke<ColorAdjust>("auto_levels", { id, ...onFrame(frame) });
 
-export const metadata = (id: DocId) => invoke<Metadata>("metadata", { id });
+/** Metadados do arquivo; as dimensões são as da página. */
+export const metadata = (id: DocId, frame = 0) => invoke<Metadata>("metadata", { id, ...onFrame(frame) });
 
 // ---------- Arquivo (Task 11) ----------
 
@@ -96,8 +99,8 @@ export const moveTo = (id: DocId, dir: string) => invoke<DocInfo>("move_to", { i
 
 export const duplicate = (id: DocId, name: string) => invoke<DocInfo>("duplicate", { id, name });
 
-/** DPI atual (do arquivo ou do último Ajustar Tamanho); `null` se o arquivo não informa. */
-export const documentDpi = (id: DocId) => invoke<number | null>("document_dpi", { id });
+/** DPI atual (do arquivo ou do último Ajustar Tamanho da página); `null` se o arquivo não informa. */
+export const documentDpi = (id: DocId, frame = 0) => invoke<number | null>("document_dpi", { id, ...onFrame(frame) });
 
 export const pathExists = (path: string) => invoke<boolean>("path_exists", { path });
 
@@ -148,7 +151,7 @@ export const inspectLink = (text: string) => invoke<LinkInfo>("inspect_link", { 
 export const openWeb = (kind: WebKind, text: string, lang: string) => invoke<void>("open_web", { kind, text, lang });
 
 // Lote 4: sujeito
-export const segmentSubject = (id: DocId) => invoke<Mask>("segment_subject", { id });
+export const segmentSubject = (id: DocId, frame = 0) => invoke<Mask>("segment_subject", { id, ...onFrame(frame) });
 /** O modelo de segmentação já está no disco? Falso = `segmentSubject` vai baixá-lo (4,4 MB). */
 export const segmentModelReady = () => invoke<boolean>("segment_model_ready");
 export const segmentCancel = () => invoke<void>("segment_cancel");

@@ -11,7 +11,7 @@ import { addAnnotation, commit, deleteSelected } from "./actions";
 import { loadSource } from "./flatten";
 import { cssFont } from "./fontCss";
 import { DEFAULT_FONT, hitTest, moveItems, normBox, type Annotation, type Point } from "./model";
-import { onCurrentPage, onPage, pageItems } from "./pages";
+import { onCurrentPage, onPage, pageItems, pageSize } from "./pages";
 import { render, renderSelection, type Source, type ViewXf } from "./render";
 import { getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
 import { createShape, createStroke, createText, toImageStyle } from "./tools/create";
@@ -41,7 +41,8 @@ function useLoupeSource(doc: DocInfo | null, needed: boolean, page: number): Sou
   useEffect(() => {
     if (!needed || !doc || doc.error || src?.key === key) return;
     let alive = true;
-    loadSource(doc.id, doc.width, doc.height, LOUPE_SOURCE_MAX, page)
+    const { w, h } = pageSize(doc, page);
+    loadSource(doc.id, w, h, LOUPE_SOURCE_MAX, page)
       .then((s) => alive && setSrc({ key, s }))
       .catch((e) => console.error("falha ao carregar a imagem da lupa:", e));
     return () => {

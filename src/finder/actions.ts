@@ -4,13 +4,14 @@ import { notify } from "../chrome/notify";
 import { defaultOptions, EXTENSIONS, exportFormatOf } from "../file/estimate";
 import { runBeforeSave } from "../file/beforeSave";
 import { hasUnsaved } from "../file/dirty";
+import { confirmLosses } from "../file/loss";
 import { current, dirname, markChanged, settleKeywords, stem, warnLeftOut } from "../file/fileActions";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
 import * as ipc from "../ipc/commands";
 import type { DocId, DocInfo, ExportFormat } from "../ipc/types";
 import { forgetHistory } from "../markup/history";
-import { shownPage } from "../markup/pages";
+import { hasPages, shownPage } from "../markup/pages";
 import { useMarkup } from "../markup/store";
 import { useDocs } from "../store/docs";
 import { addRecent } from "../store/prefs";
@@ -43,6 +44,8 @@ export function activeFile(): DocInfo | null {
 export async function saveAsActive(): Promise<void> {
   const d = current();
   if (!d) return;
+  // A página de quando se pediu: ela pode mudar com o diálogo aberto.
+  const frame = shownPage(d.id);
   const guess = SAVE_AS_EXT[EXTENSIONS[exportFormatOf(d.format)]] ?? "png";
   const dir = d.path ? `${dirname(d.path)}/` : "";
   const dest = await saveDialog({
@@ -52,15 +55,18 @@ export async function saveAsActive(): Promise<void> {
   if (!dest) return;
   const format = saveAsFormat(dest);
   if (!format) return notify(t("finder.saveAs.badFormat"));
-  const frame = shownPage(d.id);
-  await runBeforeSave(d.id, frame);
-  const info = await ipc.saveAs(d.id, dest, { ...defaultOptions(format), frame }, getPendingKeywords(d.id));
+  const allPages = format === "tiff" && hasPages(d);
+  const opts = { ...defaultOptions(format), frame, ...(allPages ? { allPages } : {}) };
+  if (!(await confirmLosses(d, opts))) return;
+  const page = allPages ? null : frame;
+  await runBeforeSave(d.id, page);
+  const info = await ipc.saveAs(d.id, dest, opts, getPendingKeywords(d.id));
   update(info);
   addRecent(info.path);
   markChanged(d.id, null);
   settleKeywords(d.id, format);
   notify(t("file.saved", { name: info.name }));
-  warnLeftOut(info, frame, dest);
+  warnLeftOut(info, page, dest);
 }
 
 /** Mover para o Lixo (Ctrl+Backspace). Com alterações, pergunta antes. Nunca apaga. */

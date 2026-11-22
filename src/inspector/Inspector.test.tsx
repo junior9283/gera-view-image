@@ -65,7 +65,7 @@ describe("Inspector", () => {
 
   it("aba Geral mostra dimensões, perfil e tamanho", async () => {
     await abrir();
-    expect(metadata).toHaveBeenCalledWith(7);
+    expect(metadata).toHaveBeenCalledWith(7, 0);
     await screen.findByText("sRGB IEC61966-2.1");
     expect(screen.getByText("32 × 24 px")).toBeTruthy();
     expect(screen.getByText("2,0 KB")).toBeTruthy();

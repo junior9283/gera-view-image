@@ -15,7 +15,8 @@ export type ErrorCode =
   | "changed_on_disk"
   | "heic_decoder_missing"
   | "empty_selection"
-  | "clipboard_empty";
+  | "clipboard_empty"
+  | "too_large";
 
 export interface AppError {
   code: ErrorCode;
@@ -30,6 +31,8 @@ export interface DocInfo {
   width: number;
   height: number;
   frames: number;
+  /** Largura e altura de cada página, depois das operações (TIFF de várias páginas); vazio nos outros. */
+  pageSizes?: [number, number][];
   /** Atraso de cada quadro em ms (atraso de até 10 ms já vira 100 ms); vazio sem animação. */
   delaysMs?: number[];
   /** Vezes que a animação toca no total; 0 = para sempre. */
@@ -128,6 +131,8 @@ export interface Metadata {
   lens: [string, string][];
   /** Lote 9: textos como estão no arquivo (XMP, depois IPTC e EXIF). */
   texts: MetaTexts;
+  /** Blocos que uma gravação levaria: EXIF e textos (XMP ou IPTC). */
+  carried?: { exif: boolean; text: boolean };
 }
 
 export type MetaSectionId = "tiff" | "jfif" | "png" | "gif" | "heif";
@@ -167,6 +172,8 @@ export interface ExportOptions {
   dpi?: number | null;
   /** Página gravada (TIFF de várias páginas); ausente = a primeira. */
   frame?: number;
+  /** TIFF com todas as páginas do documento (aí `frame` não conta). */
+  allPages?: boolean;
 }
 
 /** Exportar com etiquetas: `tagsError` diz por que elas não foram gravadas (o arquivo foi). */

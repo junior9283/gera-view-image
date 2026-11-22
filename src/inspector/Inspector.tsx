@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { metadata } from "../ipc/commands";
 import type { DocId, DocInfo, Metadata, MetaSectionId } from "../ipc/types";
+import { useShownPage } from "../markup/pages";
 import { useDocs } from "../store/docs";
 import { useAnnotations, getAnnotationSource } from "./annotations";
 import { formatBytes, formatCoord, formatDate, mapUrl } from "./format";
@@ -56,7 +57,8 @@ function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) 
   const id = doc?.id;
   const rev = doc?.rev;
   const failed = doc?.error != null;
-  const key = `${id}:${rev}`;
+  const page = useShownPage(doc);
+  const key = `${id}:${rev}:${page}`;
   // Resultado de outra revisão/documento conta como "carregando".
   const load: Load = loaded?.key === key ? loaded.result : { state: "loading" };
 
@@ -64,7 +66,7 @@ function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) 
     if (id === undefined || failed) return;
     let stale = false;
     const done = (result: Load) => !stale && setLoaded({ key, result });
-    metadata(id)
+    metadata(id, page)
       .then((meta) => {
         if (stale) return;
         seedKeywords(id, meta.keywords);
@@ -75,7 +77,7 @@ function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) 
     return () => {
       stale = true;
     };
-  }, [id, key, failed]);
+  }, [id, key, failed, page]);
 
   const tabs = tabsFor(load.state === "ok" ? load.meta : null);
   // Aba que este arquivo não tem (ex.: PNG depois de trocar de documento): volta para Geral.
