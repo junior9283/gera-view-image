@@ -82,6 +82,15 @@ describe("store de documentos", () => {
     expect(useDocs.getState().docs.map((d) => d.id)).toEqual([1, 2, 3]);
   });
 
+  it("applyOrder segue a lista, deixa os ausentes no fim e não troca o estado se nada muda", () => {
+    useDocs.getState().add([info(1), info(2), info(3)]);
+    useDocs.getState().applyOrder([3, 1]);
+    expect(useDocs.getState().docs.map((d) => d.id)).toEqual([3, 1, 2]);
+    const before = useDocs.getState().docs;
+    useDocs.getState().applyOrder([3, 1, 2]);
+    expect(useDocs.getState().docs).toBe(before);
+  });
+
   it("close fecha no Rust, remove e ativa o vizinho", async () => {
     useDocs.getState().add([info(1), info(2), info(3)]);
     useDocs.getState().setActive(2);

@@ -90,7 +90,32 @@
     "label": "Miniaturas",
     "page": "Página {{n}}",
     "contactSheet": "Folha de contato",
-    "thumbSize": "Tamanho das miniaturas"
+    "thumbSize": "Tamanho das miniaturas",
+    "selectedCount": "{{count}} selecionadas",
+    "itemMenu": "Menu da miniatura",
+    "menu": {
+      "open": "Abrir",
+      "rotateLeft": "Girar à Esquerda",
+      "rotateRight": "Girar à Direita",
+      "flipH": "Espelhar Horizontalmente",
+      "flipV": "Espelhar Verticalmente",
+      "adjustColor": "Ajustar Cor…",
+      "resize": "Ajustar Tamanho…",
+      "export": "Exportar…",
+      "exportMany": "Exportar {{count}} Imagens…",
+      "print": "Imprimir…",
+      "printMany": "Imprimir {{count}} Imagens…",
+      "reveal": "Mostrar na Pasta",
+      "trash": "Mover para o Lixo",
+      "close": "Fechar",
+      "closeMany": "Fechar {{count}} Imagens"
+    },
+    "batch": {
+      "busy": "Já há uma ação em lote em andamento.",
+      "done": "{{count}} imagens processadas.",
+      "failed": "{{done}} de {{total}} imagens processadas. Falhou: {{names}}.",
+      "progress": "Processando {{done}} de {{total}}…"
+    }
   },
   "slideshow": {
     "label": "Apresentação",
@@ -131,7 +156,8 @@
     "cancel": "Cancelar",
     "previewFailed": "Não foi possível gerar a prévia.",
     "autoFailed": "Não foi possível calcular o ajuste automático.",
-    "applyFailed": "Não foi possível aplicar o ajuste."
+    "applyFailed": "Não foi possível aplicar o ajuste.",
+    "batchHint": "Será aplicado às {{count}} imagens selecionadas."
   },
   "resize": {
     "title": "Ajustar Tamanho",
@@ -152,7 +178,8 @@
     },
     "resultSize": "Tamanho resultante: {{size}} MB",
     "tooBig": "Tamanho grande demais.",
-    "failed": "Não foi possível redimensionar a imagem."
+    "failed": "Não foi possível redimensionar a imagem.",
+    "batchHint": "Será aplicado às {{count}} imagens selecionadas (proporcional: cabe no tamanho escolhido)."
   },
   "inspector": {
     "title": "Informações",

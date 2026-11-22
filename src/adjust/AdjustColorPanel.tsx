@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import * as ipc from "../ipc/commands";
 import { NEUTRAL_ADJUST, type ColorAdjust, type DocId, type Histogram, type Levels } from "../ipc/types";
-import { useDocs } from "../store/docs";
+import { applyToTargets } from "../sidebar/batch";
+import { batchTargets, withActive } from "../sidebar/selection";
 import { bufferToCanvas } from "../viewer/paint";
 import "./adjust.css";
 
@@ -107,6 +108,7 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
     if (hist && histRef.current) drawHistogram(histRef.current, hist);
   }, [hist]);
 
+  const targets = useMemo(() => withActive(batchTargets(), docId), [docId]);
   const setSlider = (key: SliderKey, value: number) => setAdj((a) => ({ ...a, [key]: value }));
   const setLevels = (patch: Partial<Levels>) => setAdj((a) => ({ ...a, levels: { ...a.levels, ...patch } }));
   const levels = adj.levels;
@@ -119,12 +121,10 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
 
   const ok = async () => {
     if (isNeutral(adj)) return onClose();
-    try {
-      await useDocs.getState().applyOp(docId, { type: "adjust", data: adj });
-      onClose();
-    } catch {
-      setError(t("adjust.applyFailed"));
-    }
+    // Com várias miniaturas selecionadas, o mesmo ajuste vai para todas (cada uma com o próprio desfazer).
+    const failedAll = await applyToTargets(targets, () => ({ type: "adjust", data: adj })).then((r) => r.done === 0, () => true);
+    if (failedAll) setError(t("adjust.applyFailed"));
+    else onClose();
   };
 
   return (
@@ -174,6 +174,7 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
         </label>
       ))}
 
+      {targets.length > 1 && <p className="adjust-size">{t("adjust.batchHint", { count: targets.length })}</p>}
       {error && <p role="alert" className="adjust-error">{error}</p>}
 
       <div className="adjust-actions">

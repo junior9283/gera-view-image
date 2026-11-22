@@ -104,3 +104,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sidebar-batch,
+.sidebar-count {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--chrome-border);
+  background: var(--chrome-bg);
+  font: 11px/1.3 system-ui, sans-serif;
+}
+.sidebar-batch progress {
+  width: 100%;
+}

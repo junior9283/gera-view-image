@@ -1,10 +1,11 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { documentDpi } from "../ipc/commands";
 import type { DocInfo, ResizeFilter } from "../ipc/types";
 import { defaultOptions, exportFormatOf, useEstimate } from "../file/estimate";
 import { useModal } from "../lib/modal";
-import { useDocs } from "../store/docs";
+import { applyToTargets, resizeFor, type ResizeMode } from "../sidebar/batch";
+import { batchTargets, withActive } from "../sidebar/selection";
 import { RESIZE_PRESETS, UNITS, fromPixels, linkDims, toPixels, type Unit } from "./units";
 import "./adjust.css";
 
@@ -54,6 +55,7 @@ export function ResizeDialog({ doc, onClose, estimate }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const orig = { w: doc.width, h: doc.height };
+  const targets = useMemo(() => withActive(batchTargets(), doc.id), [doc.id]);
   const physical = unit !== "px" && unit !== "%";
   // Sem reamostrar, as dimensões em pixels ficam fixas e a medida física só altera o DPI.
   const sizeLocked = !resample && !physical;
@@ -81,12 +83,14 @@ export function ResizeDialog({ doc, onClose, estimate }: Props) {
   const unchanged = resample ? size.w === orig.w && size.h === orig.h : dpi === docDpi;
 
   const ok = async () => {
-    try {
-      await useDocs.getState().applyOp(doc.id, { type: "resize", data: { w: eff.w, h: eff.h, filter, dpi } });
-      onClose();
-    } catch {
-      setError(t("resize.failed"));
-    }
+    // Várias miniaturas selecionadas: o tamanho vale para todas, cada uma com o próprio desfazer.
+    const mode: ResizeMode = !resample || unit === "%" ? "ratio" : link ? "fit" : "exact";
+    const failedAll = await applyToTargets(targets, (d) => ({
+      type: "resize",
+      data: { ...(d.id === doc.id ? eff : resizeFor(d, eff, orig, mode)), filter, dpi },
+    })).then((r) => r.done === 0, () => true);
+    if (failedAll) setError(t("resize.failed"));
+    else onClose();
   };
 
   const num = (axis: "w" | "h", label: string) => (
@@ -162,13 +166,14 @@ export function ResizeDialog({ doc, onClose, estimate }: Props) {
         )}
 
         <p className="adjust-size">{t("resize.resultSize", { size: mb(bytes) })}</p>
+        {targets.length > 1 && <p className="adjust-size">{t("resize.batchHint", { count: targets.length })}</p>}
         {tooBig && <p role="alert" className="adjust-error">{t("resize.tooBig")}</p>}
         {error && <p role="alert" className="adjust-error">{error}</p>}
 
         <div className="adjust-actions">
           <span className="adjust-spacer" />
           <button type="button" onClick={onClose}>{t("adjust.cancel")}</button>
-          <button type="button" className="adjust-ok" onClick={ok} disabled={tooBig || unchanged}>{t("adjust.ok")}</button>
+          <button type="button" className="adjust-ok" onClick={ok} disabled={tooBig || (unchanged && targets.length < 2)}>{t("adjust.ok")}</button>
         </div>
       </div>
     </div>

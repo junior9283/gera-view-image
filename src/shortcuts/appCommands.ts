@@ -11,6 +11,8 @@ import { toggleInspector } from "../inspector/toggle";
 import { openAbout, openPreferences } from "../prefs/dialogs";
 import * as sel from "../select/actions";
 import { maskBounds } from "../select/lasso";
+import { applyToTargets } from "../sidebar/batch";
+import { batchTargets } from "../sidebar/selection";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
@@ -30,11 +32,14 @@ const hasDoc = () => !!editable();
 const hasDocs = () => useDocs.getState().docs.length > 0;
 const hasSelection = () => hasDoc() && !!useSelection.getState().selection;
 
-/** Op que muda a geometria: a seleção (em px da imagem) deixa de valer. */
+/**
+ * Op que muda a geometria: a seleção (em px da imagem) deixa de valer. Com várias miniaturas
+ * selecionadas na barra lateral, vale para todas (cada uma com o próprio desfazer).
+ */
 async function transform(op: Op) {
   const d = editable();
   if (!d) return;
-  await useDocs.getState().applyOp(d.id, op);
+  await applyToTargets(batchTargets(), () => op);
   sel.deselect();
 }
 

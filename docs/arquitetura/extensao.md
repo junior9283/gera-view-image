@@ -89,7 +89,11 @@ registerSlot("viewport-overlay", "magnifier", Magnifier);
 - **Lote 6.** Alternar a barra de ferramentas é Ctrl+Shift+T, porque Ctrl+Alt+T abre o terminal no
   GNOME e no KDE. Os itens de Arquivo › Compartilhar são `file.shareEmail` e `file.shareDevice`.
   O campo Pesquisar do menu Ajuda é `help.search` (Ctrl+?) e fica no `MenuBar.tsx`.
-- **Lote 7.** Ordenar Por grava `prefs.sortBy` ("manual" é a ordem do arraste).
+- **Lote 7.** Ordenar Por grava `prefs.sortBy` ("manual" é a ordem do arraste); `src/sidebar/sortSync.ts`
+  mantém `docs` ordenado. A seleção da barra vive em `useThumbSelection` e `batchTargets()` (em
+  `src/sidebar/selection.ts`) devolve os ids em que uma ação em lote age. Girar/Espelhar, Ajustar Cor e
+  Ajustar Tamanho passam por `applyToTargets` (`src/sidebar/batch.ts`): cada imagem recebe a própria
+  `apply_op`, uma falha não interrompe as outras e `reportBatch` dá um só aviso.
 - **Lote 8.** `file.closeAll` (Ctrl+Alt+W) fecha todos os documentos e passa pelo diálogo de não
   salvo (`confirmAndSave`). Mostrar Lupa usa a tecla `` ` ``. No ABNT2 ela é tecla morta, e o lote
   pode acrescentar um alias em `ALIASES`.
