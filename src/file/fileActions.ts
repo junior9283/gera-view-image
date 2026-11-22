@@ -16,6 +16,7 @@ import { useDocs } from "../store/docs";
 import { addRecent, getPrefs, setPrefs } from "../store/prefs";
 import { openHere } from "../tabs/open";
 import { activate, activeDoc, viewable } from "../viewer/actions";
+import { openIds, placeOpened } from "./openFiles";
 import { runBeforeSave } from "./beforeSave";
 import { confirmClose } from "./unsaved";
 
@@ -217,10 +218,11 @@ export const openWith = async () => {
 
 /** Abre um recente. O que não abre sai da lista; o que não existe mais só gera um aviso. */
 export async function openRecent(path: string): Promise<void> {
+  const before = openIds();
   const [info] = await openHere([path]);
   if (!info) return;
   if (info.error) setPrefs({ recent: getPrefs().recent.filter((p) => p !== path) });
-  if (info.error !== "not_found") return activate(info.id);
+  if (info.error !== "not_found") return placeOpened([info], before);
   await useDocs.getState().close(info.id);
   notify(t("file.recent.missing", { name: basename(path) }));
 }

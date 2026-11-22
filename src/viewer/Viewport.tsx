@@ -8,6 +8,7 @@ import { useUi } from "../store/ui";
 import { panBy, syncView, toggleFitActual, zoomBy } from "./actions";
 import { DocError } from "./DocError";
 import { bufferToCanvas, checkerPattern, dpr, useAnimatedFrame } from "./paint";
+import { useZoomUnit } from "./unit";
 import { visibleRegion, type Size, type ViewState } from "./zoom";
 import { ByteLru } from "../lib/byteLru";
 import { Slot, type OverlayProps } from "../lib/slots";
@@ -101,6 +102,7 @@ export function Viewport() {
   const showBg = usePrefs((p) => p.showImageBackground);
   const animFrame = useAnimatedFrame(doc, page === null);
   const pixelRatio = usePixelRatio();
+  const unit = useZoomUnit(doc?.id, doc?.rev, pixelRatio);
   const frame = page ?? animFrame;
 
   const box = useRef<HTMLDivElement>(null);
@@ -167,13 +169,12 @@ export function Viewport() {
     paint.current();
   });
 
-  // A escala da tela mudou (outro monitor, zoom do sistema): refaz a view e o buffer.
-  useEffect(() => syncView(false), [pixelRatio]);
+  // A escala da tela (outro monitor, zoom do sistema) ou o que 100% significa mudou: refaz a view e o buffer.
+  useEffect(() => syncView(false), [pixelRatio, unit]);
 
-  // Indicador de zoom: aparece a cada mudança de escala e some sozinho. Mostra px físicos por px
-  // da imagem (100 % = Tamanho Real).
+  // Indicador de zoom: aparece a cada mudança de escala e some sozinho. 100 % = Tamanho Real.
   const badge = useRef<HTMLDivElement>(null);
-  const scale = view ? +(view.scale * pixelRatio).toFixed(4) : null;
+  const scale = view ? +(view.scale * unit).toFixed(4) : null;
   useEffect(() => {
     const el = badge.current;
     if (!el || scale === null) return;

@@ -14,8 +14,8 @@ export interface Point {
  * Estado da visualização em px CSS: a origem da imagem fica em (panX, panY) e 1 px da imagem
  * ocupa `scale` px na tela. `fit` e `actual` se mantêm ao redimensionar; `free` é zoom manual.
  *
- * O zoom mostrado ao usuário é `scale * k`, com `k` = `devicePixelRatio` (px físicos por px CSS):
- * 100 % (Tamanho Real) é 1 px da imagem por px físico. Degraus e limites valem no zoom mostrado.
+ * O zoom mostrado ao usuário é `scale * k`, com `k` = `zoomUnit()` (o `devicePixelRatio`, ou a razão
+ * entre as resoluções do documento e da tela): 100 % é o Tamanho Real escolhido nas Preferências. Degraus e limites valem no zoom mostrado.
  */
 export interface ViewState {
   scale: number;

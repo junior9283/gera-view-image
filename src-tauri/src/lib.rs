@@ -77,6 +77,7 @@ pub fn run() {
             commands::capture::capture_screen,
             commands::theme::window_theme,
             commands::theme::compositing_available,
+            commands::theme::screen_ppi,
             commands::drag::start_drag,
             // Lotes de paridade: stubs do Lote 0 (`AppError::Unsupported` até o lote implementar).
             commands::color::display_profile,

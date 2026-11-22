@@ -13,6 +13,7 @@ import { DescriptionTab } from "./tabs/DescriptionTab";
 import { OPEN_INSPECTOR_TAB_EVENT, setInspectorOpen, TOGGLE_INSPECTOR_EVENT } from "./toggle";
 import "./inspector.css";
 import { useWindowEvent } from "../lib/events";
+import { onTabKeys } from "../lib/tablist";
 
 type Tab =
   | "general" | "exif" | "maker" | "lens" | "iptc" | "gps" | "description" | "crop" | "keywords" | "annotations"
@@ -93,14 +94,14 @@ function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) 
           ×
         </button>
       </header>
-      <div className="inspector-tabs" role="tablist">
+      <div className="inspector-tabs" role="tablist" aria-label={t("inspector.title")} onKeyDown={onTabKeys}>
         {tabs.map((k) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => onTab(k)}>
+          <button key={k} id={`inspector-tab-${k}`} role="tab" aria-selected={tab === k} aria-controls="inspector-panel" tabIndex={tab === k ? 0 : -1} onClick={() => onTab(k)}>
             {k === "maker" && load.state === "ok" ? load.meta.maker?.name : t(`inspector.tab.${k}`)}
           </button>
         ))}
       </div>
-      <div className="inspector-body" role="tabpanel">
+      <div id="inspector-panel" className="inspector-body" role="tabpanel" aria-labelledby={`inspector-tab-${tab}`} tabIndex={-1}>
         {!doc || failed ? (
           <p className="inspector-empty">{t("inspector.empty")}</p>
         ) : tab === "annotations" ? (

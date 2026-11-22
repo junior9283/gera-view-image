@@ -99,6 +99,9 @@ export const duplicate = (id: DocId, name: string) => invoke<DocInfo>("duplicate
 /** DPI atual (do arquivo ou do último Ajustar Tamanho); `null` se o arquivo não informa. */
 export const documentDpi = (id: DocId) => invoke<number | null>("document_dpi", { id });
 
+/** Pixels CSS por polegada do monitor da janela; `null` se o sistema não informa o tamanho. */
+export const screenPpi = () => invoke<number | null>("screen_ppi");
+
 export const pathExists = (path: string) => invoke<boolean>("path_exists", { path });
 
 export const ignoreDiskChange = (id: DocId) => invoke<void>("ignore_disk_change", { id });

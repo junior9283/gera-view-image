@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/app", () => ({ getVersion: async () => "1.2.3" }));
@@ -9,6 +9,8 @@ import i18n from "../i18n";
 import { getPrefs, resetPrefsForTests, setPrefs } from "../store/prefs";
 import { AboutDialog } from "./AboutDialog";
 import { enableNativeDecorations, resetForcedNative } from "../chrome/nativeDecorations";
+import { addSignature, getSignatures, resetSignaturesForTests } from "../markup/signatures";
+import { registerCommand, resetCommandsForTests } from "../shortcuts/commands";
 import { PreferencesDialog } from "./PreferencesDialog";
 
 beforeEach(async () => {
@@ -60,6 +62,93 @@ describe("PreferencesDialog: casos extras", () => {
     expect(box.disabled).toBe(true);
     expect(box.title).toContain("Indisponível");
     expect(getPrefs().nativeDecorations).toBe(false);
+  });
+});
+
+describe("abas das Preferências", () => {
+  const tab = (name: string) => screen.getByRole("tab", { name });
+  const open = (name: string) => {
+    render(createElement(PreferencesDialog, { onClose: () => {} }));
+    fireEvent.click(tab(name));
+  };
+
+  it("Geral, Imagens e Assinaturas, com setas e painel ligado à aba", () => {
+    render(createElement(PreferencesDialog, { onClose: () => {} }));
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Geral", "Imagens", "Assinaturas"]);
+    expect(tab("Geral").getAttribute("aria-selected")).toBe("true");
+    tab("Geral").focus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(tab("Imagens"));
+    expect(tab("Imagens").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(tab("Imagens").id);
+    expect(tab("Imagens").getAttribute("aria-controls")).toBe(screen.getByRole("tabpanel").id);
+    fireEvent.keyDown(document.activeElement!, { key: "End" });
+    expect(tab("Assinaturas").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    expect(tab("Geral").getAttribute("aria-selected")).toBe("true");
+    expect([tab("Geral").tabIndex, tab("Imagens").tabIndex]).toEqual([0, -1]);
+  });
+
+  it("Imagens: 100% corresponde a, Texto ao Vivo e fundo da imagem", () => {
+    open("Imagens");
+    fireEvent.change(screen.getByLabelText("100% corresponde a"), { target: { value: "print" } });
+    fireEvent.click(screen.getByLabelText("Texto ao Vivo"));
+    fireEvent.click(screen.getByLabelText("Mostrar o fundo atrás da transparência"));
+    expect(getPrefs()).toMatchObject({ actualSize: "print", liveText: false, showImageBackground: false });
+  });
+
+  it("Geral: abrir arquivos em, barra de abas e limite das versões", () => {
+    open("Geral");
+    fireEvent.change(screen.getByLabelText("Abrir arquivos"), { target: { value: "windows" } });
+    fireEvent.click(screen.getByLabelText("Mostrar a barra de abas"));
+    const mb = screen.getByLabelText("Espaço para versões anteriores (MB; 0 desliga)") as HTMLInputElement;
+    fireEvent.change(mb, { target: { value: "" } });
+    fireEvent.blur(mb);
+    expect(mb.value).toBe("500");
+    fireEvent.change(mb, { target: { value: "0" } });
+    fireEvent.blur(mb);
+    expect(getPrefs()).toMatchObject({ openFilesIn: "windows", tabBar: true, versionsMaxMb: 0 });
+    fireEvent.change(mb, { target: { value: "999999999" } });
+    fireEvent.keyDown(mb, { key: "Enter" });
+    expect(getPrefs().versionsMaxMb).toBe(100_000);
+  });
+
+  it("valor digitado e não confirmado vale ao fechar com Esc", () => {
+    const onClose = vi.fn();
+    render(createElement(PreferencesDialog, { onClose }));
+    const mb = screen.getByLabelText("Espaço para versões anteriores (MB; 0 desliga)");
+    mb.focus();
+    fireEvent.change(mb, { target: { value: "250" } });
+    fireEvent.keyDown(mb, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+    expect(getPrefs().versionsMaxMb).toBe(250);
+  });
+
+  it("Assinaturas: lista e remove as salvas; sem nenhuma, avisa", async () => {
+    resetSignaturesForTests();
+    await addSignature("QUJD");
+    await addSignature("REVG");
+    open("Assinaturas");
+    expect(await screen.findAllByRole("img", { name: /^Assinatura \d$/ })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Remover assinatura 1" }));
+    await vi.waitFor(() => expect(getSignatures().map((s) => s.png)).toEqual(["QUJD"]));
+    fireEvent.click(screen.getByRole("button", { name: "Remover assinatura 1" }));
+    expect(await screen.findByText("Nenhuma assinatura salva.")).toBeTruthy();
+    expect(document.activeElement).toBe(tab("Assinaturas"));
+  });
+
+  it("Criar Assinatura fecha as Preferências e abre o painel (só com imagem)", async () => {
+    resetCommandsForTests();
+    const run = vi.fn();
+    const onClose = vi.fn();
+    render(createElement(PreferencesDialog, { onClose }));
+    fireEvent.click(tab("Assinaturas"));
+    const create = screen.getByRole("button", { name: "Criar Assinatura…" }) as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+    act(() => void registerCommand("tools.annotate.signature", run));
+    fireEvent.click(create);
+    expect(onClose).toHaveBeenCalled();
+    expect(run).toHaveBeenCalled();
   });
 });
 

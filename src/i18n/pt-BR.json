@@ -45,7 +45,43 @@
       "pt-BR": "Português (Brasil)",
       "en": "English"
     },
-    "colorManagement": "Correspondência de cor (perfis ICC)"
+    "colorManagement": "Correspondência de cor (perfis ICC)",
+    "tab": {
+      "general": "Geral",
+      "images": "Imagens",
+      "signatures": "Assinaturas"
+    },
+    "openFilesIn": "Abrir arquivos",
+    "openIn": {
+      "tabs": "Em abas",
+      "window": "Na mesma janela (barra lateral)",
+      "windows": "Em janelas separadas"
+    },
+    "tabBar": "Mostrar a barra de abas",
+    "versionsMaxMb": "Espaço para versões anteriores (MB; 0 desliga)",
+    "actualSize": "100% corresponde a",
+    "actual": {
+      "pixel": "Um pixel da tela por pixel da imagem",
+      "print": "Tamanho impresso"
+    },
+    "showImageBackground": "Mostrar o fundo atrás da transparência",
+    "liveText": "Texto ao Vivo",
+    "sortBy": "Ordenar imagens por",
+    "sort": {
+      "manual": "Ordem manual",
+      "name": "Nome",
+      "date": "Data",
+      "kind": "Tipo",
+      "size": "Tamanho"
+    },
+    "sig": {
+      "empty": "Nenhuma assinatura salva.",
+      "name": "Assinatura {{n}}",
+      "remove": "Remover",
+      "removeNamed": "Remover assinatura {{n}}",
+      "create": "Criar Assinatura…",
+      "needsImage": "Abra uma imagem para criar uma assinatura"
+    }
   },
   "about": {
     "title": "Sobre o Gera View Image",

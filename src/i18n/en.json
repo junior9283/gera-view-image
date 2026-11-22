@@ -45,7 +45,43 @@
       "pt-BR": "Português (Brasil)",
       "en": "English"
     },
-    "colorManagement": "Color matching (ICC profiles)"
+    "colorManagement": "Color matching (ICC profiles)",
+    "tab": {
+      "general": "General",
+      "images": "Images",
+      "signatures": "Signatures"
+    },
+    "openFilesIn": "Open files",
+    "openIn": {
+      "tabs": "In tabs",
+      "window": "In the same window (sidebar)",
+      "windows": "In separate windows"
+    },
+    "tabBar": "Show the tab bar",
+    "versionsMaxMb": "Space for previous versions (MB; 0 turns off)",
+    "actualSize": "100% equals",
+    "actual": {
+      "pixel": "One screen pixel per image pixel",
+      "print": "Printed size"
+    },
+    "showImageBackground": "Show the background behind transparency",
+    "liveText": "Live Text",
+    "sortBy": "Sort images by",
+    "sort": {
+      "manual": "Manual order",
+      "name": "Name",
+      "date": "Date",
+      "kind": "Kind",
+      "size": "Size"
+    },
+    "sig": {
+      "empty": "No saved signatures.",
+      "name": "Signature {{n}}",
+      "remove": "Remove",
+      "removeNamed": "Remove signature {{n}}",
+      "create": "Create Signature…",
+      "needsImage": "Open an image to create a signature"
+    }
   },
   "about": {
     "title": "About Gera View Image",
