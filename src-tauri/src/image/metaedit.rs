@@ -718,6 +718,22 @@ mod tests {
         assert_eq!(xmp_text(&x, "dc:creator"), None);
     }
 
+    #[test]
+    fn copias_do_campo_em_outros_esquemas_saem_junto() {
+        // tiff/exif/exifEX repetem o EXIF dentro do XMP, como elemento ou atributo.
+        let orig = format!(
+            "<rdf:RDF {NS_DECL} xmlns:t=\"http://ns.adobe.com/tiff/1.0/\" xmlns:exif=\"http://ns.adobe.com/exif/1.0/\" xmlns:exifEX=\"http://cipa.jp/exif/1.0/\"><rdf:Description t:Artist=\"Autor Velho\" t:Make=\"Canon\" exifEX:ImageTitle=\"Titulo Velho\"><dc:creator><rdf:Seq><rdf:li>Autor Velho</rdf:li></rdf:Seq></dc:creator><t:ImageDescription><rdf:Alt><rdf:li xml:lang=\"x-default\">Desc Velha</rdf:li></rdf:Alt></t:ImageDescription><exif:UserComment><rdf:Alt><rdf:li xml:lang=\"x-default\">Desc Velha</rdf:li></rdf:Alt></exif:UserComment><exif:FNumber>28/10</exif:FNumber><exifEX:Photographer>Autor Velho</exifEX:Photographer></rdf:Description></rdf:RDF>"
+        );
+        let autor = MetadataEdits { author: Some("Nova".into()), ..Default::default() };
+        let x = xmp_with_edits(Some(&orig), &autor);
+        assert!(!x.contains("Autor Velho") && x.contains("Canon") && x.contains("28/10"), "{x}");
+        assert!(x.contains("Desc Velha") && x.contains("Titulo Velho"), "só o campo editado muda");
+        assert_eq!(xmp_text(&x, "dc:creator").as_deref(), Some("Nova"));
+        let tudo = MetadataEdits { author: Some(String::new()), description: Some(String::new()), title: Some(String::new()), ..Default::default() };
+        let y = xmp_with_edits(Some(&orig), &tudo);
+        assert!(!y.contains("Velh") && y.contains("Canon") && y.contains("28/10"), "{y}");
+    }
+
     fn alt_en_fr(extra: &str) -> String {
         format!(
             "<rdf:RDF {NS_DECL}><rdf:Description><dc:title><rdf:Alt><rdf:li xml:lang=\"en\">English</rdf:li><rdf:li xml:lang=\"fr\">Français</rdf:li>{extra}</rdf:Alt></dc:title></rdf:Description></rdf:RDF>"

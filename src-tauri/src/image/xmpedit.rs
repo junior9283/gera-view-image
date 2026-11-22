@@ -50,6 +50,16 @@ pub const PROPS: [Prop; 4] = [
     },
 ];
 
+/// Cópias de um campo (índice de `PROPS`) em outros esquemas: o EXIF repetido dentro do XMP. Saem
+/// quando o campo é editado, senão guardariam o texto antigo.
+const ALIASES: [(&str, &str, usize); 5] = [
+    ("http://cipa.jp/exif/1.0/", "ImageTitle", 0),
+    ("http://ns.adobe.com/tiff/1.0/", "ImageDescription", 1),
+    ("http://ns.adobe.com/exif/1.0/", "UserComment", 1),
+    ("http://ns.adobe.com/tiff/1.0/", "Artist", 2),
+    ("http://cipa.jp/exif/1.0/", "Photographer", 2),
+];
+
 #[derive(Default)]
 struct Item {
     span: Range<usize>,
@@ -77,6 +87,8 @@ struct Found {
     elements: Vec<Elem>,
     /// Propriedade escrita como atributo de outro elemento: (trecho, valor).
     attrs: Vec<(Range<usize>, String)>,
+    /// Trechos das cópias em outros esquemas (`ALIASES`).
+    aliases: Vec<Range<usize>>,
 }
 
 #[derive(Default)]
@@ -149,6 +161,11 @@ fn prop_of(uri: Option<&str>, local: &str) -> Option<usize> {
     PROPS.iter().position(|p| p.ns == uri && p.local == local)
 }
 
+fn alias_of(uri: Option<&str>, local: &str) -> Option<usize> {
+    let uri = uri?;
+    ALIASES.iter().find(|a| a.0 == uri && a.1 == local).map(|a| a.2)
+}
+
 fn ns_of<'a>(r: &'a ResolveResult) -> Option<&'a str> {
     match r {
         ResolveResult::Bound(ns) => Some(ns.as_ref()),
@@ -176,9 +193,12 @@ fn scan(xmp: &str) -> Option<Scan> {
         let before = r.buffer_position() as usize;
         let (res, ev) = r.read_resolved_event().ok()?;
         let is_rdf = ns_of(&res) == Some(NS_RDF);
-        let prop = match &ev {
-            Event::Start(e) | Event::Empty(e) => prop_of(ns_of(&res), e.local_name().as_ref()),
-            _ => None,
+        let (prop, alias) = match &ev {
+            Event::Start(e) | Event::Empty(e) => {
+                let (uri, local) = (ns_of(&res), e.local_name());
+                (prop_of(uri, local.as_ref()), alias_of(uri, local.as_ref()))
+            }
+            _ => (None, None),
         };
         let after = r.buffer_position() as usize;
         let empty = matches!(ev, Event::Empty(_));
@@ -191,24 +211,30 @@ fn scan(xmp: &str) -> Option<Scan> {
                 }
             }
             Event::Start(e) | Event::Empty(e) => {
-                if let Some(i) = prop {
+                if let Some(i) = prop.or(alias) {
                     let qname = e.name().as_ref().to_string();
                     let elem = if empty {
                         Elem { span: before..after, inner: after..after, qname, ..Elem::default() }
                     } else {
                         read_element(&mut r, xmp, before, after, qname)?
                     };
-                    s.truncated |= elem.truncated;
-                    s.props[i].elements.push(elem);
+                    if prop.is_some() {
+                        s.truncated |= elem.truncated;
+                        s.props[i].elements.push(elem);
+                    } else {
+                        s.props[i].aliases.push(elem.span);
+                    }
                     continue;
                 }
                 let (attrs, complete) = attributes(xmp.get(before..after)?);
                 s.truncated |= !complete;
                 for (name, value, span) in attrs {
                     let (res, local) = r.resolver().resolve_attribute(QName(name));
+                    let abs = before + span.start..before + span.end;
                     if let Some(i) = prop_of(ns_of(&res), local.as_ref()) {
-                        let abs = before + span.start..before + span.end;
                         s.props[i].attrs.push((abs, xml_unescape(value)));
+                    } else if let Some(i) = alias_of(ns_of(&res), local.as_ref()) {
+                        s.props[i].aliases.push(abs);
                     }
                 }
             }
@@ -372,7 +398,7 @@ pub fn edit(xmp: &str, values: &[Option<String>; 4]) -> Option<String> {
             continue;
         };
         let f = &s.props[i];
-        ops.extend(f.attrs.iter().map(|(r, _)| (r.clone(), String::new())));
+        ops.extend(f.attrs.iter().map(|(r, _)| r).chain(&f.aliases).map(|r| (r.clone(), String::new())));
         let Some(first) = f.elements.first() else {
             if !v.is_empty() {
                 let decl = format!(" xmlns:{}=\"{}\"", p.prefix, p.ns);
@@ -426,6 +452,7 @@ pub fn edit(xmp: &str, values: &[Option<String>; 4]) -> Option<String> {
     let (was, now) = (values_of(xmp, &s), values_of(&out, &after));
     let ok = (0..4).all(|i| match values[i].as_deref().map(clean) {
         None => now[i] == was[i],
+        Some(_) if !after.props[i].aliases.is_empty() => false,
         Some(v) if v.is_empty() => now[i].is_none(),
         Some(v) => now[i].as_deref() == Some(v.as_str()),
     });
