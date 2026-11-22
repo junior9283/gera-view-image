@@ -45,7 +45,8 @@
       "pt-BR": "Português (Brasil)",
       "en": "English"
     },
-    "colorManagement": "Color matching (ICC profiles)"
+    "colorManagement": "Color matching (ICC profiles)",
+    "dragPans": "Dragging moves the image (instead of selecting)"
   },
   "about": {
     "title": "About Gera View Image",
@@ -512,6 +513,10 @@
       "crop": "Crop",
       "adjustColor": "Adjust Color…",
       "resize": "Adjust Size…",
+      "selectRect": "Rectangular Selection",
+      "selectEllipse": "Elliptical Selection",
+      "selectLasso": "Lasso Selection",
+      "selectSmartLasso": "Smart Lasso",
       "instantAlpha": "Instant Alpha",
       "inspector": "Show Inspector",
       "annotate": "Annotate",

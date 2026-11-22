@@ -87,6 +87,10 @@ export const KEYMAP: Record<CommandId, string> = {
   "tools.crop": "Ctrl+K",
   "tools.adjustColor": "Ctrl+Alt+C",
   "tools.resize": "",
+  "tools.selectRect": "",
+  "tools.selectEllipse": "",
+  "tools.selectLasso": "",
+  "tools.selectSmartLasso": "",
   "tools.instantAlpha": "",
   "tools.inspector": "Ctrl+I",
   "tools.annotate.rect": "",
@@ -168,6 +172,11 @@ export function comboOf(e: KeyboardEvent): string | null {
 const BY_COMBO = new Map<string, CommandId>();
 for (const [id, s] of Object.entries(KEYMAP) as [CommandId, string][]) if (s) BY_COMBO.set(s, id);
 for (const [id, list] of Object.entries(ALIASES) as [CommandId, string[]][]) for (const s of list) BY_COMBO.set(s, id);
+
+/** Passo de cada seta, para mover seleções e anotações. */
+export const ARROWS: Record<string, [number, number] | undefined> = {
+  ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+};
 
 /** Campo de texto: os atalhos ficam com ele (Ctrl+A, setas, Ctrl+Z…). */
 export const isTyping = (t: EventTarget | null) =>

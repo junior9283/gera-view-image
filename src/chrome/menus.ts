@@ -88,6 +88,7 @@ export const MENUS: Menu[] = [
       SEP,
       ...items("tools", "crop", "adjustColor", "resize", "assignProfile"),
       SEP,
+      ...items("tools", "selectRect", "selectEllipse", "selectLasso", "selectSmartLasso"),
       ...items("tools", "instantAlpha", "removeBackground", "copySubject"),
       SEP,
       ...items("tools", "magnifier", "inspector", "markupInspector", "showColors", "showFonts", "imageDescription"),

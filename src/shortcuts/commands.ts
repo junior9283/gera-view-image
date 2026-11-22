@@ -29,7 +29,8 @@ export const COMMAND_IDS = [
   "go.prev", "go.next", "go.first", "go.last", "go.back", "go.forward",
   // Ferramentas
   "tools.rotateLeft", "tools.rotateRight", "tools.flipH", "tools.flipV", "tools.crop", "tools.adjustColor",
-  "tools.resize", "tools.instantAlpha", "tools.inspector",
+  "tools.resize", "tools.selectRect", "tools.selectEllipse", "tools.selectLasso", "tools.selectSmartLasso",
+  "tools.instantAlpha", "tools.inspector",
   ...ANNOTATE_KINDS.map((k) => `tools.annotate.${k}` as const),
   "tools.assignProfile", "tools.removeBackground", "tools.copySubject", "tools.magnifier", "tools.showColors",
   "tools.showFonts", "tools.markupInspector", "tools.imageDescription", "tools.liveText", "tools.copyAllText",

@@ -74,6 +74,9 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
         <Row label={t("prefs.browseFolder")}>
           <input type="checkbox" checked={prefs.browseFolder} onChange={(e) => setPrefs({ browseFolder: e.target.checked })} />
         </Row>
+        <Row label={t("prefs.dragPans")}>
+          <input type="checkbox" checked={prefs.dragPans} onChange={(e) => setPrefs({ dragPans: e.target.checked })} />
+        </Row>
         <Row label={t("prefs.colorManagement")}>
           <input type="checkbox" checked={prefs.colorManagement} onChange={(e) => setPrefs({ colorManagement: e.target.checked })} />
         </Row>

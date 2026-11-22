@@ -7,7 +7,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
+import { useUi } from "../store/ui";
+import { maskArea, maskBounds } from "./lasso";
 import { SelectionLayer } from "./SelectionLayer";
+import type { SelectionTool } from "./tools";
 
 const props = { docId: 1, imageWidth: 100, imageHeight: 80, scale: 2, panX: 10, panY: 10 };
 const layer = () => screen.getByLabelText("Camada de seleção");
@@ -144,6 +147,136 @@ describe("SelectionLayer", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     window.removeEventListener("keydown", global);
     expect(global.mock.results.map((r) => r.value)).toEqual([true, true]);
+  });
+
+  describe("somar, subtrair e mover", () => {
+    const r = (x: number, y: number, w: number, h: number): Mask => ({ type: "rect", data: { x, y, w, h } });
+    type Keys = { shiftKey?: boolean; altKey?: boolean };
+    /** Arrasta entre dois pontos da imagem (100×80, escala 2, deslocada 10 px). */
+    const drag = (a: [number, number], b: [number, number], keys: Keys = {}) => {
+      const at = ([x, y]: [number, number]) => ({ clientX: 10 + x * 2, clientY: 10 + y * 2, pointerId: 1, ...keys });
+      fireEvent.pointerDown(layer(), { ...at(a), button: 0 });
+      fireEvent.pointerMove(layer(), at([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]));
+      fireEvent.pointerMove(layer(), at(b));
+      fireEvent.pointerUp(layer(), at(b));
+    };
+    const area = () => {
+      const m = useSelection.getState().selection;
+      return m ? maskArea(m, 100, 80) : 0;
+    };
+    const start = (tool: SelectionTool, selection: Mask | null = r(10, 10, 20, 20)) => {
+      useSelection.setState({ selectionTool: tool, selection });
+      render(<SelectionLayer {...props} />);
+    };
+
+    it("Shift soma e Alt subtrai um retângulo", () => {
+      start("rect");
+      drag([40, 10], [50, 20], { shiftKey: true });
+      expect(area()).toBe(500);
+      drag([15, 15], [25, 25], { altKey: true });
+      expect(area()).toBe(400);
+    });
+
+    it("Shift na criação sem seleção prévia força quadrado", () => {
+      start("rect", null);
+      drag([0, 0], [30, 10], { shiftKey: true });
+      expect(useSelection.getState().selection).toEqual(r(0, 0, 30, 30));
+    });
+
+    it("Alt com a elipse e o laço também subtrai, e um clique com Shift não perde a seleção", () => {
+      start("ellipse");
+      drag([10, 10], [30, 30], { altKey: true });
+      expect(area()).toBeGreaterThan(50);
+      expect(area()).toBeLessThan(120); // sobram só os cantos
+      fireEvent.pointerDown(layer(), { clientX: 190, clientY: 150, button: 0, pointerId: 1, shiftKey: true });
+      fireEvent.pointerUp(layer(), { clientX: 190, clientY: 150, pointerId: 1, shiftKey: true });
+      expect(area()).toBeGreaterThan(50);
+    });
+
+    it("o laço com Shift soma à seleção", () => {
+      start("lasso");
+      fireEvent.pointerDown(layer(), { clientX: 110, clientY: 110, button: 0, pointerId: 1, shiftKey: true });
+      for (const [x, y] of [[150, 110], [150, 150], [110, 150]]) fireEvent.pointerMove(layer(), { clientX: x, clientY: y, pointerId: 1 });
+      fireEvent.pointerUp(layer(), { clientX: 110, clientY: 150, pointerId: 1 });
+      expect(area()).toBeGreaterThan(700);
+    });
+
+    it("o Alfa Instantâneo com Shift soma ao que já estava selecionado", async () => {
+      start("instantAlpha");
+      invoke.mockResolvedValue(bitmap); // 10 px da primeira linha
+      fireEvent.pointerDown(layer(), { clientX: 12, clientY: 12, button: 0, pointerId: 1, shiftKey: true });
+      fireEvent.pointerUp(layer(), { clientX: 12, clientY: 12, pointerId: 1, shiftKey: true });
+      await vi.waitFor(() => expect(area()).toBe(410));
+      fireEvent.keyDown(document.body, { key: "Enter" });
+      await act(async () => {});
+      const op = invoke.mock.calls.find((c) => c[0] === "apply_op")![1] as { op: { data: Mask } };
+      expect(maskArea(op.op.data, 100, 80)).toBe(410); // torna transparente a soma
+    });
+
+    it("arrastar dentro move qualquer seleção com qualquer ferramenta de forma", () => {
+      start("lasso", { type: "polygon", data: [[10, 10], [30, 10], [30, 30], [10, 30]] });
+      drag([20, 20], [25, 22]);
+      expect(useSelection.getState().selection).toEqual({ type: "polygon", data: [[15, 12], [35, 12], [35, 32], [15, 32]] });
+    });
+
+    it("máscara livre também anda, sem mudar de área", () => {
+      start("rect", bitmap);
+      drag([5, 0], [15, 40]);
+      expect(area()).toBe(10);
+      expect(maskBounds(useSelection.getState().selection!, 100, 80)).toEqual({ x: 10, y: 40, w: 10, h: 1 });
+    });
+
+    describe("setas", () => {
+      const key = (k: string, init = {}, on: Element = document.body) => {
+        const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...init });
+        act(() => void on.dispatchEvent(e));
+        return e;
+      };
+
+      it("andam 1 px, 10 com Shift, e não chegam à navegação entre imagens", () => {
+        useSelection.setState({ selection: r(10, 10, 20, 20) });
+        render(<SelectionLayer {...props} />);
+        expect(key("ArrowRight").defaultPrevented).toBe(true);
+        key("ArrowDown", { shiftKey: true });
+        expect(useSelection.getState().selection).toEqual(r(11, 20, 20, 20));
+      });
+
+      it("sem seleção, ou com a imagem inteira selecionada, continuam navegando", () => {
+        render(<SelectionLayer {...props} />);
+        expect(key("ArrowRight").defaultPrevented).toBe(false);
+        act(() => useSelection.setState({ selection: r(0, 0, 100, 80) }));
+        expect(key("ArrowRight").defaultPrevented).toBe(false);
+      });
+
+      it("num campo de texto, com Ctrl ou na apresentação não mexem na seleção", () => {
+        useSelection.setState({ selection: r(10, 10, 20, 20) });
+        render(
+          <>
+            <SelectionLayer {...props} />
+            <input aria-label="campo" />
+          </>,
+        );
+        key("ArrowRight", {}, screen.getByLabelText("campo"));
+        key("ArrowRight", { ctrlKey: true });
+        useUi.setState({ slideshow: true });
+        key("ArrowRight");
+        useUi.setState({ slideshow: false });
+        expect(useSelection.getState().selection).toEqual(r(10, 10, 20, 20));
+      });
+
+      it("movem junto o Alfa Instantâneo pendente", async () => {
+        start("instantAlpha", null);
+        invoke.mockResolvedValue(bitmap);
+        fireEvent.pointerDown(layer(), { clientX: 12, clientY: 12, button: 0, pointerId: 1 });
+        fireEvent.pointerUp(layer(), { clientX: 12, clientY: 12, pointerId: 1 });
+        await vi.waitFor(() => expect(area()).toBe(10));
+        key("ArrowDown");
+        key("Enter");
+        await act(async () => {});
+        const op = invoke.mock.calls.find((c) => c[0] === "apply_op")![1] as { op: { data: Mask } };
+        expect(maskBounds(op.op.data, 100, 80)).toEqual({ x: 0, y: 1, w: 10, h: 1 });
+      });
+    });
   });
 
   describe("formigas marchando", () => {

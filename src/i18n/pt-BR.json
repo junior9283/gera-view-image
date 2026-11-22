@@ -45,7 +45,8 @@
       "pt-BR": "Português (Brasil)",
       "en": "English"
     },
-    "colorManagement": "Correspondência de cor (perfis ICC)"
+    "colorManagement": "Correspondência de cor (perfis ICC)",
+    "dragPans": "Arrastar move a imagem (em vez de selecionar)"
   },
   "about": {
     "title": "Sobre o Gera View Image",
@@ -512,6 +513,10 @@
       "crop": "Recortar",
       "adjustColor": "Ajustar Cor…",
       "resize": "Ajustar Tamanho…",
+      "selectRect": "Seleção Retangular",
+      "selectEllipse": "Seleção Elíptica",
+      "selectLasso": "Laço",
+      "selectSmartLasso": "Laço Inteligente",
       "instantAlpha": "Alfa Instantâneo",
       "inspector": "Mostrar Inspetor",
       "annotate": "Anotar",

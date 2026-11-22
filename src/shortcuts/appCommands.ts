@@ -52,11 +52,13 @@ function zoomToSelection() {
   if (r) view.zoomToRect(r);
 }
 
-/** Esc: sai da apresentação; senão desmarca; senão sai da tela cheia. */
+/** Esc: sai da apresentação; senão desmarca; senão sai da ferramenta de seleção; senão, da tela cheia. */
 function escape() {
   const ui = useUi.getState();
   if (ui.slideshow) return view.stopSlideshow();
-  if (useSelection.getState().selection) return sel.deselect();
+  const { selection, selectionTool, setSelectionTool } = useSelection.getState();
+  if (selection) return sel.deselect();
+  if (selectionTool) return setSelectionTool(null);
   if (ui.fullscreen) return view.setFullscreen(false);
 }
 
@@ -96,7 +98,8 @@ const ENTRIES: Entry[] = [
   ["edit.selectAll", sel.selectAll, hasDoc],
   ["edit.deselect", escape, () => {
     const { slideshow, fullscreen } = useUi.getState();
-    return slideshow || fullscreen || !!useSelection.getState().selection;
+    const { selection, selectionTool } = useSelection.getState();
+    return slideshow || fullscreen || !!selection || !!selectionTool;
   }],
   ["edit.invertSelection", sel.invertSelection, hasSelection],
   ["edit.preferences", openPreferences],
@@ -125,6 +128,10 @@ const ENTRIES: Entry[] = [
   ["tools.crop", sel.cropToSelection, hasSelection],
   ["tools.adjustColor", openAdjustColor, hasDoc],
   ["tools.resize", openResize, hasDoc],
+  ["tools.selectRect", () => sel.toggleSelectionTool("rect"), hasDoc],
+  ["tools.selectEllipse", () => sel.toggleSelectionTool("ellipse"), hasDoc],
+  ["tools.selectLasso", () => sel.toggleSelectionTool("lasso"), hasDoc],
+  ["tools.selectSmartLasso", () => sel.toggleSelectionTool("smartLasso"), hasDoc],
   ["tools.instantAlpha", sel.startInstantAlpha, hasDoc],
   ["tools.inspector", toggleInspector],
 

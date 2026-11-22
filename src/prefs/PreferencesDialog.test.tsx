@@ -30,6 +30,13 @@ describe("PreferencesDialog", () => {
     await vi.waitFor(() => expect(screen.getByRole("dialog", { name: "Preferences" })).toBeTruthy());
   });
 
+  it("arrastar a imagem: seleciona por padrão e a preferência passa a movê-la", () => {
+    expect(getPrefs().dragPans).toBe(false);
+    render(createElement(PreferencesDialog, { onClose: () => {} }));
+    fireEvent.click(screen.getByLabelText("Arrastar move a imagem (em vez de selecionar)"));
+    expect(getPrefs().dragPans).toBe(true);
+  });
+
   it("desliga a decoração nativa pela preferência", () => {
     render(createElement(PreferencesDialog, { onClose: () => {} }));
     fireEvent.click(screen.getByLabelText("Usar a barra de título do sistema"));
