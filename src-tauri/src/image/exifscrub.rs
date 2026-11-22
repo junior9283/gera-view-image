@@ -127,6 +127,12 @@ fn overlaps(a: &Range<usize>, b: &Range<usize>) -> bool {
 
 /// `Some(bloco limpo)`, ou `None` se não der para limpar com segurança.
 pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
+    scrub_with(tiff, tags, false)
+}
+
+/// Como `scrub`; com `drop_thumb`, também tira o IFD1 e a miniatura embutida (zerados), que mostram a
+/// imagem de antes das edições. `None` se algum valor mantido estiver sobre eles.
+pub fn scrub_with(tiff: &[u8], tags: &Tags, drop_thumb: bool) -> Option<Vec<u8>> {
     let (ifd0, le) = tiff_header(tiff)?;
     let r = Reader { b: tiff, le };
     let mut budget = MAX_ENTRIES;
@@ -156,13 +162,36 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
     {
         return None;
     }
-    let thumb = t1.as_ref().and_then(|t| {
+    let mut thumb = t1.as_ref().and_then(|t| {
         let get = |tag| t.entries.iter().find(|e| e.tag == tag).and_then(|e| r.u32(e.at + 8));
         let off = get(TAG_THUMB_OFFSET)? as usize;
         Some(off..off.saturating_add(get(TAG_THUMB_LENGTH)? as usize))
     });
     let all = [exif.as_mut(), gps.as_mut(), interop.as_mut(), t1.as_mut()];
     check_slots(&mut std::iter::once(&mut t0).chain(all.into_iter().flatten()).collect::<Vec<_>>(), thumb.clone());
+    // Sem miniatura: o IFD1 e o que ele aponta viram bytes zerados, e o IFD0 passa a ser o último.
+    let mut dead: Vec<Range<usize>> = Vec::new();
+    if drop_thumb && let Some(t) = t1.take() {
+        dead.push(t.at..t.end + if t.has_slot { 4 } else { 0 });
+        dead.extend(t.entries.iter().filter_map(|e| e.value.clone()));
+        dead.extend(thumb.take().map(|r| r.start.min(tiff.len())..r.end.min(tiff.len())));
+        let kept: Vec<Range<usize>> = [Some(&t0), exif.as_ref(), gps.as_ref(), interop.as_ref()]
+            .into_iter()
+            .flatten()
+            .flat_map(|t| {
+                let table = t.at..t.end + if t.has_slot { 4 } else { 0 };
+                std::iter::once(table).chain(t.entries.iter().filter(|e| !e.drop).filter_map(|e| e.value.clone()))
+            })
+            .chain(std::iter::once(0..8))
+            .collect();
+        if dead.iter().any(|d| kept.iter().any(|k| overlaps(k, d))) {
+            return None;
+        }
+        if t0.has_slot {
+            t0.next = 0;
+            dead.push(t0.end..t0.end + 4);
+        }
+    }
     // O EXIF acaba no IFD1: ponteiros além dele (ou para um IFD1 ilegível) são cortados.
     let mut cut: Vec<usize> = Vec::new();
     let last = t1.as_mut().unwrap_or(&mut t0);
@@ -184,6 +213,9 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
     for end in cut {
         out[end..end + 4].fill(0);
     }
+    for d in dead {
+        out[d].fill(0);
+    }
     if !tables.iter().any(|t| t.entries.iter().any(|e| e.drop)) {
         return Some(out);
     }
@@ -195,13 +227,15 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
         protected.extend(t.entries.iter().filter(|e| !e.drop).filter_map(|e| e.value.clone()));
     }
     protected.extend(thumb);
+    // Ordenadas e fundidas uma vez: cada consulta é uma busca binária, não uma volta por todas.
+    let protected = merged(protected);
     let mut zero: Vec<Range<usize>> = Vec::new();
     for e in tables.iter().flat_map(|t| &t.entries).filter(|e| e.drop) {
         if e.unknown_type {
             return None; // não dá para saber quantos bytes o valor ocupa
         }
         if let Some(v) = &e.value {
-            if protected.iter().any(|p| overlaps(p, v)) {
+            if touch(&protected, v).is_some() {
                 return None;
             }
             zero.push(v.clone());
@@ -210,9 +244,13 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
     if zero.len().saturating_mul(tiff.len()) > MAX_COPY_SCAN {
         return None;
     }
-    for v in zero {
-        out[v.clone()].fill(0);
-        wipe_copies(&mut out, &tiff[v], &protected);
+    // Cópias procuradas no bloco original (o já zerado esconderia as que se sobrepõem), zeradas juntas.
+    let (mut wipe, mut left) = (zero.clone(), MAX_COPIES);
+    for v in &zero {
+        copies(tiff, &tiff[v.clone()], &protected, &mut wipe, &mut left)?;
+    }
+    for v in wipe {
+        out[v].fill(0);
     }
     for t in tables {
         compact(&mut out, t, le);
@@ -220,29 +258,56 @@ pub fn scrub(tiff: &[u8], tags: &Tags) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Teto de cópias de valores tirados num bloco (um EXIF real tem poucas).
+const MAX_COPIES: usize = 4096;
 /// Teto da varredura por cópias (valores vezes bytes do bloco); um EXIF real fica muito abaixo.
 const MAX_COPY_SCAN: usize = 256 << 20;
 /// Bytes do começo do valor que identificam uma cópia.
 const COPY_SEED: usize = 16;
 
-/// Zera as cópias de `value` fora de `protected`: o que nenhuma entrada alcança.
-fn wipe_copies(b: &mut [u8], value: &[u8], protected: &[Range<usize>]) {
+/// Faixas ordenadas e fundidas, para a busca binária de `touch`.
+fn merged(mut r: Vec<Range<usize>>) -> Vec<Range<usize>> {
+    r.sort_by_key(|r| r.start);
+    let mut out: Vec<Range<usize>> = Vec::with_capacity(r.len());
+    for x in r {
+        match out.last_mut() {
+            Some(last) if x.start <= last.end => last.end = last.end.max(x.end),
+            _ => out.push(x),
+        }
+    }
+    out
+}
+
+/// A faixa de `sorted` (de `merged`) que `r` toca, se houver.
+fn touch<'a>(sorted: &'a [Range<usize>], r: &Range<usize>) -> Option<&'a Range<usize>> {
+    let i = sorted.partition_point(|p| p.end <= r.start);
+    sorted.get(i).filter(|p| p.start < r.end)
+}
+
+/// Junta em `out` as cópias de `value` no bloco original `b`. Uma cópia inteira dentro de uma faixa
+/// protegida é o valor de outra entrada, que fica; uma que cruza a borda não dá para apagar inteira,
+/// e aí não há como limpar com segurança (`None`), como acima do teto de casamentos.
+fn copies(b: &[u8], value: &[u8], protected: &[Range<usize>], out: &mut Vec<Range<usize>>, left: &mut usize) -> Option<()> {
     let end = value.iter().rposition(|&c| c != 0).map_or(0, |i| i + 1);
     let value = &value[..end];
     if value.len() < 4 {
-        return;
+        return Some(());
     }
     let seed = &value[..value.len().min(COPY_SEED)];
     let mut i = 0;
     while let Some(at) = b.get(i..).and_then(|rest| rest.windows(seed.len()).position(|w| w == seed)) {
+        *left = left.checked_sub(1)?;
         let start = i + at;
         let len = b[start..].iter().zip(value).take_while(|(x, y)| x == y).count();
         let found = start..start + len;
         i = found.end;
-        if !protected.iter().any(|p| overlaps(p, &found)) {
-            b[found].fill(0);
+        match touch(protected, &found) {
+            Some(p) if p.start <= found.start && found.end <= p.end => {}
+            Some(_) => return None,
+            None => out.push(found),
         }
     }
+    Some(())
 }
 
 /// Tira da tabela as entradas marcadas: as seguintes sobem, o ponteiro do próximo IFD acompanha e
@@ -294,6 +359,36 @@ mod tests {
 
     fn tem(b: &[u8], s: &str) -> bool {
         b.windows(s.len()).any(|w| w == s.as_bytes())
+    }
+
+    /// Duas tags tiradas cujas cópias mortas se sobrepõem: nenhum pedaço de nenhuma sobra.
+    #[test]
+    fn copias_sobrepostas_de_valores_tirados_somem_inteiras() {
+        let mut f = tiff_le(&[ent(0x010E, ascii("ABCDEFGH")), ent(0x013B, ascii("EFGHIJKL"))]);
+        f.extend(b"--ABCDEFGHIJKL--");
+        let t = Tags { tiff: &[0x010E, 0x013B], exif: &[] };
+        let out = scrub(&f, &t).unwrap();
+        for s in ["ABCD", "EFGH", "IJKL"] {
+            assert!(!tem(&out, s), "{s}");
+        }
+    }
+
+    /// Bloco forjado: milhares de cópias e de faixas mantidas não viram trabalho quadrático; acima do
+    /// teto de casamentos o EXIF cai inteiro.
+    #[test]
+    fn copias_demais_derrubam_o_bloco() {
+        let kept: Vec<_> = (0..2000u16).map(|i| ent(0x1000 + i, ascii("valor mantido"))).collect();
+        let mut entries = vec![ent(0x013B, ascii("SEGREDO!"))];
+        entries.extend(kept);
+        let mut f = tiff_le(&entries);
+        for _ in 0..(MAX_COPIES + 1) {
+            f.extend(b"SEGREDO!");
+        }
+        assert_eq!(scrub(&f, &T), None);
+        // Poucas cópias: todas somem.
+        let mut f = tiff_le(&[ent(0x013B, ascii("SEGREDO!"))]);
+        f.extend(b"SEGREDO!SEGREDO!");
+        assert!(!tem(&scrub(&f, &T).unwrap(), "SEGREDO"));
     }
 
     #[test]

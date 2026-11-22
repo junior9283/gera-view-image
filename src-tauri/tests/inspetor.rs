@@ -544,13 +544,16 @@ fn edicao_que_cai_no_pacote_novo_leva_os_textos_conhecidos_e_avisa() {
     let mut exif = exif_com_textos_antigos();
     exif[8..10].copy_from_slice(&u16::MAX.to_le_bytes()); // EXIF que não dá para limpar
     let meta = MetaCarry {
-        exif: Some(exif),
         iptc: Some(iim(&[(120, "Legenda conhecida"), (116, "Gera")])),
         xmp: Some("<<isto não é XML".into()),
         ..MetaCarry::default()
     };
+    // O EXIF forjado vai direto no APP1: o app não grava um EXIF que não consegue limpar.
+    let jpeg = encode(&rgba, &opts(ExportFormat::Jpeg), &meta).unwrap();
+    let app1 = [b"Exif\0\0".as_slice(), &exif].concat();
+    let len = ((app1.len() + 2) as u16).to_be_bytes();
     let src = dir.join("origem.jpg");
-    fs::write(&src, encode(&rgba, &opts(ExportFormat::Jpeg), &meta).unwrap()).unwrap();
+    fs::write(&src, [&jpeg[..2], &[0xFF, 0xE1, len[0], len[1]], &app1, &jpeg[2..]].concat()).unwrap();
     let store = DocStore::new();
     let id = store.open_documents(&[s(&src)]).remove(0).id;
     store.wait_ready(id).unwrap();
@@ -660,4 +663,48 @@ fn metadados_dizem_que_blocos_o_arquivo_tem() {
     fs::write(&avif, b).unwrap();
     let d = decode(&avif).unwrap();
     assert!(tem(read_metadata(&avif, &d).unwrap()).1);
+}
+
+/// EXIF de `exif_com_textos_antigos` com um IFD1 e a miniatura do original (bytes reconhecíveis).
+fn exif_com_miniatura() -> Vec<u8> {
+    let mut e = exif_com_textos_antigos();
+    let next_slot = 8 + 2 + 12 * 4;
+    if e.len() % 2 == 1 {
+        e.push(0);
+    }
+    let ifd1 = e.len() as u32;
+    e[next_slot..next_slot + 4].copy_from_slice(&ifd1.to_le_bytes());
+    let thumb_at = ifd1 + 2 + 24 + 4;
+    e.extend(2u16.to_le_bytes());
+    for (tag, v) in [(0x0201u16, thumb_at), (0x0202, MINIATURA.len() as u32)] {
+        e.extend(tag.to_le_bytes());
+        e.extend(4u16.to_le_bytes());
+        e.extend(1u32.to_le_bytes());
+        e.extend(v.to_le_bytes());
+    }
+    e.extend(0u32.to_le_bytes());
+    e.extend(MINIATURA);
+    e
+}
+
+const MINIATURA: &[u8] = b"\xFF\xD8MINIATURA-DO-ORIGINAL-ANTES-DO-RECORTE\xFF\xD9";
+
+/// A miniatura embutida mostra a imagem de antes das edições: não vai para o arquivo gravado.
+#[test]
+fn miniatura_antiga_do_exif_nao_e_gravada() {
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    let tem = |b: &[u8]| b.windows(MINIATURA.len()).any(|w| w == MINIATURA);
+    let base = MetaCarry { exif: Some(exif_com_miniatura()), ..MetaCarry::default() };
+    let texto = MetaCarry { exif_cleared: Some(edicao_autor_e_descricao()), ..base.clone() };
+    for (fmt, ext) in [(ExportFormat::Jpeg, "jpg"), (ExportFormat::Tiff, "tiff"), (ExportFormat::Png, "png"), (ExportFormat::Webp, "webp")] {
+        for (meta, dpi) in [(&base, None), (&base, Some(300.0)), (&texto, None), (&texto, Some(300.0))] {
+            let o = ExportOptions { dpi, ..opts(fmt) };
+            let out = encode(&rgba, &o, meta).unwrap();
+            assert!(!tem(&out), ".{ext} com ppp {dpi:?}");
+            let path = tmp(&format!("insp-mini-{ext}")).join(format!("a.{ext}"));
+            fs::write(&path, &out).unwrap();
+            let d = decode(&path).unwrap();
+            assert!(campo(&read_metadata(&path, &d).unwrap().exif, "Make").unwrap().contains("Gera"), ".{ext}");
+        }
+    }
 }

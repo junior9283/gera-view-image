@@ -367,7 +367,7 @@ pub fn tiff_pages(b: &[u8]) -> Option<Vec<u64>> {
         let n = if big { usize::try_from(long(at)?).ok()? } else { r.u16(at)? as usize };
         let next = at.checked_add(count)?.checked_add(n.checked_mul(entry)?)?;
         out.push(off);
-        off = long(next)?;
+        off = long(next).unwrap_or(0); // ponteiro cortado no fim do arquivo: acabou
     }
     Some(out)
 }
@@ -481,8 +481,7 @@ pub fn exif_with_dpi(exif: Option<&[u8]>, dpi: f32) -> Option<Vec<u8>> {
     let end = first.checked_add(12 * r.u16(at)? as usize)?;
     let table = exif.get(first..end)?;
     // Sem o ponteiro do próximo IFD (bloco cortado ali), a tabela acaba nas entradas.
-    let next = r.u32(end);
-    let old = at..if next.is_some() { end + 4 } else { end };
+    let old = at..if r.u32(end).is_some() { end + 4 } else { end };
     let mut entries: Vec<[u8; 12]> = table.as_chunks::<12>().0.to_vec();
     entries.retain(|e| !matches!(r.entry_tag(e), 282 | 283 | 296));
     for e in &entries {
@@ -523,7 +522,8 @@ pub fn exif_with_dpi(exif: Option<&[u8]>, dpi: f32) -> Option<Vec<u8>> {
     let new = u32::try_from(out.len()).ok()?;
     put16(&mut out, u16::try_from(entries.len()).ok()?, r.le);
     out.extend(entries.as_flattened());
-    put32(&mut out, next.unwrap_or(0), r.le);
+    // Sem IFD1: a miniatura dele é a imagem de antes das edições (o `exif_for_write` já a zerou).
+    put32(&mut out, 0, r.le);
     let mut pointer = Vec::with_capacity(4);
     put32(&mut pointer, new, r.le);
     out[4..8].copy_from_slice(&pointer);

@@ -33,6 +33,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Salvar não grava mais por cima de um arquivo que virou outra coisa no disco (mais páginas, animação ou outro formato) depois de ignorar o aviso de alteração: abre o Exportar. Reverter passa a acompanhar o formato e as páginas do arquivo relido.
 - Salvar Como grava a página que estava na tela quando foi pedido, mesmo que ela mude com o diálogo aberto.
 - Privacidade: exportar com outra resolução deixava dentro do arquivo uma cópia escondida dos textos do EXIF, que continuava lá depois de apagar o autor ou a descrição. A cópia não é mais criada, e apagar o texto também a remove dos arquivos gravados por versões anteriores.
+- Privacidade: a miniatura embutida no EXIF (que mostra a foto de antes de recortes e outras edições) não é mais levada para o arquivo gravado.
+- TIFF que só abre pelo leitor de uma página (ou com páginas demais) não é mais aberto pela metade: com mais de uma página, o app mostra o erro em vez de abrir só a primeira, que o Salvar gravaria sozinha.
 - EXIF maior que o limite de 64 KB do JPEG saía sem aviso; agora o app avisa, e os avisos de metadados dizem de que documento são.
 - Reiniciar depois de instalar uma atualização descartava as alterações não salvas sem perguntar.
 

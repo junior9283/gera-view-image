@@ -303,7 +303,7 @@ pub fn encode<'a>(
             exif: meta.exif.as_deref().and_then(|e| {
                 let e = container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions());
                 let clear = metaedit::exif_clear_set(meta.text_edits.as_ref(), meta.exif_cleared.as_ref(), fmt.carries_text());
-                if clear.is_empty() { Some(e) } else { metaedit::exif_without_text(&e, &clear) }
+                metaedit::exif_for_write(&e, &clear)
             }),
             icc: out_icc,
             dpi,

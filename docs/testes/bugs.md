@@ -184,3 +184,14 @@ Formato: sintoma, causa, correção, teste, lição.
 ### EXIF acima de 64 KB sumia do JPEG sem aviso
 - **Correção:** aviso `exifTooBig` em `metaedit::notes`, com o nome do documento.
 - **Teste:** `exif_que_nao_cabe_no_jpeg_avisa` (`src-tauri/tests/inspetor.rs`) e `src/file/loss.test.tsx`.
+
+### TIFF de várias páginas abria só a primeira pelo leitor alternativo (checagem de segurança)
+- **Sintoma:** com páginas demais ou uma página que o leitor de páginas não lê (CMYK), o arquivo abria com uma página só, gravável; o Salvar apagaria as outras.
+- **Correção:** o leitor de uma página só é usado quando `container::tiff_pages` confirma um IFD só.
+- **Teste:** `tiff_com_paginas_demais_nao_abre_como_uma_pagina`, `tiff_de_varias_paginas_nao_cai_no_leitor_de_uma_pagina` (`src-tauri/tests/paginas.rs`).
+- **Lição:** um fallback que lê menos do que o principal não pode produzir um documento gravável.
+
+### Limpeza de cópias do EXIF: resíduo, custo e miniatura (checagem de segurança)
+- **Sintomas:** cópias sobrepostas de dois valores apagados deixavam um pedaço; bloco forjado com muitas cópias e faixas custava tempo quadrático; a miniatura do IFD1 (a foto de antes das edições) ia para o arquivo.
+- **Correção:** cópias procuradas no bloco original e zeradas juntas; faixas protegidas fundidas com busca binária e teto de casamentos (`None` = EXIF descartado); `exif_for_write` tira o IFD1 e zera a miniatura, e `exif_with_dpi` grava 0 como próximo IFD.
+- **Teste:** `copias_sobrepostas_de_valores_tirados_somem_inteiras`, `copias_demais_derrubam_o_bloco` (`src-tauri/src/image/exifscrub.rs`), `miniatura_antiga_do_exif_nao_e_gravada` (`src-tauri/tests/inspetor.rs`).
