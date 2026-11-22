@@ -38,13 +38,10 @@ pub fn items(store: &DocStore, ids: &[DocId]) -> AppResult<Vec<Item>> {
     let mut out = Vec::new();
     for &id in ids {
         store.wait_ready(id)?;
-        let dpi = store.current_dpi(id)?;
-        let sizes = store.page_sizes(id)?;
-        out.extend(sizes.into_iter().zip(0..).map(|((w, h), frame)| Item {
-            id,
-            frame,
-            size: Size { w, h, dpi },
-        }));
+        for ((w, h), frame) in store.page_sizes(id)?.into_iter().zip(0..) {
+            let dpi = store.current_dpi(id, frame)?;
+            out.push(Item { id, frame, size: Size { w, h, dpi } });
+        }
     }
     if out.is_empty() {
         return Err(AppError::NotFound("nada para imprimir".into()));

@@ -24,6 +24,9 @@ pub enum AppError {
     /// Colar/Novo da Área de Transferência sem imagem nela.
     #[error("clipboard has no image")]
     ClipboardEmpty,
+    /// O arquivo a gravar passaria do teto de memória; nada foi gravado.
+    #[error("{0}")]
+    TooLarge(String),
 }
 
 impl AppError {
@@ -39,6 +42,7 @@ impl AppError {
             AppError::HeicDecoderMissing(_) => "heic_decoder_missing",
             AppError::EmptySelection => "empty_selection",
             AppError::ClipboardEmpty => "clipboard_empty",
+            AppError::TooLarge(_) => "too_large",
         }
     }
 

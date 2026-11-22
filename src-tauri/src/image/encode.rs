@@ -162,6 +162,9 @@ pub struct ExportOptions {
     /// Página gravada (TIFF de várias páginas). O PDF de todas é `write_pdf`.
     #[serde(default)]
     pub frame: u32,
+    /// TIFF com todas as páginas do documento (`frame` não conta); sem efeito nos outros formatos.
+    #[serde(default)]
+    pub all_pages: bool,
 }
 
 impl ExportOptions {
@@ -179,6 +182,7 @@ impl ExportOptions {
             exr_half: false,
             dpi: None,
             frame: 0,
+            all_pages: false,
         }
     }
 

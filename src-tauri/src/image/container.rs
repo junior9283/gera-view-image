@@ -339,6 +339,129 @@ pub fn tiff_with_meta(tiff: &[u8], m: &TiffMeta) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Posição do IFD de cada página de um TIFF (clássico ou BigTIFF), na ordem da cadeia. `None` se o
+/// arquivo não for TIFF, a cadeia voltar a um IFD já visto ou passar de `decode::MAX_PAGES`.
+pub fn tiff_pages(b: &[u8]) -> Option<Vec<u64>> {
+    let (r, big) = tiff_reader(b)?;
+    let long = |at: usize| -> Option<u64> {
+        if !big {
+            return r.u32(at).map(u64::from);
+        }
+        let a = b.get(at..at.checked_add(8)?)?.try_into().ok()?;
+        Some(if r.le { u64::from_le_bytes(a) } else { u64::from_be_bytes(a) })
+    };
+    let (head, count, entry) = if big { (8, 8, 20) } else { (4, 2, 12) };
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut off = long(head)?;
+    while off != 0 {
+        if out.len() >= super::decode::MAX_PAGES || !seen.insert(off) {
+            return None;
+        }
+        let at = usize::try_from(off).ok()?;
+        let n = if big { usize::try_from(long(at)?).ok()? } else { r.u16(at)? as usize };
+        let next = at.checked_add(count)?.checked_add(n.checked_mul(entry)?)?;
+        out.push(off);
+        off = long(next)?;
+    }
+    Some(out)
+}
+
+/// Leitor e se é BigTIFF (que o `Reader::new` não aceita: os IFDs têm outro formato).
+fn tiff_reader(b: &[u8]) -> Option<(Reader<'_>, bool)> {
+    match b.get(..4)? {
+        b"II+\0" => Some((Reader { b, le: true }, true)),
+        b"MM\0+" => Some((Reader { b, le: false }, true)),
+        _ => Reader::new(b).map(|r| (r, false)),
+    }
+}
+
+/// Aponta o cabeçalho do TIFF para o IFD em `off` (de `tiff_pages`): os leitores de uma página só
+/// passam a ver essa.
+pub fn tiff_set_first(b: &mut [u8], off: u64) {
+    let Some((le, big)) = tiff_reader(b).map(|(r, big)| (r.le, big)) else {
+        return;
+    };
+    let mut v = Vec::new();
+    match (big, le) {
+        (true, true) => v.extend(off.to_le_bytes()),
+        (true, false) => v.extend(off.to_be_bytes()),
+        (false, le) => put32(&mut v, off as u32, le),
+    }
+    let at = if big { 8 } else { 4 };
+    if let Some(slot) = b.get_mut(at..at + v.len()) {
+        slot.copy_from_slice(&v);
+    }
+}
+
+/// TIFF de várias páginas montado com arquivos de uma página só (os que o codificador grava).
+/// Copia só os pixels e as tags de cada um; nada do arquivo de entrada sobra como espaço morto.
+pub struct TiffJoin {
+    out: Vec<u8>,
+    /// Onde está o ponteiro do próximo IFD da última página.
+    next: usize,
+    max: usize,
+}
+
+impl TiffJoin {
+    /// `max`: teto de bytes do arquivo montado.
+    pub fn new(max: usize) -> Self {
+        TiffJoin { out: Vec::new(), next: 4, max }
+    }
+
+    /// Acrescenta a página de `tiff`. `None` se passar do teto (ou de 4 GiB, o limite do formato).
+    pub fn push(&mut self, tiff: &[u8]) -> Option<()> {
+        const OFFSETS: u16 = 273;
+        const COUNTS: u16 = 279;
+        // A tabela regravada pode passar da antiga em algumas centenas de bytes.
+        if self.out.len().checked_add(tiff.len())? > self.max {
+            return None;
+        }
+        let r = Reader::new(tiff)?;
+        if self.out.is_empty() {
+            self.out.extend_from_slice(&tiff[..4]);
+            self.out.extend([0; 4]);
+        } else if self.out[..4] != tiff[..4] {
+            return None;
+        }
+        let mut entries = r.read_ifd(r.ifd0()?, 0)?;
+        let longs = |tag| -> Option<Vec<usize>> {
+            let e = entries.iter().find(|e| e.tag == tag)?;
+            Some(match e.ty {
+                3 => e.data.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]]) as usize).collect(),
+                4 => e.data.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]) as usize).collect(),
+                _ => return None,
+            })
+        };
+        let (offsets, counts) = (longs(OFFSETS)?, longs(COUNTS)?);
+        if offsets.is_empty() || offsets.len() != counts.len() {
+            return None;
+        }
+        let mut moved = Vec::with_capacity(offsets.len() * 4);
+        for (off, len) in offsets.into_iter().zip(counts) {
+            let strip = tiff.get(off..off.checked_add(len)?)?;
+            if self.out.len() % 2 == 1 {
+                self.out.push(0);
+            }
+            moved.extend(u32::try_from(self.out.len()).ok()?.to_le_bytes());
+            self.out.extend_from_slice(strip);
+        }
+        let e = entries.iter_mut().find(|e| e.tag == OFFSETS)?;
+        *e = Entry { count: moved.len() as u32 / 4, ..Entry::raw(OFFSETS, 4, &moved) };
+        let at = write_ifd(&mut self.out, &entries, r.le)?;
+        let mut pointer = Vec::new();
+        put32(&mut pointer, at, r.le);
+        self.out[self.next..self.next + 4].copy_from_slice(&pointer);
+        let n = Reader { b: &self.out, le: r.le }.u16(at as usize)? as usize;
+        self.next = at as usize + 2 + 12 * n;
+        Some(())
+    }
+
+    pub fn finish(self) -> Vec<u8> {
+        self.out
+    }
+}
+
 /// EXIF (bloco TIFF) com a resolução `dpi` no IFD0; sem EXIF, um bloco só com ela. O IFD0 é
 /// regravado no fim, sem o IFD1 (a miniatura embutida). `None` se o bloco for ilegível.
 pub fn exif_with_dpi(exif: Option<&[u8]>, dpi: f32) -> Option<Vec<u8>> {

@@ -29,6 +29,7 @@ pub fn apply(img: &RgbaImage, op: &Op) -> RgbaImage {
         }),
         Op::Composite { png, .. } => composite(img, png),
         Op::AssignProfile { .. } => img.clone(),
+        Op::OnPage { op, .. } => apply(img, op),
     }
 }
 
@@ -57,6 +58,7 @@ pub fn output_size((w, h): (u32, u32), op: &Op) -> (u32, u32) {
             (r.w, r.h)
         }
         Op::Resize { w, h, .. } => (*w, *h),
+        Op::OnPage { op, .. } => output_size((w, h), op),
         _ => (w, h),
     }
 }
@@ -71,6 +73,7 @@ pub fn validate((w, h): (u32, u32), op: &Op) -> Result<(), String> {
         Op::Resize { w, h, .. } if (*w as u64) * (*h as u64) > 1 << 31 => {
             Err("tamanho grande demais".into())
         }
+        Op::OnPage { op, .. } => validate((w, h), op),
         _ => Ok(()),
     }
 }

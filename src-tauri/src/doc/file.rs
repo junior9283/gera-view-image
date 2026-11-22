@@ -3,6 +3,7 @@
 //! Salvar nunca sobrescreve uma versão que mudou por fora: compara tamanho e mtime com o
 //! carimbo da abertura (ou do último salvar) e falha com `changed_on_disk`.
 use super::{
+    color::Profile,
     model::{DocId, DocInfo, Op},
     store::{DeepBase, DiskStamp, DocStore, Document, Pixels, RenderState, not_found},
 };
@@ -10,9 +11,11 @@ use crate::{
     error::{AppError, AppResult},
     image::{
         decode::{self, Decoded},
+        container::{self, TiffJoin},
         encode::{self, ExportFormat, ExportOptions, MetaCarry},
         metadata, metaedit,
         raster::{self, Rgba16Image},
+        thumb::fit_size,
     },
 };
 use ::image::RgbaImage;
@@ -114,13 +117,54 @@ fn file_name(p: &Path) -> String {
         .unwrap_or_default()
 }
 
+/// Arquivo de origem em memória, para ler o que uma gravação leva dele (metadados, 16 bits).
+struct SourceFile {
+    bytes: Vec<u8>,
+    /// TIFF com as mesmas páginas do documento: o IFD de cada uma.
+    pages: Vec<u64>,
+}
+
+impl SourceFile {
+    fn read(path: &str, frames: u32) -> Option<Self> {
+        if path.is_empty() {
+            return None;
+        }
+        let bytes = std::fs::read(path).ok()?;
+        let pages = container::tiff_pages(&bytes)
+            .filter(|p| p.len() > 1 && p.len() == frames as usize)
+            .unwrap_or_default();
+        Some(SourceFile { bytes, pages })
+    }
+
+    /// Os bytes com a página `frame` como primeira. `None` se o arquivo não tem essa página.
+    fn page(&mut self, frame: u32) -> Option<&[u8]> {
+        match self.pages.get(frame as usize) {
+            Some(&off) => container::tiff_set_first(&mut self.bytes, off),
+            None if frame > 0 => return None,
+            None => {}
+        }
+        Some(&self.bytes)
+    }
+}
+
+/// Bytes prontos para gravar e o que a gravação muda no documento.
+struct Encoded {
+    bytes: Vec<u8>,
+    /// Ver `metaedit::notes`.
+    notes: Vec<&'static str>,
+    /// Alguma página foi gravada com os 16 bits de verdade.
+    deep: bool,
+    state: RenderState,
+}
+
 impl Document {
-    /// DPI atual: o do último Ajustar Tamanho que o definiu, senão o do arquivo.
-    fn dpi(&self) -> Option<(f32, f32)> {
+    /// DPI da página `frame`: o do último Ajustar Tamanho que o definiu, senão o do arquivo.
+    fn dpi(&self, frame: u32) -> Option<(f32, f32)> {
         self.ops
             .iter()
             .rev()
-            .find_map(|op| match op {
+            .filter(|op| op.touches(frame))
+            .find_map(|op| match op.inner() {
                 Op::Resize { dpi: Some(d), .. } => Some((*d, *d)),
                 _ => None,
             })
@@ -139,30 +183,31 @@ impl Document {
         }
     }
 
+    /// `Document::deep` do estado que acabou de ser gravado.
+    pub(super) fn deep_base(&self, (n, generation): RenderState) -> DeepBase {
+        DeepBase { source: Arc::downgrade(&self.source), generation, n, disk: self.disk }
+    }
+
     /// Passa a apontar para `path` (após renomear, mover ou exportar um documento sem caminho).
     pub(super) fn relocate(&mut self, path: &Path) {
         self.info.path = path.to_string_lossy().into_owned();
         self.info.name = file_name(path);
         self.disk = DiskStamp::of(path);
+        self.unseen_disk = false;
     }
 }
 
 impl DocStore {
-    pub fn current_dpi(&self, id: DocId) -> AppResult<Option<(f32, f32)>> {
-        self.with_doc(id, Document::dpi)
+    pub fn current_dpi(&self, id: DocId, frame: u32) -> AppResult<Option<(f32, f32)>> {
+        self.with_doc(id, |d| d.dpi(frame))
     }
 
     /// Tamanho de cada página a imprimir ou exportar em PDF: todas as de um TIFF, só o primeiro
-    /// quadro de uma animação. Com operações, as demais páginas são aproximadas pela primeira.
+    /// quadro de uma animação.
     pub fn page_sizes(&self, id: DocId) -> AppResult<Vec<(u32, u32)>> {
-        self.with_doc(id, |d| {
-            let pages = if d.info.delays_ms.is_empty() { d.source.frames.len() } else { 1 };
-            (0..pages)
-                .map(|f| match d.source.frames.get(f) {
-                    Some(img) if f > 0 && d.ops.is_empty() => img.dimensions(),
-                    _ => d.size_after_ops(),
-                })
-                .collect()
+        self.with_doc(id, |d| match d.page_sizes() {
+            pages if pages.is_empty() => vec![d.size_after_ops(0)],
+            pages => pages,
         })
     }
 
@@ -177,6 +222,7 @@ impl DocStore {
         let d = map.get_mut(&id).ok_or_else(|| not_found(id))?;
         if let Some(s) = DiskStamp::of(Path::new(&d.info.path)) {
             d.disk = Some(s);
+            d.unseen_disk = true;
         }
         Ok(())
     }
@@ -190,49 +236,62 @@ impl DocStore {
             .collect()
     }
 
-    /// Pixels finais (página `frame`), os metadados a levar, os bytes atuais do arquivo (IPTC/XMP)
-    /// e o estado `(ops.len(), geração)` que os pixels refletem.
+    /// Pixels finais da página `frame`, os metadados a levar (os do documento na primeira página;
+    /// nas outras, os da própria página no arquivo) e o estado que os pixels refletem.
     fn render_for_write(
         &self,
         id: DocId,
         frame: u32,
         keywords: Option<Vec<String>>,
-        read_file: bool,
-    ) -> AppResult<(Pixels, MetaCarry, Option<Vec<u8>>, RenderState)> {
+        file: Option<&mut SourceFile>,
+    ) -> AppResult<(Pixels, MetaCarry, RenderState)> {
         let (px, _, _, state) = self.pixels(id, frame, false)?;
-        let (path, source, dpi, icc) = self.with_doc(id, |d| {
+        let (source, dpi, resized, icc, assigned) = self.with_doc(id, |d| {
             let icc = d.profile().map(|p| p.bytes().to_vec());
-            (d.info.path.clone(), d.source.clone(), d.dpi(), icc)
+            let dpi = d.dpi(frame);
+            (d.source.clone(), dpi, dpi != d.source.dpi, icc, matches!(d.profile(), Some(Profile::Assigned(_))))
         })?;
-        let file = (read_file && !path.is_empty())
-            .then(|| std::fs::read(&path).ok())
-            .flatten();
-        let (iptc, xmp) = file
-            .as_deref()
-            .map(metadata::file_iim_xmp)
-            .unwrap_or_default();
+        let bytes = file.and_then(|f| f.page(frame));
+        let (iptc, xmp) = bytes.map(metadata::file_iim_xmp).unwrap_or_default();
         let text_edits = self.meta_edits(id);
-        let exif_cleared = Some(self.meta_cleared(id)).filter(|c| !c.is_empty());
-        let meta = MetaCarry {
-            exif: source.exif.clone(),
-            icc,
-            iptc,
-            xmp,
-            iptc_keywords: keywords,
-            text_edits,
-            exif_cleared,
-            dpi,
+        let meta = if frame == 0 || !source.has_pages() {
+            MetaCarry {
+                exif: source.exif.clone(),
+                icc,
+                iptc,
+                xmp,
+                iptc_keywords: keywords,
+                text_edits,
+                exif_cleared: Some(self.meta_cleared(id)).filter(|c| !c.is_empty()),
+                dpi,
+            }
+        } else {
+            let exif = bytes.and_then(container::tiff_exif_block);
+            let (page_icc, page_dpi) = bytes.map_or((icc.clone(), dpi), decode::tiff_page_info);
+            // Os textos e as palavras-chave editados são da primeira página; apagar vale em todas.
+            let texts = exif.is_some() || iptc.is_some() || xmp.is_some();
+            MetaCarry {
+                icc: if assigned { icc } else { page_icc },
+                dpi: if resized { dpi } else { page_dpi },
+                iptc_keywords: keywords.filter(|k| texts && k.is_empty()),
+                text_edits: text_edits.map(|e| e.only_clearing()).filter(|e| texts && !e.is_empty()),
+                exif_cleared: None,
+                exif,
+                iptc,
+                xmp,
+            }
         };
-        Ok((px, meta, file, state))
+        Ok((px, meta, state))
     }
 
-    /// Pixels finais em 16 bits, se o documento veio de um PNG/TIFF de 16 bits: as operações
-    /// `ops[..n]` (o estado `state` dos pixels de 8 bits `px`) são refeitas em 16 bits sobre o
-    /// arquivo atual `file`. Ele vale como base se ainda for a origem (confere com os pixels de
+    /// Pixels finais da página em 16 bits, se ela veio de um PNG/TIFF de 16 bits: as operações
+    /// `ops[..n]` (o estado dos pixels de 8 bits `px`) são refeitas em 16 bits sobre o arquivo
+    /// atual `file` (com a página como primeira). Ele vale como base se ainda for a origem (confere com os pixels de
     /// 8 bits) ou se for o último Salvar em 16 bits (`Document::deep`): aí só o resto é refeito.
     fn render_deep(
         &self,
         id: DocId,
+        frame: u32,
         file: Option<&[u8]>,
         px: &RgbaImage,
         (n, generation): RenderState,
@@ -260,71 +319,138 @@ impl DocStore {
         let base = raster::decode16(file?, source.format)?;
         let start = match saved {
             Some(k) => k,
-            None if source.frames.first().is_some_and(|f| raster::matches8(&base, f)) => 0,
+            None if source.frames.get(frame as usize).is_some_and(|f| raster::matches8(&base, f)) => 0,
             None => return None,
         };
         let out = ops[start..]
             .iter()
-            .filter(|op| op.touches(0))
+            .filter(|op| op.touches(frame))
             .fold(base, |img, op| raster::apply16(&img, op));
         (out.dimensions() == px.dimensions()).then_some(out)
     }
 
-    /// Salvar (Ctrl+S): grava no próprio arquivo, de forma atômica, se o formato permitir.
-    /// `keywords`: palavras-chave editadas no inspetor (substituem as do arquivo).
+    /// Codifica a página `opts.frame`. `keep_depth` (Salvar): PNG/TIFF de 16 bits continua com 16 bits.
+    fn encode_page(
+        &self,
+        id: DocId,
+        opts: &ExportOptions,
+        keywords: Option<Vec<String>>,
+        file: &mut Option<SourceFile>,
+        keep_depth: bool,
+    ) -> AppResult<Encoded> {
+        let frame = opts.frame;
+        let (px, meta, state) = self.render_for_write(id, frame, keywords, file.as_mut())?;
+        // Exportar em 16 bits (ou EXR) de uma origem de 16 bits usa os 16 bits de verdade.
+        let deep = (opts.deep() || (keep_depth && matches!(opts.format, ExportFormat::Png | ExportFormat::Tiff)))
+            .then(|| self.render_deep(id, frame, file.as_mut()?.page(frame), &px, state))
+            .flatten();
+        let mut opts = opts.clone();
+        opts.depth16 |= deep.is_some();
+        if opts.all_pages {
+            // Cada página tem a própria proporção: cabe no tamanho pedido, sem ampliar.
+            opts.resize = opts.resize.map(|(w, h)| fit_size(px.width(), px.height(), w, h));
+        }
+        let bytes = match &deep {
+            Some(d) => encode::encode(d, &opts, &meta)?,
+            None => encode::encode(&*px, &opts, &meta)?,
+        };
+        Ok(Encoded { bytes, notes: metaedit::notes(&meta, &opts), deep: deep.is_some(), state })
+    }
+
+    /// Codifica o documento: a página `opts.frame` ou, num TIFF com `all_pages`, todas.
+    fn encode_doc(
+        &self,
+        id: DocId,
+        opts: &ExportOptions,
+        keywords: Option<Vec<String>>,
+        mut file: Option<SourceFile>,
+        keep_depth: bool,
+    ) -> AppResult<Encoded> {
+        let Some(n) = self.written_pages(id, opts)? else {
+            let one = ExportOptions { all_pages: false, ..opts.clone() };
+            return self.encode_page(id, &one, keywords, &mut file, keep_depth);
+        };
+        // Uma edição no meio misturaria estados diferentes entre as páginas: recomeça.
+        'again: for _ in 0..3 {
+            let mut join = TiffJoin::new(decode::MAX_DECODE_BYTES);
+            let mut all: Option<Encoded> = None;
+            for frame in 0..n {
+                let one = ExportOptions { frame, ..opts.clone() };
+                let page = self.encode_page(id, &one, keywords.clone(), &mut file, keep_depth)?;
+                if all.as_ref().is_some_and(|a| a.state != page.state) {
+                    continue 'again;
+                }
+                join.push(&page.bytes).ok_or_else(|| {
+                    AppError::TooLarge(format!("as {n} páginas passam de 2 GB; exporte em partes ou comprima"))
+                })?;
+                match &mut all {
+                    None => all = Some(Encoded { bytes: Vec::new(), ..page }),
+                    Some(a) => {
+                        a.deep |= page.deep;
+                        for note in page.notes {
+                            if !a.notes.contains(&note) {
+                                a.notes.push(note);
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(all) = all {
+                return Ok(Encoded { bytes: join.finish(), ..all });
+            }
+        }
+        Err(AppError::Io("o documento mudou durante a gravação".into()))
+    }
+
+    /// Quantas páginas `opts` grava, se forem todas as de um documento de várias.
+    fn written_pages(&self, id: DocId, opts: &ExportOptions) -> AppResult<Option<u32>> {
+        let all = opts.all_pages && opts.format == ExportFormat::Tiff;
+        self.with_doc(id, |d| (all && d.source.has_pages()).then_some(d.info.frames))
+    }
+
+    /// Salvar (Ctrl+S): grava no próprio arquivo, de forma atômica, se o formato permitir (um TIFF
+    /// leva todas as páginas). `keywords`: palavras-chave editadas no inspetor (substituem as do arquivo).
     pub fn save(&self, id: DocId, keywords: Option<Vec<String>>) -> AppResult<SaveOutcome> {
         self.wait_ready(id)?;
-        let (path, format, writable) =
-            self.with_doc(id, |d| (d.info.path.clone(), d.info.format, d.info.writable))?;
+        let (path, format, writable, frames, unseen) = self.with_doc(id, |d| {
+            (d.info.path.clone(), d.info.format, d.info.writable, d.info.frames, d.unseen_disk)
+        })?;
         let Some(fmt) = ExportFormat::for_save(format).filter(|_| writable) else {
             return Ok(SaveOutcome::NeedsExport);
         };
         if let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, file, state) = self.render_for_write(id, 0, keywords, true)?;
-        let (n, generation) = state;
-        // PNG/TIFF de 16 bits continuam com 16 bits.
-        let deep = matches!(fmt, ExportFormat::Png | ExportFormat::Tiff)
-            .then(|| self.render_deep(id, file.as_deref(), &px, state))
-            .flatten();
+        let file = SourceFile::read(&path, frames);
+        // O arquivo pode ter virado outra coisa: gravar por cima perderia as páginas ou o formato dele.
+        if let Some(f) = &file {
+            let same = decode::detect_format(Path::new(&path), &f.bytes) == Some(format);
+            let loses = |f: &SourceFile| {
+                decode::decode_bytes(Path::new(&path), &f.bytes)
+                    .map_or(true, |d| d.frames.len() > frames as usize)
+            };
+            if !same || (unseen && loses(f)) {
+                return Ok(SaveOutcome::NeedsExport);
+            }
+        }
+        let bytes = file.as_ref().map(|f| f.bytes.as_slice());
         let quality = match fmt {
-            ExportFormat::Jpeg => file.as_deref().and_then(encode::jpeg_quality),
+            ExportFormat::Jpeg => bytes.and_then(encode::jpeg_quality),
             // WebP com perda: sem como estimar a qualidade, usa 90; sem perdas continua sem perdas.
-            ExportFormat::Webp if file.as_deref().is_some_and(webp_is_lossy) => Some(90),
+            ExportFormat::Webp if bytes.is_some_and(webp_is_lossy) => Some(90),
             _ => None,
         };
-        let opts = ExportOptions {
-            format: fmt,
-            quality,
-            alpha: true,
-            depth16: deep.is_some(),
-            strip_metadata: false,
-            resize: None,
-            color_profile: None,
-            ..ExportOptions::new(ExportFormat::Png)
-        };
-        let bytes = match &deep {
-            Some(d) => encode::encode(d, &opts, &meta)?,
-            None => encode::encode(&*px, &opts, &meta)?,
-        };
+        let opts = ExportOptions { quality, all_pages: true, ..ExportOptions::new(fmt) };
+        let out = self.encode_doc(id, &opts, keywords, file, true)?;
         // Lote 5: guarda a versão atual e mantém as etiquetas (xattr `user.*`).
-        super::finder::overwrite(Path::new(&path), &bytes)?;
-        self.add_meta_notes(id, &metaedit::notes(&meta, &opts));
+        super::finder::overwrite(Path::new(&path), &out.bytes)?;
+        self.add_meta_notes(id, &out.notes);
         self.meta_written(id, fmt.carries_text());
         let (_, info) = self.with_doc_mut(id, |d| {
             d.disk = DiskStamp::of(Path::new(&path));
-            d.saved_len = if d.generation == generation && d.ops.len() >= n {
-                n
-            } else {
-                usize::MAX
-            };
-            d.deep = deep.is_some().then(|| DeepBase {
-                source: Arc::downgrade(&d.source),
-                generation,
-                n,
-                disk: d.disk,
-            });
+            d.unseen_disk = false;
+            d.mark_saved(out.state, None);
+            d.deep = out.deep.then(|| d.deep_base(out.state));
         })?;
         Ok(SaveOutcome::Saved(info))
     }
@@ -339,24 +465,15 @@ impl DocStore {
         keywords: Option<Vec<String>>,
     ) -> AppResult<()> {
         let dest_path = PathBuf::from(dest);
-        let (path, n, generation) =
-            self.with_doc(id, |d| (d.info.path.clone(), d.ops.len(), d.generation))?;
+        let (path, frames) = self.with_doc(id, |d| (d.info.path.clone(), d.info.frames))?;
         let same_file = !path.is_empty() && Path::new(&path) == dest_path;
         if same_file && let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, file, state) = self.render_for_write(id, opts.frame, keywords, true)?;
-        // Exportar em 16 bits (ou EXR) de uma origem de 16 bits usa os 16 bits de verdade.
-        // (o leitor de 16 bits só lê a primeira página).
-        let deep = (opts.deep() && opts.frame == 0)
-            .then(|| self.render_deep(id, file.as_deref(), &px, state))
-            .flatten();
-        let bytes = match &deep {
-            Some(d) => encode::encode(d, opts, &meta)?,
-            None => encode::encode(&*px, opts, &meta)?,
-        };
-        super::finder::overwrite(&dest_path, &bytes)?;
-        self.add_meta_notes(id, &metaedit::notes(&meta, opts));
+        let page = self.written_page(id, opts)?;
+        let out = self.encode_doc(id, opts, keywords, SourceFile::read(&path, frames), false)?;
+        super::finder::overwrite(&dest_path, &out.bytes)?;
+        self.add_meta_notes(id, &out.notes);
         let adopt = path.is_empty()
             && opts.resize.is_none()
             && ExportFormat::for_save(opts.format.source_format()).is_some();
@@ -366,23 +483,37 @@ impl DocStore {
                 if adopt {
                     d.relocate(&dest_path);
                     d.opened_disk = d.disk;
-                    d.info.format = opts.format.source_format();
-                    d.info.writable =
-                        Document::can_save(dest, d.info.format, d.source.frames.len());
-                    if d.generation == generation && d.ops.len() >= n {
-                        d.mark_saved(n, opts.frame);
-                    }
+                    d.set_format(opts.format.source_format());
+                    d.mark_saved(out.state, page);
                 } else {
                     d.disk = DiskStamp::of(&dest_path);
+                    d.unseen_disk = false;
                 }
             })?;
         }
         Ok(())
     }
 
+    /// Página que `opts` grava, para o `mark_saved`: `None` = todas.
+    pub(super) fn written_page(&self, id: DocId, opts: &ExportOptions) -> AppResult<Option<u32>> {
+        Ok(self.written_pages(id, opts)?.is_none().then_some(opts.frame))
+    }
+
     /// Tamanho estimado do arquivo com `opts` (codifica de verdade; imagens grandes por amostra).
     pub fn estimate_size(&self, id: DocId, opts: &ExportOptions) -> AppResult<u64> {
-        let (px, meta, ..) = self.render_for_write(id, opts.frame, None, false)?;
+        let Some(n) = self.written_pages(id, opts)? else {
+            return self.estimate_page(id, opts);
+        };
+        let pages = (0..n).map(|frame| {
+            let (w, h) = self.with_doc(id, |d| d.size_after_ops(frame))?;
+            let resize = opts.resize.map(|(mw, mh)| fit_size(w, h, mw, mh));
+            self.estimate_page(id, &ExportOptions { frame, resize, ..opts.clone() })
+        });
+        pages.sum()
+    }
+
+    fn estimate_page(&self, id: DocId, opts: &ExportOptions) -> AppResult<u64> {
+        let (px, meta, _) = self.render_for_write(id, opts.frame, None, None)?;
         let (w, h) = opts.resize.unwrap_or(px.dimensions());
         let area = w as u64 * h as u64;
         // O ICO é sempre pequeno (o codificador reduz a 256 px): nada a extrapolar.
@@ -430,6 +561,7 @@ impl DocStore {
                     d.full_size = dec.frames.first().map_or((0, 0), RgbaImage::dimensions);
                     d.source = Arc::new(dec);
                     d.disk = DiskStamp::of(Path::new(&d.info.path));
+                    d.unseen_disk = false;
                     d.saved_len = 0;
                 }
                 None => {
@@ -437,6 +569,8 @@ impl DocStore {
                         d.full_size = orig.frames.first().map_or((0, 0), RgbaImage::dimensions);
                         d.source = orig;
                     }
+                    // O disco pode não ser mais o da abertura: o Salvar confere antes de gravar por cima.
+                    d.unseen_disk |= d.disk != d.opened_disk;
                     // Se o disco ainda é o da abertura, o documento volta a ficar limpo.
                     d.saved_len = if d.disk == d.opened_disk {
                         0
@@ -449,6 +583,7 @@ impl DocStore {
             d.redo.clear();
             d.generation += 1;
             d.error = None;
+            d.set_format(d.source.format);
         })?;
         self.meta_source_changed(id, to == RevertTarget::Original);
         self.invalidate(id);

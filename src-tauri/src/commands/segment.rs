@@ -53,6 +53,7 @@ pub async fn segment_subject(
     window: WebviewWindow,
     store: State<'_, DocStore>,
     id: DocId,
+    frame: Option<u32>,
 ) -> AppResult<Mask> {
     let job = Job::on(EPOCHS.of(window.label()));
     let model = match cached() {
@@ -62,7 +63,7 @@ pub async fn segment_subject(
     job.check()?;
     let store = store.inner().clone();
     blocking(move || {
-        let img = store.render_full(id, 0)?;
+        let img = store.render_full(id, frame.unwrap_or(0))?;
         job.check()?;
         let mask = segment::subject_mask(&model, &img)?;
         job.check()?;

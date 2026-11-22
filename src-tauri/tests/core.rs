@@ -625,26 +625,26 @@ fn base_da_previa_de_ajuste_fica_em_cache_e_invalida_pela_chave() {
     let store = DocStore::new();
     let info = store.insert_decoded("/tmp/previa-cache.png", decoded(pattern(300, 200)));
     let id = info.id;
-    let a = store.preview_base(id, 120, 120).unwrap();
+    let a = store.preview_base(id, 0, 120, 120).unwrap();
     assert_eq!(*a, store.render_view(id, 0, 120, 120, None).unwrap());
     // Mesma chave: o mesmo buffer, sem novo render.
-    let b = store.preview_base(id, 120, 120).unwrap();
+    let b = store.preview_base(id, 0, 120, 120).unwrap();
     assert!(Arc::ptr_eq(&a, &b));
     // Outro tamanho: outra entrada, e a anterior sai (cache de 1 entrada).
-    let c = store.preview_base(id, 60, 60).unwrap();
+    let c = store.preview_base(id, 0, 60, 60).unwrap();
     assert_eq!(header(&c), (60, 40));
-    assert!(!Arc::ptr_eq(&store.preview_base(id, 120, 120).unwrap(), &a));
+    assert!(!Arc::ptr_eq(&store.preview_base(id, 0, 120, 120).unwrap(), &a));
     // Nova operação muda a chave (ops.len()).
     store.apply_op(id, Op::FlipH).unwrap();
-    let d = store.preview_base(id, 120, 120).unwrap();
+    let d = store.preview_base(id, 0, 120, 120).unwrap();
     assert_eq!(*d, store.render_view(id, 0, 120, 120, None).unwrap());
     assert_ne!(*d, *a);
     // Desfazer e aplicar outra operação do mesmo comprimento muda a geração.
     store.undo(id).unwrap();
-    assert_eq!(*store.preview_base(id, 120, 120).unwrap(), *a);
+    assert_eq!(*store.preview_base(id, 0, 120, 120).unwrap(), *a);
     store.apply_op(id, Op::FlipV).unwrap();
-    let e = store.preview_base(id, 120, 120).unwrap();
+    let e = store.preview_base(id, 0, 120, 120).unwrap();
     assert_eq!(*e, store.render_view(id, 0, 120, 120, None).unwrap());
     assert_ne!(*e, *d);
-    assert!(store.preview_base(DocId(9999), 120, 120).is_err());
+    assert!(store.preview_base(DocId(9999), 0, 120, 120).is_err());
 }
