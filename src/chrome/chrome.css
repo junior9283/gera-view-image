@@ -1,13 +1,3 @@
-:root {
-  --chrome-bg: #ececec;
-  --chrome-fg: #2b2b2b;
-  --chrome-border: rgba(0, 0, 0, 0.12);
-}
-:root[data-theme="dark"] {
-  --chrome-bg: #2d2d2d;
-  --chrome-fg: #e6e6e6;
-  --chrome-border: rgba(255, 255, 255, 0.12);
-}
 .window-frame {
   position: relative;
   width: 100%;
@@ -75,7 +65,7 @@
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
 }
 .wm-menu li { padding: 6px 10px; border-radius: 5px; cursor: default; }
-.wm-menu li:hover { background: var(--wm-accent, #3daee9); color: #fff; }
+.wm-menu li:hover { background: var(--wm-accent); color: var(--wm-accent-fg); }
 .window-buttons { display: flex; align-items: center; gap: 4px; flex: none; }
 .wb-btn {
   display: grid;
@@ -103,7 +93,7 @@
   font: inherit;
   cursor: default;
 }
-.menubar-button:hover, .menubar-button.open, .menubar-button:focus-visible { background: var(--chrome-border); outline: none; }
+.menubar-button:hover, .menubar-button.open, .menubar-button:focus-visible { background: var(--chrome-border); }
 .menu {
   position: absolute;
   top: 100%;
@@ -132,12 +122,13 @@
   cursor: default;
   outline: none;
 }
-.menu-item:hover:not([aria-disabled="true"]), .menu-item:focus { background: var(--wm-accent, #3daee9); color: #fff; }
+.menu-item:hover:not([aria-disabled="true"]), .menu-item:focus { background: var(--wm-accent); color: var(--wm-accent-fg); }
 .menu-item[aria-disabled="true"] { opacity: 0.45; }
 .menu-item[aria-disabled="true"]:focus { background: var(--chrome-border); color: inherit; }
 .menu-label { flex: 1; }
 .menu-item[aria-checked="true"] .menu-label::before { content: "✓ "; }
-.menu-shortcut, .menu-arrow { opacity: 0.7; font-size: 12px; }
+.menu-shortcut, .menu-arrow { opacity: 0.75; font-size: 12px; }
+.menu-item:hover > .menu-shortcut, .menu-item:hover > .menu-arrow, .menu-item:focus > .menu-shortcut, .menu-item:focus > .menu-arrow { opacity: 1; }
 .menu-separator { height: 1px; margin: 4px 6px; background: var(--chrome-border); }
 
 /* ---------- barra de ferramentas ---------- */
@@ -215,21 +206,19 @@
   color: inherit;
   background: var(--chrome-bg);
   font: inherit;
-  outline: none;
 }
-.menu-search:focus { border-color: var(--wm-accent, #3daee9); }
 
 .customize-toolbar { max-width: 620px; }
 .customize-bar, .customize-palette { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 8px; list-style: none; }
 .customize-bar {
   position: relative;
   min-height: 56px;
-  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border: 1px dashed var(--chrome-field-border);
   border-radius: 8px;
 }
-.customize-bar.drop { border-color: var(--wm-accent, #3daee9); }
+.customize-bar.drop { border-color: var(--wm-accent); }
 .customize-bar li.dragging { opacity: 0.35; }
-.customize-mark { position: absolute; top: 8px; bottom: 8px; width: 2px; margin-left: -4px; background: var(--wm-accent, #3daee9); }
+.customize-mark { position: absolute; top: 8px; bottom: 8px; width: 2px; margin-left: -4px; background: var(--wm-accent); }
 .customize-chip {
   display: inline-flex;
   flex-direction: column;
@@ -240,15 +229,14 @@
   border: 1px solid transparent;
   border-radius: 6px;
   color: inherit;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--chrome-hover);
   font: 11px/1.2 Inter, system-ui, sans-serif;
   cursor: grab;
   touch-action: none;
 }
-.customize-chip:focus-visible { border-color: var(--wm-accent, #3daee9); outline: none; }
 .customize-icons { display: flex; gap: 2px; }
-.customize-hint { margin: 12px 0 4px; font-size: 12px; opacity: 0.8; }
-.customize-default { display: flex; gap: 6px; padding: 8px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: inherit; background: transparent; cursor: grab; touch-action: none; }
+.customize-hint { margin: 12px 0 4px; font-size: 12px; color: var(--chrome-muted); }
+.customize-default { display: flex; gap: 6px; padding: 8px; border: 1px solid var(--chrome-field-border); border-radius: 8px; color: inherit; background: transparent; cursor: grab; touch-action: none; }
 .customize-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
 .customize-ghost {
   position: fixed;
@@ -259,8 +247,8 @@
   gap: 4px;
   padding: 6px;
   border-radius: 6px;
-  color: #fff;
-  background: var(--wm-accent, #3daee9);
+  color: var(--wm-accent-fg);
+  background: var(--wm-accent);
   font: 11px/1.2 Inter, system-ui, sans-serif;
   transform: translate(-50%, -50%);
   pointer-events: none;

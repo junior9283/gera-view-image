@@ -98,8 +98,8 @@
   width: min(300px, calc(100% - 24px));
   padding: 10px 12px;
   border-radius: 10px;
-  background: #2b2b2b;
-  color: #eee;
+  background: var(--chrome-panel);
+  color: var(--chrome-fg);
   font: 12px/1.4 system-ui, sans-serif;
   box-shadow: 0 6px 24px rgb(0 0 0 / 0.45);
   pointer-events: auto;
@@ -113,8 +113,8 @@
   gap: 8px;
 }
 .livetext-offer .primary {
-  background: var(--wm-accent, #0a84ff);
-  color: #fff;
+  background: var(--wm-accent);
+  color: var(--wm-accent-fg);
   border: 0;
   border-radius: 5px;
   padding: 3px 10px;
@@ -126,7 +126,9 @@
   min-width: 160px;
   padding: 4px;
   border-radius: 8px;
-  background: #2b2b2b;
+  background: var(--chrome-panel);
+  color: var(--chrome-fg);
+  border: 1px solid var(--chrome-border);
   box-shadow: 0 6px 24px rgb(0 0 0 / 0.45);
   pointer-events: auto;
 }
@@ -135,14 +137,14 @@
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #eee;
+  color: inherit;
   text-align: left;
   cursor: default;
 }
 .livetext-menu button:hover,
 .livetext-menu button:focus-visible {
-  background: var(--wm-accent, #0a84ff);
-  color: #fff;
+  background: var(--wm-accent);
+  color: var(--wm-accent-fg);
   outline: none;
 }
 .livetext-find-bar {
@@ -161,7 +163,7 @@
 }
 .livetext-find-count {
   min-width: 6em;
-  opacity: 0.75;
+  color: var(--chrome-muted);
 }
 .livetext-pct {
   font-variant-numeric: tabular-nums;

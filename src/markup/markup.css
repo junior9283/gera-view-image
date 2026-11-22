@@ -108,7 +108,7 @@
 }
 .markup-menu-label {
   font-size: 11px;
-  opacity: 0.7;
+  color: var(--chrome-muted);
   padding: 2px 8px;
 }
 .markup-menu-row {
@@ -236,11 +236,11 @@
 .sig-hint {
   margin: 4px 8px;
   font-size: 11px;
-  opacity: 0.7;
+  color: var(--chrome-muted);
 }
 .sig-error {
   margin: 4px 8px;
-  color: #ff3b30;
+  color: var(--chrome-danger);
 }
 .sig-import label {
   display: flex;
@@ -386,7 +386,7 @@
   gap: 6px;
   margin: 4px 8px;
   font-weight: 600;
-  color: #ff3b30;
+  color: var(--chrome-danger);
 }
 .camera-dot {
   width: 10px;
@@ -403,7 +403,7 @@
 .camera-off {
   margin: 4px 8px;
   font-size: 11px;
-  opacity: 0.7;
+  color: var(--chrome-muted);
 }
 .camera-result {
   margin: 4px 8px;

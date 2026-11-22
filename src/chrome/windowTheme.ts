@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { subscribe } from "../lib/events";
+import { readableOn } from "./contrast";
 
 export type WinButton = "minimize" | "maximize" | "close";
 export type DecorationStyle = "breeze" | "adwaita" | "elementary" | "generic";
@@ -49,6 +50,18 @@ export function useWindowTheme(): WindowTheme {
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme.dark ? "dark" : "light";
   }, [theme.dark]);
+
+  // Menus e realces usam a cor de destaque do sistema, com o texto que dá para ler sobre ela.
+  useLayoutEffect(() => {
+    if (!theme.accent) return;
+    const { style } = document.documentElement;
+    style.setProperty("--wm-accent", theme.accent);
+    style.setProperty("--wm-accent-fg", readableOn(theme.accent));
+    return () => {
+      style.removeProperty("--wm-accent");
+      style.removeProperty("--wm-accent-fg");
+    };
+  }, [theme.accent]);
 
   return theme;
 }
