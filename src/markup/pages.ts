@@ -3,13 +3,17 @@
 import type { DocId, DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { useUi } from "../store/ui";
-import { isAnimated } from "../viewer/paint";
 import type { Annotation } from "./model";
 import { getItems } from "./store";
 
 export const docOf = (id: DocId) => useDocs.getState().docs.find((d) => d.id === id);
 
-export const hasPages = (d: DocInfo | null | undefined): boolean => !!d && d.frames > 1 && !isAnimated(d);
+/** Várias páginas, pelo critério do Rust (`page_sizes`): quem tem atrasos é animação. */
+export const hasPages = (d: DocInfo | null | undefined): boolean => !!d && d.frames > 1 && !d.delaysMs?.length;
+
+/** Página mostrada de `id` (a primeira, se ele não é o documento ativo). */
+export const shownPage = (id: DocId): number =>
+  useDocs.getState().activeId === id ? (useUi.getState().page ?? 0) : 0;
 
 /** Anotações de `items` que estão na página `page` de `doc`. */
 export const onPage = (items: Annotation[], doc: DocInfo | null | undefined, page: number | null): Annotation[] =>
@@ -17,6 +21,10 @@ export const onPage = (items: Annotation[], doc: DocInfo | null | undefined, pag
 
 /** Anotações da página mostrada. */
 export const pageItems = (id: DocId): Annotation[] => onPage(getItems(id), docOf(id), useUi.getState().page);
+
+/** Gravar só a página `page` de `id` deixa anotações de fora. */
+export const leavesOut = (id: DocId, page: number): boolean =>
+  onPage(getItems(id), docOf(id), page).length < getItems(id).length;
 
 /** A anotação nova `a` na página mostrada. */
 export function onCurrentPage<A extends Annotation>(id: DocId, a: A): A {

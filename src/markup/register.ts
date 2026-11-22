@@ -14,8 +14,8 @@ import { installHistory } from "./history";
 import { MarkupBar } from "./MarkupBar";
 import { MarkupLayer } from "./MarkupLayer";
 import "./markup.css";
-import { docOf, hasPages } from "./pages";
-import { getItems, toggleMarkupBar, useMarkup } from "./store";
+import { docOf, hasPages, pageItems } from "./pages";
+import { getItems, getSelected, toggleMarkupBar, useMarkup } from "./store";
 
 installHistory();
 registerMarkupCommands();
@@ -25,12 +25,18 @@ registerDirtySource(
   (id) => getItems(id).length > 0,
   (cb) => useMarkup.subscribe((s, prev) => s.docs !== prev.docs && cb()),
 );
-// Em outra página as selecionadas não aparecem: ficam desmarcadas (Delete e estilo não as alcançam).
-useUi.subscribe((s, prev) => {
+/** Selecionada que não aparece (outra página) fica desmarcada: Delete e estilo não a alcançam. */
+function deselectHidden(): void {
   const { activeId } = useDocs.getState();
-  const moved = (s.page ?? 0) !== (prev.page ?? 0);
-  if (moved && activeId !== null && hasPages(docOf(activeId))) useMarkup.getState().select(activeId, []);
-});
+  if (activeId === null) return;
+  const selected = getSelected(activeId);
+  if (!selected.length) return;
+  const shown = new Set(pageItems(activeId).map((a) => a.id));
+  const keep = selected.filter((id) => shown.has(id));
+  if (keep.length < selected.length) useMarkup.getState().select(activeId, keep);
+}
+useUi.subscribe((s, prev) => s.page !== prev.page && deselectHidden());
+useDocs.subscribe((s, prev) => (s.activeId !== prev.activeId || s.docs !== prev.docs) && deselectHidden());
 registerSlot("below-toolbar", "markup-bar", MarkupBar);
 // Ouvinte de módulo (não de componente): a Toolbar e o Ctrl+Shift+M (Task 6) alternam a
 // barra mesmo que nenhum slot esteja montado no momento.

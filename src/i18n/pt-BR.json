@@ -488,6 +488,7 @@
     "saved": "Salvo: {{name}}",
     "keywordsNotSaved": "As palavras-chave não foram gravadas: este formato não guarda IPTC/XMP. Exporte em JPEG, TIFF, PNG ou WebP.",
     "exported": "Exportado: {{name}}",
+    "otherPages": "Só a página {{page}} foi gravada. As anotações das outras páginas continuam no documento, não salvas.",
     "exportedMany": "{{count}} imagens exportadas",
     "unsaved": {
       "titleOne": "Salvar as alterações em “{{name}}”?",
@@ -516,6 +517,7 @@
       "resize": "Redimensionar (lado maior)",
       "pixels": "px",
       "estimate": "Tamanho estimado: {{size}}",
+      "onlyPage": "Só a página {{page}} de {{total}} será gravada.",
       "estimating": "Calculando tamanho…",
       "images": "Imagens",
       "progress": "Exportando {{done}} de {{total}}…",

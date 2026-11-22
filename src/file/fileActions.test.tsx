@@ -16,6 +16,7 @@ vi.mock("../ipc/commands", () => ipc);
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 
 import { getToasts, resetToastsForTests } from "../chrome/notify";
+import { useUi } from "../store/ui";
 import { useDocs } from "../store/docs";
 import { setPrefs } from "../store/prefs";
 import { addKeyword, getPendingKeywords, resetKeywordsForTests } from "../inspector/keywords";
@@ -261,6 +262,33 @@ describe("ExportDialog completo (Lote 11)", () => {
     expect(ipc.exportDoc).not.toHaveBeenCalled();
     expect(ipc.exportTagged).toHaveBeenCalledWith(1, "/fotos/Ação 1.jpg", expect.objectContaining({ format: "jpeg" }), null, ["Férias"]);
     expect(getToasts().some((t) => t.text.includes("não guarda as etiquetas"))).toBe(true);
+  });
+});
+
+describe("Exportar em documento de várias páginas", () => {
+  const tiff: DocInfo = { ...doc, format: "tiff", frames: 3 };
+  const open = (page: number | null) => {
+    useDocs.setState({ docs: [tiff], activeId: 1 });
+    useUi.setState({ page });
+    render(createElement(ExportDialog, { doc: tiff, mode: "export", onClose: () => {} }));
+  };
+  beforeEach(() => void ipc.exportDoc.mockResolvedValue(tiff));
+  afterEach(() => {
+    useDocs.setState({ docs: [doc], activeId: 1 });
+    useUi.setState({ page: null });
+  });
+
+  it("avisa e grava a página exibida, também depois de trocar o formato", async () => {
+    open(1);
+    expect(screen.getByTestId("export-page").textContent).toBe("Só a página 2 de 3 será gravada.");
+    fireEvent.change(screen.getByLabelText("Formato"), { target: { value: "png" } });
+    await act(async () => fireEvent.click(screen.getByTestId("export-ok")));
+    expect(ipc.exportDoc).toHaveBeenCalledWith(1, expect.any(String), expect.objectContaining({ format: "png", frame: 1 }), null);
+  });
+
+  it("numa imagem simples não há aviso", () => {
+    render(createElement(ExportDialog, { doc, mode: "export", onClose: () => {} }));
+    expect(screen.queryByTestId("export-page")).toBeNull();
   });
 });
 

@@ -6,7 +6,6 @@ import type { DocInfo, PrintOptions, PrintPreview } from "../ipc/types";
 const ipc = vi.hoisted(() => ({
   duplicate: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   applyOp: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
-  undo: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   closeDocument: vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => {}),
   thumbnail: vi.fn(async () => ({ width: 1, height: 1, data: new Uint8ClampedArray(4) })),
   printPreview: vi.fn<(ids: number[], opts: unknown) => Promise<unknown>>(),
@@ -25,8 +24,7 @@ vi.mock("../markup/render", async (orig) => ({
 import { getToasts, resetToastsForTests } from "../chrome/notify";
 import { Slot } from "../lib/slots";
 import { addAnnotation } from "../markup/actions";
-import { flattenAnnotations } from "../markup/flatten";
-import { resetHistoryForTests, undo } from "../markup/history";
+import { resetHistoryForTests } from "../markup/history";
 import type { Annotation } from "../markup/model";
 import { flattenToPng } from "../markup/render";
 import { getItems, useMarkup } from "../markup/store";
@@ -220,7 +218,7 @@ describe("anotações não achatadas", () => {
 
 describe("anotações em TIFF de várias páginas", () => {
   const tiff = doc(5, "t.tiff", { format: "tiff", frames: 3, writable: false });
-  const gif = doc(6, "g.gif", { format: "gif", frames: 3 });
+  const gif = doc(6, "g.gif", { format: "gif", frames: 3, delaysMs: [100, 100, 100] });
   const frames = () => ipc.applyOp.mock.calls.map(([id, op]) => [id, (op as { data: { frame?: number } }).data.frame]);
 
   beforeEach(() => {
@@ -268,20 +266,6 @@ describe("anotações em TIFF de várias páginas", () => {
     await expect(exportPdf([5])).rejects.toThrow("x");
     expect(ipc.closeDocument).toHaveBeenCalledWith(8);
     expect(ipc.exportPdf).not.toHaveBeenCalled();
-  });
-
-  it("Salvar/Exportar achata por página, e cada passo desfaz só as anotações da sua página", async () => {
-    addAnnotation(5, { ...rect, id: "a" });
-    useUi.setState({ page: 2 });
-    addAnnotation(5, { ...rect, id: "b" });
-    await flattenAnnotations(5);
-    expect(frames()).toEqual([[5, 0], [5, 2]]);
-    expect(getItems(5)).toEqual([]);
-    ipc.undo.mockResolvedValue(tiff);
-    await undo(5);
-    expect(getItems(5).map((i) => i.id)).toEqual(["b"]);
-    await undo(5);
-    expect(getItems(5).map((i) => i.id)).toEqual(["a", "b"]);
   });
 });
 

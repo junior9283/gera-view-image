@@ -238,6 +238,22 @@ impl Document {
         self.error.clone().map_or(Ok(()), Err)
     }
 
+    fn check_frame(&self, frame: u32) -> AppResult<()> {
+        if (frame as usize) < self.source.frames.len() {
+            return Ok(());
+        }
+        Err(AppError::NotFound(format!("quadro {frame} inexistente")))
+    }
+
+    /// `ops[..n]` foram gravadas num arquivo só com a página `frame`. Fica com alterações se
+    /// alguma anotação achatada em outra página não foi para o arquivo.
+    pub(super) fn mark_saved(&mut self, n: usize, frame: u32) {
+        let left_out = self.ops[..n]
+            .iter()
+            .any(|op| matches!(op, Op::Composite { frame: Some(f), .. } if *f != frame));
+        self.saved_len = if left_out { usize::MAX } else { n };
+    }
+
     /// Dimensões depois de todas as operações.
     pub fn size_after_ops(&self) -> (u32, u32) {
         self.ops.iter().fold(self.full_size, ops::output_size)
@@ -577,6 +593,9 @@ impl DocStore {
         let mut map = self.lock_loaded(id);
         let doc = map.get_mut(&id).ok_or_else(|| not_found(id))?;
         doc.check()?;
+        if let Op::Composite { frame: Some(f), .. } = &op {
+            doc.check_frame(*f)?;
+        }
         ops::validate(doc.size_after_ops(), &op).map_err(AppError::Unsupported)?;
         let n = doc.ops.len();
         if !doc.redo.is_empty() {
@@ -637,10 +656,8 @@ impl DocStore {
         };
         let doc = map.get(&id).ok_or_else(|| not_found(id))?;
         doc.check()?;
+        doc.check_frame(frame)?;
         let f = frame as usize;
-        if f >= doc.source.frames.len() {
-            return Err(AppError::NotFound(format!("quadro {frame} inexistente")));
-        }
         let n = doc.ops.len();
         let generation = doc.generation;
         let state = (n, generation);

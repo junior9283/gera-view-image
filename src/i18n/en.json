@@ -488,6 +488,7 @@
     "saved": "Saved: {{name}}",
     "keywordsNotSaved": "Keywords were not saved: this format does not store IPTC/XMP. Export as JPEG, TIFF, PNG or WebP.",
     "exported": "Exported: {{name}}",
+    "otherPages": "Only page {{page}} was written. The annotations on the other pages stay in the document, unsaved.",
     "exportedMany": "{{count}} images exported",
     "unsaved": {
       "titleOne": "Save changes to “{{name}}”?",
@@ -516,6 +517,7 @@
       "resize": "Resize (longest side)",
       "pixels": "px",
       "estimate": "Estimated size: {{size}}",
+      "onlyPage": "Only page {{page}} of {{total}} will be written.",
       "estimating": "Estimating size…",
       "images": "Images",
       "progress": "Exporting {{done}} of {{total}}…",

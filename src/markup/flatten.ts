@@ -2,7 +2,7 @@
 // Imprimir, Exportar como PDF e Duplicar usam só os PNGs (`annotationLayers`) numa cópia, sem tocar
 // no original.
 import * as ipc from "../ipc/commands";
-import type { DocId, DocInfo, Op } from "../ipc/types";
+import type { DocId, Op } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { bufferToCanvas } from "../viewer/paint";
 import { pushOp } from "./history";
@@ -18,56 +18,54 @@ export async function loadSource(id: DocId, w: number, h: number, max: number, f
   return { image: bufferToCanvas(v), w: v.width, h: v.height };
 }
 
-async function pngOf(doc: DocInfo, items: Annotation[], frame: number): Promise<Uint8Array> {
-  // A lupa não precisa de mais resolução que o próprio canvas de achatamento.
-  const max = Math.max(doc.width, doc.height) * flattenScale(doc.width, doc.height);
-  const source = items.some((a) => a.kind === "loupe") ? await loadSource(doc.id, doc.width, doc.height, max, frame) : null;
-  return flattenToPng(items, doc.width, doc.height, source);
-}
-
-/** PNG das anotações da primeira página de `id`, no tamanho da imagem, ou `null` se não há nenhuma. */
-export async function annotationsPng(id: DocId): Promise<Uint8Array | null> {
-  const doc = docOf(id);
-  const items = onPage(getItems(id), doc, 0);
-  return items.length && doc ? pngOf(doc, items, 0) : null;
-}
-
 /** Anotações achatadas em PNG: a operação e as anotações que ela consome. */
 export interface Layer {
   op: Extract<Op, { type: "composite" }>;
   items: Annotation[];
 }
 
-/** Uma camada por página com anotações; fora de um documento de várias páginas, uma só. */
-export async function annotationLayers(id: DocId): Promise<Layer[]> {
+/** Camada das anotações da página `page` (de todas, fora de um documento de várias páginas). */
+export async function annotationLayer(id: DocId, page: number): Promise<Layer | null> {
   const doc = docOf(id);
-  const all = getItems(id);
-  if (!doc || !all.length) return [];
-  if (!hasPages(doc)) return [{ op: { type: "composite", data: { png: await pngOf(doc, all, 0) } }, items: all }];
-  const pages = [...new Set(all.map((a) => a.page ?? 0))].sort((a, b) => a - b);
+  const items = onPage(getItems(id), doc, page);
+  if (!doc || !items.length) return null;
+  // A lupa não precisa de mais resolução que o próprio canvas de achatamento.
+  const max = Math.max(doc.width, doc.height) * flattenScale(doc.width, doc.height);
+  const source = items.some((a) => a.kind === "loupe") ? await loadSource(id, doc.width, doc.height, max, page) : null;
+  const png = await flattenToPng(items, doc.width, doc.height, source);
+  return { op: { type: "composite", data: hasPages(doc) ? { png, frame: page } : { png } }, items };
+}
+
+/** PNG das anotações da página `page`, no tamanho da imagem, ou `null` se não há nenhuma. */
+export const annotationsPng = async (id: DocId, page: number) => (await annotationLayer(id, page))?.op.data.png ?? null;
+
+/** Todas as camadas: uma por página com anotações. */
+export async function annotationLayers(id: DocId): Promise<Layer[]> {
+  const pages = hasPages(docOf(id)) ? [...new Set(getItems(id).map((a) => a.page ?? 0))].sort((a, b) => a - b) : [0];
   const layers: Layer[] = [];
-  for (const frame of pages) {
-    const items = onPage(all, doc, frame);
-    layers.push({ op: { type: "composite", data: { png: await pngOf(doc, items, frame), frame } }, items });
+  for (const page of pages) {
+    const layer = await annotationLayer(id, page);
+    if (layer) layers.push(layer);
   }
   return layers;
 }
 
 /**
- * Achata as anotações de `id` na imagem, um passo do desfazer por página anotada (desfazer volta
- * a imagem e devolve as anotações editáveis). Devolve `false` se não havia o que achatar.
+ * Achata na imagem as anotações da página `page`, a que vai ser gravada; as de outras páginas
+ * continuam editáveis. É um passo do desfazer, que volta a imagem e devolve as anotações. Devolve
+ * `false` se não havia o que achatar.
  */
-export async function flattenAnnotations(id: DocId): Promise<boolean> {
-  const layers = await annotationLayers(id);
-  let before = getItems(id);
-  for (const { op, items } of layers) {
-    // Direto pelo IPC: o passo leva as anotações (desfazer as devolve), não é uma Op comum.
-    const info = await ipc.applyOp(id, op);
-    useDocs.getState().update(info);
-    const after = before.filter((a) => !items.includes(a));
-    pushOp(id, { before, after });
-    useMarkup.getState().setItems(id, after);
-    before = after;
-  }
-  return layers.length > 0;
+export async function flattenAnnotations(id: DocId, page = 0): Promise<boolean> {
+  const layer = await annotationLayer(id, page);
+  if (!layer) return false;
+  // Direto pelo IPC: o passo leva as anotações (desfazer as devolve), não é uma Op comum.
+  const info = await ipc.applyOp(id, layer.op);
+  useDocs.getState().update(info);
+  // Relidas: outra anotação pode ter nascido durante o IPC.
+  const done = new Set(layer.items.map((a) => a.id));
+  const before = getItems(id);
+  const after = before.filter((a) => !done.has(a.id));
+  pushOp(id, { before, after });
+  useMarkup.getState().setItems(id, after);
+  return true;
 }

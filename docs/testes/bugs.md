@@ -90,6 +90,20 @@ Formato: sintoma, causa, correção, teste, lição.
 - **Correção:** `Annotation.page` (a da tela ao criar) e `Op::Composite { frame }`; as camadas são geradas por página (`annotationLayers`).
 - **Teste:** "anotações em TIFF de várias páginas" (`src/print/print.test.tsx`), "documento de várias páginas" (`src/markup/markup.test.tsx`) e `anotacao_so_sai_na_sua_pagina` (`src-tauri/tests/print.rs`).
 
+### A página da anotação não chegava ao Rust (segunda revisão)
+- **Sintoma:** no app, a anotação continuava em todas as páginas, com todos os testes verdes.
+- **Causa:** `toWire` (`src/ipc/commands.ts`) remontava `data` só com `png` e descartava `frame`; os testes da interface simulavam `ipc.applyOp`, e os do Rust partiam do JSON pronto.
+- **Correção:** `data: { ...op.data, png }`.
+- **Teste:** `src/ipc/commands.test.ts` e `src/markup/pages.test.ts`, que vai da ação até o `invoke`.
+- **Lição:** quem simula a fronteira não a testa; pelo menos um teste por campo novo precisa atravessá-la.
+
+### Gravar uma página consumia as anotações das outras (segunda revisão)
+- **Sintoma:** Exportar, Salvar Como ou Duplicar e exportar um TIFF de várias páginas achatava todas as anotações, mas só a página 1 ia para o arquivo; o documento podia ficar limpo e as outras se perdiam ao fechar. Cancelar o Exportar aberto pelo Salvar também as deixava achatadas.
+- **Causa:** o achatamento não sabia qual página seria gravada e rodava antes de se saber que o Salvar iria para o Exportar.
+- **Correção:** `flattenAnnotations(id, page)` consome só a página gravada (a exibida); `Document::mark_saved` não deixa limpo um documento com anotação achatada fora do arquivo; aviso ao usuário; Duplicar copia as anotações editáveis; `saveDoc` confere `writable` antes de achatar.
+- **Teste:** `src/markup/pages.test.ts`, `anotacao_fora_do_arquivo_mantem_o_documento_sujo` e `exportar_e_copiar_a_pagina_pedida` (`src-tauri/tests/print.rs`).
+- **Lição:** "consumir" um estado editável exige saber exatamente o que o destino grava.
+
 ### ppp absurdo do arquivo na página do PDF e na impressão
 - **Correção:** ppp não finito ou fora de 1 a 10 000 é ignorado (72), nos dois eixos juntos para não distorcer.
 - **Teste:** `ppp_fora_da_faixa_e_ignorado` (`src-tauri/src/image/pdf.rs`) e `escala_em_porcentagem_do_tamanho_natural` (`src-tauri/src/image/print_layout.rs`).

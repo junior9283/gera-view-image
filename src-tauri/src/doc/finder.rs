@@ -300,10 +300,14 @@ impl DocStore {
             d.opened_disk = d.disk;
             d.info.writable = Document::can_save(dest, format, d.source.frames.len());
             let same = d.generation == generation && d.ops.len() >= n;
-            d.saved_len = if same { n } else { usize::MAX };
+            if same {
+                d.mark_saved(n, opts.frame);
+            } else {
+                d.saved_len = usize::MAX;
+            }
             // Com perfil de saída (ou sem perfil), o arquivo não está no espaço do documento.
             let same_color = opts.color_profile.is_none() && !opts.strip_metadata;
-            d.deep = (same && opts.depth16 && same_color).then(|| DeepBase {
+            d.deep = (same && opts.depth16 && opts.frame == 0 && same_color).then(|| DeepBase {
                 source: Arc::downgrade(&d.source),
                 generation,
                 n,

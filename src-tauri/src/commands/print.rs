@@ -342,7 +342,16 @@ pub mod native {
 
     /// Escolhas que só valem para um trabalho: na próxima impressão, omitiriam páginas ou
     /// gravariam por cima do mesmo arquivo.
-    const ONE_JOB: [&str; 4] = ["print-pages", "page-ranges", "number-up", "output-uri"];
+    const ONE_JOB: [&str; 8] = [
+        "print-pages",
+        "page-ranges",
+        "page-set",
+        "number-up",
+        "scale",
+        "output-uri",
+        "output-basename",
+        "output-dir",
+    ];
 
     /// Guarda a impressora e os ajustes da impressão que terminou.
     pub fn remember(settings: Option<gtk::PrintSettings>) {

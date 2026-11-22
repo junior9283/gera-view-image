@@ -150,6 +150,9 @@ pub struct ExportOptions {
     /// Resolução gravada (ppp); `None` = a do documento. No PDF, define o tamanho da página.
     #[serde(default)]
     pub dpi: Option<f32>,
+    /// Página gravada (TIFF de várias páginas). O PDF de todas é `write_pdf`.
+    #[serde(default)]
+    pub frame: u32,
 }
 
 impl ExportOptions {
@@ -166,6 +169,7 @@ impl ExportOptions {
             tiff_compression: TiffCompression::None,
             exr_half: false,
             dpi: None,
+            frame: 0,
         }
     }
 

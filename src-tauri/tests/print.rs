@@ -4,6 +4,7 @@
 mod make_fixtures;
 
 use gera_view_image_lib::{
+    commands::paste::copied_region,
     commands::print::{
         self, export_with_tags, items,
         native::{self, Job, Target},
@@ -178,6 +179,73 @@ fn anotacao_so_sai_na_sua_pagina() {
     if let Some(a) = pagina(&dest, 1, 72) {
         perto(a.get_pixel(5, 5), [200, 10, 10], 1);
         perto(pagina(&dest, 2, 72).unwrap().get_pixel(5, 5), [0, 0, 255], 1);
+    }
+}
+
+fn composite(frame: u32) -> Op {
+    let mut png = std::io::Cursor::new(Vec::new());
+    lisa(80, 40, [0, 0, 255, 255]).write_to(&mut png, image::ImageFormat::Png).unwrap();
+    Op::Composite { png: png.into_inner(), frame: Some(frame) }
+}
+
+fn opts_pagina(format: &str, frame: u32) -> ExportOptions {
+    serde_json::from_value(serde_json::json!({"format": format, "quality": null, "frame": frame})).unwrap()
+}
+
+/// Página que não existe é erro, não uma anotação que some.
+#[test]
+fn anotacao_em_pagina_inexistente_e_recusada() {
+    let dir = tmp("pagina-inexistente");
+    let store = DocStore::new();
+    let tiff = dir.join("t.tiff");
+    tiff_duas_paginas(&tiff);
+    let id = abre(&store, &tiff);
+    assert_eq!(store.apply_op(id, composite(2)).unwrap_err().code(), "not_found");
+    assert!(!store.info(id).unwrap().can_undo);
+    assert!(store.apply_op(id, composite(1)).is_ok());
+}
+
+/// Exportar, estimar e Copiar usam a página pedida.
+#[test]
+fn exportar_e_copiar_a_pagina_pedida() {
+    let dir = tmp("exportar-pagina");
+    let store = DocStore::new();
+    let tiff = dir.join("t.tiff");
+    tiff_duas_paginas(&tiff);
+    let id = abre(&store, &tiff);
+    store.apply_op(id, composite(1)).unwrap();
+    let dest = dir.join("p.png");
+    for (frame, size, color) in [(0, (80, 40), [200, 10, 10, 255]), (1, (30, 60), [0, 0, 255, 255])] {
+        let opts = opts_pagina("png", frame);
+        store.export(id, &s(&dest), &opts, None).unwrap();
+        let out = image::open(&dest).unwrap().into_rgba8();
+        assert_eq!((out.dimensions(), out.get_pixel(3, 3).0), (size, color), "página {frame}");
+        assert_eq!(store.estimate_size(id, &opts).unwrap(), fs::metadata(&dest).unwrap().len());
+        let copied = copied_region(&store, id, frame, None, None).unwrap();
+        assert_eq!((copied.dimensions(), copied.get_pixel(3, 3).0), (size, color), "página {frame}");
+    }
+    assert!(store.export(id, &s(&dest), &opts_pagina("png", 2), None).is_err());
+}
+
+/// O documento só fica limpo se as anotações achatadas foram todas para o arquivo.
+#[test]
+fn anotacao_fora_do_arquivo_mantem_o_documento_sujo() {
+    let dir = tmp("pagina-pendente");
+    let tiff = dir.join("t.tiff");
+    tiff_duas_paginas(&tiff);
+    for (frame, dirty) in [(0, true), (1, false)] {
+        let store = DocStore::new();
+        let id = abre(&store, &tiff);
+        store.apply_op(id, composite(1)).unwrap();
+        // Duplicar e exportar: a cópia adota o arquivo.
+        let dup = store.duplicate(id, "cópia").unwrap().id;
+        let dest = dir.join(format!("dup{frame}.png"));
+        store.export(dup, &s(&dest), &opts_pagina("png", frame), None).unwrap();
+        let info = store.info(dup).unwrap();
+        assert_eq!((info.path, info.dirty), (s(&dest), dirty), "exportar a página {frame}");
+        let dest = dir.join(format!("como{frame}.png"));
+        let info = store.save_as(id, &s(&dest), &opts_pagina("png", frame), None).unwrap();
+        assert_eq!((info.path, info.dirty), (s(&dest), dirty), "salvar como, página {frame}");
     }
 }
 
@@ -365,15 +433,18 @@ fn impressao_nativa_exporta_para_pdf() {
     assert!(has(&fs::read(&dest).unwrap(), b"/DCTDecode"));
 
     // A impressora é lembrada; o que era só daquele trabalho, não.
+    const ONE_JOB: [&str; 8] = [
+        "print-pages", "page-ranges", "page-set", "number-up", "scale", "output-uri", "output-basename", "output-dir",
+    ];
     let s = gtk::PrintSettings::new();
     s.set("printer", Some("Sala"));
-    for key in ["print-pages", "page-ranges", "number-up", "output-uri"] {
+    for key in ONE_JOB {
         s.set(key, Some("2"));
     }
     native::remember(Some(s));
     let next = native::next_settings();
     assert_eq!(next.get("printer").as_deref(), Some("Sala"));
-    for key in ["print-pages", "page-ranges", "number-up", "output-uri"] {
+    for key in ONE_JOB {
         assert_eq!(next.get(key), None, "{key}");
     }
 

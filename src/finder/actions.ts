@@ -4,12 +4,13 @@ import { notify } from "../chrome/notify";
 import { defaultOptions, EXTENSIONS, exportFormatOf } from "../file/estimate";
 import { runBeforeSave } from "../file/beforeSave";
 import { hasUnsaved } from "../file/dirty";
-import { current, dirname, markChanged, settleKeywords, stem } from "../file/fileActions";
+import { current, dirname, markChanged, settleKeywords, stem, warnLeftOut } from "../file/fileActions";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
 import * as ipc from "../ipc/commands";
 import type { DocId, DocInfo, ExportFormat } from "../ipc/types";
 import { forgetHistory } from "../markup/history";
+import { shownPage } from "../markup/pages";
 import { useMarkup } from "../markup/store";
 import { useDocs } from "../store/docs";
 import { addRecent } from "../store/prefs";
@@ -51,13 +52,15 @@ export async function saveAsActive(): Promise<void> {
   if (!dest) return;
   const format = saveAsFormat(dest);
   if (!format) return notify(t("finder.saveAs.badFormat"));
-  await runBeforeSave(d.id);
-  const info = await ipc.saveAs(d.id, dest, defaultOptions(format), getPendingKeywords(d.id));
+  const frame = shownPage(d.id);
+  await runBeforeSave(d.id, frame);
+  const info = await ipc.saveAs(d.id, dest, { ...defaultOptions(format), frame }, getPendingKeywords(d.id));
   update(info);
   addRecent(info.path);
   markChanged(d.id, null);
   settleKeywords(d.id, format);
   notify(t("file.saved", { name: info.name }));
+  warnLeftOut(info, frame, dest);
 }
 
 /** Mover para o Lixo (Ctrl+Backspace). Com alterações, pergunta antes. Nunca apaga. */

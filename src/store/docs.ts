@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { listen } from "@tauri-apps/api/event";
 import * as ipc from "../ipc/commands";
 import { DOC_UPDATED_EVENT, type DocId, type DocInfo, type Op } from "../ipc/types";
+import { useUi } from "./ui";
 
 interface DocsState {
   docs: DocInfo[];
@@ -72,6 +73,8 @@ export const useDocs = create<DocsState>((set, get) => {
     close: async (id) => {
       await ipc.closeDocument(id);
       early.delete(id);
+      // O documento que assume o lugar abre na página padrão dele.
+      if (get().activeId === id) useUi.getState().setPage(null);
       set((s) => {
         const i = s.docs.findIndex((d) => d.id === id);
         if (i < 0) return s;
@@ -84,6 +87,13 @@ export const useDocs = create<DocsState>((set, get) => {
     undo: (id) => replaceWith(ipc.undo(id)),
     redo: (id) => replaceWith(ipc.redo(id)),
   };
+});
+
+// A página escolhida precisa existir no documento ativo (Reverter e Restaurar podem ter menos).
+useDocs.subscribe(({ docs, activeId }) => {
+  const { page, setPage } = useUi.getState();
+  const doc = docs.find((d) => d.id === activeId);
+  if (page !== null && doc && page >= doc.frames) setPage(null);
 });
 
 let init: Promise<void> | null = null;

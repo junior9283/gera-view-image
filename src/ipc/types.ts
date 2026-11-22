@@ -148,6 +148,8 @@ export interface ExportOptions {
   exrHalf?: boolean;
   /** Lote 11: resolução gravada (ppp); ausente/`null` mantém a do documento. */
   dpi?: number | null;
+  /** Página gravada (TIFF de várias páginas); ausente = a primeira. */
+  frame?: number;
 }
 
 /** Exportar com etiquetas: `tagsError` diz por que elas não foram gravadas (o arquivo foi). */

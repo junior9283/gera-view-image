@@ -37,9 +37,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 ### Corrigido
 - Salvar (e Exportar por cima de um arquivo) não apaga mais os atributos estendidos `user.*` do arquivo, como etiquetas, comentário e nota do Dolphin. A gravação atômica cria um arquivo novo, e agora eles são copiados para ele.
 - TIFF com resolução sem unidade (só a proporção) não é mais lido como 1 ppp, o que fazia as páginas impressas e em PDF terem metros de lado.
-- Em documentos de várias páginas (TIFF), cada anotação pertence à página em que foi feita: aparece, é editada, impressa, exportada em PDF e achatada só nela. Antes era carimbada em todas. Em GIF e WebP animados continua valendo para todos os quadros.
+- Em documentos de várias páginas (TIFF), cada anotação pertence à página em que foi feita: aparece, é editada, impressa, exportada em PDF e achatada só nela. Antes era carimbada em todas. Exportar, Salvar Como e Copiar usam a página exibida (o Exportar diz qual); as anotações das outras páginas continuam editáveis e não salvas, com aviso, e Duplicar as leva para a cópia. Em GIF e WebP animados continua valendo para todos os quadros.
+- Cancelar o Exportar aberto pelo Salvar (formato que não dá para regravar) não deixa mais as anotações achatadas.
 
 ### Limitações conhecidas (o que falta para a 1.0)
+- TIFF de várias páginas é gravado com uma página só (a exibida); a partir da segunda, sempre a partir dos 8 bits por canal.
 - AVIF salvo leva só o EXIF: o codificador (ravif/avif-serialize) não grava perfil ICC nem XMP, então as palavras-chave ficam pendentes; as cores são convertidas para sRGB. JPEG CMYK é regravado em RGB, sem perfil, com a conversão simples do decodificador (sem gestão de cor pelo perfil CMYK).
 
 ## [0.3.0] - 2026-11-21

@@ -7,6 +7,7 @@ import { TagsInput } from "../finder/TagsInput";
 import * as ipc from "../ipc/commands";
 import type { DocInfo, ExportFormat, ExportOptions, TiffCompression } from "../ipc/types";
 import { useModal } from "../lib/modal";
+import { hasPages, shownPage } from "../markup/pages";
 import { useDocs } from "../store/docs";
 import { addRecent } from "../store/prefs";
 import { viewable } from "../viewer/actions";
@@ -254,7 +255,9 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
       live = false;
     };
   }, [doc.id]);
-  const bytes = useEstimate(doc.id, opts);
+  // Como no app da Apple: exporta o que está na tela.
+  const [frame] = useState(() => shownPage(doc.id));
+  const bytes = useEstimate(doc.id, { ...opts, frame });
   const heic = useHeicEncoder();
 
   // Outro destino: o aviso de substituir era sobre o anterior.
@@ -288,7 +291,7 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
     if (!agreed && (await ipc.pathExists(dest))) return setOverwrite(dest);
     setBusy(true);
     try {
-      const info = await exportDoc(doc.id, dest, opts, tags);
+      const info = await exportDoc(doc.id, dest, { ...opts, frame }, tags);
       lastFolder = folder.trim();
       if (info.path === dest) addRecent(dest);
       notify(t("file.exported", { name: name.trim() }));
@@ -312,6 +315,9 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
       </div>
       <FolderField folder={folder} setFolder={moveTo} />
       <OptionsFields opts={opts} onChange={changeOpts} currentDpi={dpi} />
+      {hasPages(doc) && (
+        <p className="file-hint" data-testid="export-page">{t("file.export.onlyPage", { page: frame + 1, total: doc.frames })}</p>
+      )}
       {doc.format === "heic" && heic === false && <p className="file-hint">{t("file.export.heicEncoderMissing")}</p>}
       <p className="file-hint" data-testid="export-estimate">
         {bytes === null ? t("file.export.estimating") : t("file.export.estimate", { size: formatBytes(bytes, i18n.language) })}
