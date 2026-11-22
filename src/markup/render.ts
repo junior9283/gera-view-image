@@ -374,9 +374,15 @@ export const flattenScale = (w: number, h: number) => Math.min(1, Math.sqrt(MAX_
  * Achata as anotações num PNG transparente do tamanho da imagem (canvas offscreen),
  * pronto para `Op::Composite`.
  */
-export async function flattenToPng(items: readonly Annotation[], w: number, h: number, source: Source | null): Promise<Uint8Array> {
-  const k = flattenScale(w, h);
-  const [cw, ch] = [Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))];
+export const flattenToPng = (items: readonly Annotation[], w: number, h: number, source: Source | null): Promise<Uint8Array> =>
+  renderPng(items, { x: 0, y: 0, w, h }, w, h, source);
+
+/** PNG transparente da região `area` (px da imagem `imageW`×`imageH`) com as anotações. */
+export async function renderPng(
+  items: readonly Annotation[], area: Box, imageW: number, imageH: number, source: Source | null,
+): Promise<Uint8Array> {
+  const k = flattenScale(area.w, area.h);
+  const [cw, ch] = [Math.max(1, Math.round(area.w * k)), Math.max(1, Math.round(area.h * k))];
   await preloadImages(items);
   const canvas: OffscreenCanvas | HTMLCanvasElement =
     typeof OffscreenCanvas !== "undefined"
@@ -384,7 +390,7 @@ export async function flattenToPng(items: readonly Annotation[], w: number, h: n
       : Object.assign(document.createElement("canvas"), { width: cw, height: ch });
   const ctx = canvas.getContext("2d") as Ctx | null;
   if (!ctx) throw new Error("canvas 2D indisponível para achatar as anotações");
-  render(ctx, items, { scale: k, panX: 0, panY: 0 }, source, { imageW: w, imageH: h, dpr: 1 });
+  render(ctx, items, { scale: k, panX: -area.x * k || 0, panY: -area.y * k || 0 }, source, { imageW, imageH, dpr: 1 });
   const blob =
     "convertToBlob" in canvas
       ? await canvas.convertToBlob({ type: "image/png" })

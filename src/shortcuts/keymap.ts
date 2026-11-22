@@ -41,6 +41,7 @@ export const KEYMAP: Record<CommandId, string> = {
   "edit.cut": "Ctrl+X",
   "edit.copy": "Ctrl+C",
   "edit.paste": "Ctrl+V",
+  "edit.duplicate": "Ctrl+D",
   "edit.delete": "Delete",
   "edit.selectAll": "Ctrl+A",
   "edit.deselect": "Escape",

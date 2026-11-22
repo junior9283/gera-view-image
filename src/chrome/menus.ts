@@ -51,7 +51,7 @@ export const MENUS: Menu[] = [
     items: [
       ...items("edit", "undo", "redo"),
       SEP,
-      ...items("edit", "cut", "copy", "paste", "delete", "selectAll", "deselect", "invertSelection"),
+      ...items("edit", "cut", "copy", "paste", "duplicate", "delete", "selectAll", "deselect", "invertSelection"),
       SEP,
       submenu("menu.edit.findMenu", items("edit", "find", "findNext", "findPrev")),
       submenu("menu.edit.speech", items("edit", "startSpeaking", "stopSpeaking")),

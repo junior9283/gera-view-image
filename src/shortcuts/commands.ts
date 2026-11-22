@@ -17,7 +17,7 @@ export const COMMAND_IDS = [
   "file.closeAll", "file.closeWindow", "file.saveAs", "file.moveToTrash", "file.tags", "file.lock",
   "file.browseVersions", "file.exportPdf", "file.shareEmail", "file.shareDevice", "file.importScanner",
   // Editar
-  "edit.undo", "edit.redo", "edit.cut", "edit.copy", "edit.paste", "edit.delete", "edit.selectAll",
+  "edit.undo", "edit.redo", "edit.cut", "edit.copy", "edit.paste", "edit.duplicate", "edit.delete", "edit.selectAll",
   "edit.deselect", "edit.invertSelection", "edit.preferences",
   "edit.find", "edit.findNext", "edit.findPrev", "edit.startSpeaking", "edit.stopSpeaking",
   // Visualizar

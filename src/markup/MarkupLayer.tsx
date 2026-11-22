@@ -3,17 +3,19 @@ import { useTranslation } from "react-i18next";
 import type { DocInfo } from "../ipc/types";
 import type { OverlayProps } from "../lib/slots";
 import { toImage } from "../select/tools";
+import { ARROWS, isTyping } from "../shortcuts/keymap";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
 import { dpr } from "../viewer/paint";
-import { addAnnotation, commit, deleteSelected } from "./actions";
+import { addAnnotation, commit, deleteSelected, endLive, moveSelectedLive } from "./actions";
+import { cloneItems } from "./clipboard";
 import { loadSource } from "./flatten";
 import { cssFont } from "./fontCss";
 import { DEFAULT_FONT, hitTest, moveItems, normBox, type Annotation, type Point } from "./model";
 import { onCurrentPage, onPage, pageItems } from "./pages";
 import { render, renderSelection, type Source, type ViewXf } from "./render";
-import { getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
+import { annotationsFocused, getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
 import { createShape, createStroke, createText, toImageStyle } from "./tools/create";
 import { dragHandle, handlesFor, hitHandle, type HandleId } from "./tools/handles";
 
@@ -21,18 +23,18 @@ import { dragHandle, handlesFor, hitHandle, type HandleId } from "./tools/handle
 const LOUPE_SOURCE_MAX = 2048;
 /** Tolerância de clique numa anotação, em px de tela. */
 const HIT_PX = 4;
+/** Alt+arrastar só duplica depois disto (px de tela). */
+const COPY_PX = 3;
 const NO_IDS: string[] = [];
 
 type Drag =
   | { kind: "create"; tool: ShapeTool; start: Point }
   | { kind: "stroke"; points: Point[]; sketch: boolean }
-  | { kind: "move"; start: Point; before: Annotation[]; ids: string[] }
+  /** `copy`: Alt apertado, ainda sem arrastar (as cópias nascem no primeiro movimento, em `items`). */
+  | { kind: "move"; start: Point; before: Annotation[]; items: Annotation[]; ids: string[]; copy: boolean }
   | { kind: "handle"; start: Point; before: Annotation[]; orig: Annotation; handle: HandleId };
 
 const isShape = (t: Tool): t is ShapeTool => !["select", "sketch", "draw", "text"].includes(t);
-
-const isEditable = (t: EventTarget | null) =>
-  t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
 /** Pixels do documento para a Lupa, só quando há lupa; recarrega a cada revisão. */
 function useLoupeSource(doc: DocInfo | null, needed: boolean, page: number): Source | null {
@@ -51,14 +53,15 @@ function useLoupeSource(doc: DocInfo | null, needed: boolean, page: number): Sou
   return src?.key === key ? src.s : null;
 }
 
-/** Atalhos locais da camada: Delete apaga as selecionadas; Esc desmarca e volta à Seleção. */
+/** Atalhos locais da camada: Delete apaga as selecionadas; Esc desmarca e volta à Seleção; setas movem. */
 function useMarkupKeys() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!ARROWS[e.key]) endLive(); // outra tecla fecha o passo das setas antes de agir
       const st = useMarkup.getState();
       const id = useDocs.getState().activeId;
       const selecting = useSelection.getState().selectionTool !== null; // Delete/Esc são da seleção
-      if (!st.visible || id === null || st.editing || selecting || isEditable(e.target)) return;
+      if (!st.visible || id === null || st.editing || selecting || isTyping(e.target)) return;
       let used = false;
       if (e.key === "Delete" || e.key === "Backspace") used = deleteSelected(id);
       else if (e.key === "Escape") {
@@ -73,8 +76,28 @@ function useMarkupKeys() {
         e.stopImmediatePropagation();
       }
     };
+    // Setas no `document`: depois da barra lateral e dos menus, antes da navegação (useShortcuts).
+    const onArrow = (e: KeyboardEvent) => {
+      const step = ARROWS[e.key];
+      if (!step || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+      const id = useDocs.getState().activeId;
+      if (!annotationsFocused(id) || useUi.getState().slideshow || document.querySelector('[aria-modal="true"]')) return;
+      e.preventDefault();
+      const k = e.shiftKey ? 10 : 1;
+      moveSelectedLive(id, step[0] * k, step[1] * k);
+    };
+    const onKeyUp = (e: KeyboardEvent) => ARROWS[e.key] && endLive();
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    document.addEventListener("keydown", onArrow);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("blur", endLive);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("keydown", onArrow);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("blur", endLive);
+      endLive();
+    };
   }, []);
 }
 
@@ -140,13 +163,17 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
     };
 
     const onDown = (e: PointerEvent) => {
-      if (isEditable(e.target)) {
+      if (isTyping(e.target)) {
         e.stopPropagation(); // clique no texto em edição
         return;
       }
       const id = cur.current.docId;
       const st = useMarkup.getState();
       if (!st.visible || id === null || e.button !== 0) return;
+      // O `preventDefault` abaixo impede a troca de foco: sem isto, um texto em edição não seria
+      // confirmado e as setas ficariam com a barra lateral.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      endLive();
       const p = at(e);
       const { scale } = cur.current.view;
       const items = getItems(id);
@@ -162,14 +189,14 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
         if (!d) {
           const hit = hitTest(shown, p[0], p[1], HIT_PX / scale);
           if (!hit) {
-            st.select(id, []);
-            return; // área vazia: o arrasto continua sendo o pan do Viewport
+            if (!e.shiftKey) st.select(id, []);
+            return; // área vazia: o arrasto é do Viewport (selecionar ou mover a imagem)
           }
           const ids = e.shiftKey
             ? sel.includes(hit.id) ? sel.filter((x) => x !== hit.id) : [...sel, hit.id]
             : sel.includes(hit.id) ? sel : [hit.id];
           st.select(id, ids);
-          d = { kind: "move", start: p, before: items, ids };
+          d = { kind: "move", start: p, before: items, items, ids, copy: e.altKey };
         }
       } else if (st.tool === "text") {
         // Entra no histórico só ao confirmar o texto (TextEditor).
@@ -200,13 +227,22 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       const p = at(e);
       const { scale } = cur.current.view;
       const st = useMarkup.getState();
-      if (d.kind === "create") setDraft(createShape(d.tool, d.start, p, st.style, scale));
+      if (d.kind === "create") setDraft(createShape(d.tool, d.start, p, st.style, scale, e.shiftKey));
       else if (d.kind === "stroke") {
         d.points.push(p);
         setDraft({ id: "draft", kind: "freehand", geom: { points: d.points }, style: toImageStyle(st.style, scale) });
-      } else if (d.kind === "move") st.setItems(id, moveItems(d.before, d.ids, p[0] - d.start[0], p[1] - d.start[1]));
-      else {
-        const next = dragHandle(d.orig, d.handle, p[0], p[1], d.start, scale);
+      } else if (d.kind === "move") {
+        const [dx, dy] = [p[0] - d.start[0], p[1] - d.start[1]];
+        if (d.copy) {
+          if (Math.hypot(dx, dy) * scale < COPY_PX) return;
+          const clones = cloneItems(id, d.before.filter((a) => d.ids.includes(a.id)));
+          Object.assign(d, { copy: false, items: [...d.before, ...clones], ids: clones.map((a) => a.id) });
+          st.setItems(id, d.items);
+          st.select(id, d.ids);
+        }
+        st.setItems(id, moveItems(d.items, d.ids, dx, dy));
+      } else {
+        const next = dragHandle(d.orig, d.handle, p[0], p[1], d.start, scale, { shift: e.shiftKey, alt: e.altKey });
         st.setItems(id, d.before.map((a) => (a.id === d.orig.id ? next : a)));
       }
     };
@@ -221,7 +257,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       const { scale } = cur.current.view;
       const st = useMarkup.getState();
       if (d.kind === "create") {
-        addAnnotation(id, createShape(d.tool, d.start, p, st.style, scale));
+        addAnnotation(id, createShape(d.tool, d.start, p, st.style, scale, e.shiftKey));
         st.setTool("select");
       } else if (d.kind === "stroke") {
         const a = createStroke(d.points, st.style, scale, d.sketch);

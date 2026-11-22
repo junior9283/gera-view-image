@@ -8,6 +8,8 @@ import { openAdjustColor, openResize } from "../adjust/actions";
 import { canRedo, canUndo, redo, undo } from "../edit/history";
 import type { Op } from "../ipc/types";
 import { toggleInspector } from "../inspector/toggle";
+import { deleteSelected } from "../markup/actions";
+import { copyAnnotations, cutAnnotations, duplicateAnnotations, focusedDoc, selectAllAnnotations } from "../markup/clipboard";
 import { openAbout, openPreferences } from "../prefs/dialogs";
 import * as sel from "../select/actions";
 import { maskBounds } from "../select/lasso";
@@ -62,6 +64,14 @@ function escape() {
   if (ui.fullscreen) return view.setFullscreen(false);
 }
 
+/** Com anotação selecionada, o comando de edição é dela (`onItems`); sem, da imagem. */
+const onFocus = (onItems: (id: number) => unknown, onImage: () => unknown) => () => {
+  const id = focusedDoc();
+  return id === null ? onImage() : onItems(id);
+};
+const hasAnnotation = () => focusedDoc() !== null;
+const hasTarget = () => hasAnnotation() || hasSelection();
+
 const withActive = (f: (id: number) => unknown) => () => {
   const d = view.activeDoc();
   return d && f(d.id);
@@ -92,10 +102,11 @@ const ENTRIES: Entry[] = [
 
   ["edit.undo", withActive(undo), activeCan(canUndo)],
   ["edit.redo", withActive(redo), activeCan(canRedo)],
-  ["edit.cut", sel.cutSelection, hasSelection],
-  ["edit.copy", sel.copySelection, hasDoc],
-  ["edit.delete", sel.deleteSelection, hasSelection],
-  ["edit.selectAll", sel.selectAll, hasDoc],
+  ["edit.cut", onFocus(cutAnnotations, sel.cutSelection), hasTarget],
+  ["edit.copy", onFocus(copyAnnotations, sel.copySelection), hasDoc],
+  ["edit.duplicate", onFocus(duplicateAnnotations, () => {}), hasAnnotation],
+  ["edit.delete", onFocus(deleteSelected, sel.deleteSelection), hasTarget],
+  ["edit.selectAll", onFocus(selectAllAnnotations, sel.selectAll), hasDoc],
   ["edit.deselect", escape, () => {
     const { slideshow, fullscreen } = useUi.getState();
     const { selection, selectionTool } = useSelection.getState();
