@@ -293,6 +293,7 @@ impl DocStore {
         self.wait_ready(id)?;
         let (n, generation) = self.with_doc(id, |d| (d.ops.len(), d.generation))?;
         self.export(id, dest, opts, keywords)?;
+        self.meta_written(id, opts.format.carries_text());
         let dest_path = Path::new(dest);
         self.with_doc_mut(id, |d| {
             d.relocate(dest_path);
@@ -367,6 +368,7 @@ impl DocStore {
             d.saved_len = usize::MAX;
             d.deep = None;
         })?;
+        self.forget_meta(id);
         self.invalidate(id);
         Ok(info)
     }

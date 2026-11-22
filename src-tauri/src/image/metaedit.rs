@@ -1,28 +1,25 @@
-//! Título, descrição, autor e texto alternativo (Lote 9): leitura do XMP e gravação em XMP
-//! (`dc:title`, `dc:description`, `dc:creator`, `Iptc4xmpCore:AltTextAccessibility`) e em IPTC-IIM
-//! (2:05, 2:120, 2:80). O resto do pacote e dos registros é preservado.
+//! Título, descrição, autor e texto alternativo (Lote 9): gravação em XMP (`xmpedit.rs`), em
+//! IPTC-IIM (2:05, 2:120, 2:80) e limpeza dos mesmos textos no EXIF (`exifscrub.rs`). O resto do
+//! pacote, dos registros e do bloco é preservado.
 //! Texto vem do usuário ou do arquivo: nada aqui entra em shell, e ninguém faz `unwrap` em fatia.
-use super::encode::xml_escape;
+use super::{
+    exifscrub::{self, Tags},
+    xmpedit::{self, PROPS},
+};
 use crate::commands::describe::MetadataEdits;
-use std::ops::Range;
 
 /// Teto de caracteres de cada campo (uma edição maior é cortada, nunca recusada).
 pub const MAX_CHARS: usize = 16_384;
 /// Teto do texto que `xml_unescape` processa (o resto é descartado).
 pub const MAX_UNESCAPE: usize = 1 << 16;
-/// Teto do pacote XMP lido para exibir (a gravação preserva o pacote inteiro).
-pub const MAX_XMP: usize = 4 << 20;
+/// Teto do pacote XMP lido para as palavras-chave (a gravação tem o seu, em `xmpedit`).
+pub const MAX_XMP_KEYWORDS: usize = 4 << 20;
 /// Tetos em bytes no IPTC-IIM (o XMP guarda o texto inteiro).
 const IIM_TITLE: usize = 256;
 const IIM_AUTHOR: usize = 256;
 const IIM_CAPTION: usize = 2000;
 /// Teto de registros IIM lidos de um arquivo forjado.
 const MAX_IIM_RECORDS: usize = 10_000;
-/// Teto de itens `rdf:li` lidos de uma propriedade.
-const MAX_ITEMS: usize = 64;
-
-const NS_DC: &str = "http://purl.org/dc/elements/1.1/";
-const NS_IPTC: &str = "http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/";
 
 /// Prefixo de `s` com até `max` bytes, sem partir um caractere.
 pub fn cap_str(s: &str, max: usize) -> &str {
@@ -64,129 +61,62 @@ impl MetadataEdits {
             alt_text: c(&self.alt_text),
         }
     }
+
+    /// Valores na ordem de `xmpedit::PROPS`, já limpos.
+    fn values(&self) -> [Option<String>; 4] {
+        [&self.title, &self.description, &self.author, &self.alt_text].map(|v| v.as_deref().map(clean))
+    }
+
+    /// Os campos de `self` por cima dos de `base` (o que `self` não traz vem de `base`).
+    pub fn over(&self, base: &MetadataEdits) -> MetadataEdits {
+        MetadataEdits {
+            title: self.title.clone().or_else(|| base.title.clone()),
+            description: self.description.clone().or_else(|| base.description.clone()),
+            author: self.author.clone().or_else(|| base.author.clone()),
+            alt_text: self.alt_text.clone().or_else(|| base.alt_text.clone()),
+        }
+    }
+
+    /// Só os campos que apagam (texto vazio): formatos sem XMP/IPTC não guardam o texto novo, mas
+    /// apagar vale em qualquer um.
+    pub fn only_clearing(&self) -> MetadataEdits {
+        let keep = |v: &Option<String>| v.as_deref().filter(|t| clean(t).is_empty()).map(str::to_string);
+        MetadataEdits {
+            title: keep(&self.title),
+            description: keep(&self.description),
+            author: keep(&self.author),
+            alt_text: keep(&self.alt_text),
+        }
+    }
+
+    /// Marca (valor vazio) cada campo que `self` edita: o que já foi gravado no arquivo.
+    pub fn as_cleared(&self) -> MetadataEdits {
+        let mark = |v: &Option<String>| v.as_ref().map(|_| String::new());
+        MetadataEdits {
+            title: mark(&self.title),
+            description: mark(&self.description),
+            author: mark(&self.author),
+            alt_text: mark(&self.alt_text),
+        }
+    }
 }
 
 // ---------- XMP ----------
 
-#[derive(Clone, Copy)]
-enum Kind {
-    LangAlt,
-    Seq,
-}
-
-/// `(propriedade, prefixo, namespace, tipo)` de cada campo editável, na ordem de `MetadataEdits`.
-const PROPS: [(&str, &str, &str, Kind); 4] = [
-    ("dc:title", "dc", NS_DC, Kind::LangAlt),
-    ("dc:description", "dc", NS_DC, Kind::LangAlt),
-    ("dc:creator", "dc", NS_DC, Kind::Seq),
-    (
-        "Iptc4xmpCore:AltTextAccessibility",
-        "Iptc4xmpCore",
-        NS_IPTC,
-        Kind::LangAlt,
-    ),
-];
-
-fn element(name: &str, value: &str, kind: Kind) -> String {
-    let v = xml_escape(value);
-    match kind {
-        Kind::LangAlt => format!(
-            "<{name}><rdf:Alt><rdf:li xml:lang=\"x-default\">{v}</rdf:li></rdf:Alt></{name}>"
-        ),
-        Kind::Seq => format!("<{name}><rdf:Seq><rdf:li>{v}</rdf:li></rdf:Seq></{name}>"),
-    }
-}
-
-/// Intervalo do elemento `<name ...>...</name>` (ou `<name/>`) em `x`.
-fn find_element(x: &str, name: &str) -> Option<Range<usize>> {
-    let open = format!("<{name}");
-    for (start, _) in x.match_indices(&open) {
-        let after = x.get(start + open.len()..)?;
-        let next = after.chars().next()?;
-        if !(next == '>' || next == '/' || next.is_whitespace()) {
-            continue; // outro nome com o mesmo começo (`dc:titleX`)
-        }
-        let tag_end = start + open.len() + after.find('>')?;
-        if x.get(..tag_end)?.ends_with('/') {
-            return Some(start..tag_end + 1);
-        }
-        let close = format!("</{name}>");
-        let end = tag_end + x.get(tag_end..)?.find(&close)? + close.len();
-        return Some(start..end);
-    }
-    None
-}
-
-/// Remove TODAS as ocorrências da propriedade `name` (elementos e atributos) e devolve onde estava
-/// o primeiro elemento, para o texto novo entrar no mesmo lugar.
-fn remove_all(x: &mut String, name: &str) -> Option<usize> {
-    let attr = format!(" {name}=");
-    for _ in 0..MAX_ITEMS * 16 {
-        let Some(p) = x.find(&attr) else { break };
-        let q = p + attr.len();
-        let quote = match x.as_bytes().get(q) {
-            Some(&b @ (b'"' | b'\'')) => b as char,
-            _ => break,
-        };
-        let Some(end) = x[q + 1..].find(quote) else {
-            break;
-        };
-        x.replace_range(p..q + 1 + end + 1, "");
-    }
-    let mut first = None;
-    for _ in 0..MAX_ITEMS * 16 {
-        let Some(r) = find_element(x, name) else {
-            break;
-        };
-        first.get_or_insert(r.start);
-        x.replace_range(r, "");
-    }
-    first
-}
-
-/// Pacote XMP com os campos de `e` trocados (ou acrescentados); `Some("")` remove a propriedade.
-/// O restante do pacote original fica como estava.
+/// Pacote XMP com os campos de `e` trocados, apagados (`Some("")`) ou acrescentados. Se o pacote
+/// original não puder ser editado com segurança, sai um pacote novo só com os campos editados.
 pub fn xmp_with_edits(orig: Option<&str>, e: &MetadataEdits) -> String {
-    let values = [&e.title, &e.description, &e.author, &e.alt_text];
-    let mut x = orig.unwrap_or("").to_string();
-    let mut missing: Vec<(usize, String)> = Vec::new();
-    for (i, v) in values.iter().enumerate() {
-        let Some(v) = v.as_deref().map(clean) else {
-            continue;
-        };
-        let (name, _, _, kind) = PROPS[i];
-        let new = if v.is_empty() {
-            String::new()
-        } else {
-            element(name, &v, kind)
-        };
-        match remove_all(&mut x, name) {
-            Some(at) => x.insert_str(at, &new),
-            None if !new.is_empty() => missing.push((i, new)),
-            None => {}
-        }
-    }
-    if missing.is_empty() {
-        return x;
-    }
-    let mut ns = String::new();
-    let mut body = String::new();
-    for (i, el) in &missing {
-        let (_, prefix, uri, _) = PROPS[*i];
-        let decl = format!(" xmlns:{prefix}=\"{uri}\"");
-        if !ns.contains(&decl) {
-            ns.push_str(&decl);
-        }
-        body.push_str(el);
-    }
-    let block = format!("<rdf:Description rdf:about=\"\"{ns}>{body}</rdf:Description>");
-    if let Some(end) = x.rfind("</rdf:RDF>") {
-        x.insert_str(end, &block);
-        return x;
-    }
-    format!(
-        "<?xpacket begin=\"\u{FEFF}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">{block}</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>"
-    )
+    let values = e.values();
+    orig.and_then(|x| xmpedit::edit(x, &values))
+        .unwrap_or_else(|| xmpedit::fresh(&values))
+}
+
+/// Texto de uma propriedade do XMP (`dc:title`, `dc:description`, `dc:creator`,
+/// `Iptc4xmpCore:AltTextAccessibility`).
+pub fn xmp_text(xmp: &str, name: &str) -> Option<String> {
+    let i = PROPS.iter().position(|p| p.name == name)?;
+    let [a, b, c, d] = xmpedit::read(xmp);
+    [a, b, c, d].into_iter().nth(i).flatten()
 }
 
 pub fn xml_unescape(s: &str) -> String {
@@ -229,58 +159,6 @@ pub fn xml_unescape(s: &str) -> String {
     out
 }
 
-/// `(atributos, texto)` de cada `<rdf:li>` do trecho.
-fn list_items(inner: &str) -> Vec<(&str, String)> {
-    let mut out = Vec::new();
-    for part in inner.split("<rdf:li").skip(1).take(MAX_ITEMS) {
-        let Some(gt) = part.find('>') else { continue };
-        let attrs = &part[..gt];
-        if attrs.ends_with('/') {
-            continue;
-        }
-        let Some(end) = part.find("</rdf:li>") else {
-            continue;
-        };
-        if gt < end {
-            out.push((attrs, xml_unescape(part[gt + 1..end].trim())));
-        }
-    }
-    out
-}
-
-/// Texto de uma propriedade do XMP: o `x-default` (ou o primeiro) de uma lista de idiomas;
-/// os itens de uma sequência, separados por vírgula; ou o texto simples do elemento.
-pub fn xmp_text(xmp: &str, name: &str) -> Option<String> {
-    let xmp = cap_str(xmp, MAX_XMP);
-    let r = find_element(xmp, name)?;
-    let el = xmp.get(r)?;
-    let from = el.find('>')? + 1;
-    let to = el.rfind("</").filter(|&b| b >= from).unwrap_or(el.len());
-    let inner = &el[from..to];
-    let items = list_items(inner);
-    let text = if items.is_empty() {
-        let plain = inner.trim();
-        if plain.contains('<') {
-            return None;
-        }
-        xml_unescape(plain)
-    } else if inner.contains("<rdf:Alt") {
-        let it = items
-            .iter()
-            .find(|(a, _)| a.contains("x-default"))
-            .unwrap_or(&items[0]);
-        it.1.clone()
-    } else {
-        items
-            .iter()
-            .map(|(_, t)| t.as_str())
-            .filter(|t| !t.is_empty())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let text = clean(&text);
-    (!text.is_empty()).then_some(text)
-}
 
 /// Textos que o Inspetor edita, como estão no arquivo.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
@@ -295,7 +173,7 @@ pub struct Texts {
 /// XMP primeiro; sem ele, os campos IPTC (rótulos de `metadata::iptc_label`) e, para
 /// descrição e autor, o EXIF (`ImageDescription`, `Artist`).
 pub fn texts_of(xmp: Option<&str>, iptc: &[(String, String)], exif: &[(String, String)]) -> Texts {
-    let x = |name| xmp.and_then(|x| xmp_text(x, name));
+    let x = xmp.map(xmpedit::read).unwrap_or_default();
     let row = |rows: &[(String, String)], key: &str| {
         rows.iter()
             .find(|(k, v)| k == key && !v.trim().is_empty())
@@ -303,102 +181,53 @@ pub fn texts_of(xmp: Option<&str>, iptc: &[(String, String)], exif: &[(String, S
             .filter(|v| !v.is_empty())
     };
     Texts {
-        title: x(PROPS[0].0).or_else(|| row(iptc, "Title")),
-        description: x(PROPS[1].0)
+        title: x[0].clone().or_else(|| row(iptc, "Title")),
+        description: x[1].clone()
             .or_else(|| row(iptc, "Caption"))
             .or_else(|| row(exif, "ImageDescription")),
-        author: x(PROPS[2].0)
+        author: x[2].clone()
             .or_else(|| row(iptc, "Creator"))
             .or_else(|| row(exif, "Artist")),
-        alt_text: x(PROPS[3].0),
+        alt_text: x[3].clone(),
     }
 }
 
 // ---------- EXIF ----------
 
-/// Tags do IFD0 que repetem cada texto editável: Artist/XPAuthor, ImageDescription/XPComment e XPTitle.
-const EXIF_TITLE: [u16; 1] = [0x9C9B];
-const EXIF_DESCRIPTION: [u16; 2] = [0x010E, 0x9C9C];
-const EXIF_AUTHOR: [u16; 2] = [0x013B, 0x9C9D];
-
-/// Bloco EXIF sem o valor antigo dos campos editados: tira do IFD0 as entradas deles e zera os bytes
-/// dos valores. O novo texto vai para o XMP e o IPTC. O resto do EXIF fica como estava; um bloco que
-/// não dá para ler com segurança volta como veio.
-pub fn exif_without_text(tiff: &[u8], e: &MetadataEdits) -> Vec<u8> {
-    let mut drop: Vec<u16> = Vec::new();
+/// Bloco EXIF sem o valor antigo dos campos editados em `e`: título (XPTitle, ImageTitle),
+/// descrição (ImageDescription, XPComment, UserComment) e autor (Artist, XPAuthor, Photographer),
+/// no IFD0, no IFD1 e no sub-IFD Exif. O resto do EXIF fica. `None` quando a limpeza não pode ser
+/// feita com segurança: quem chama descarta o EXIF inteiro em vez de deixar o texto antigo passar.
+pub fn exif_without_text(tiff: &[u8], e: &MetadataEdits) -> Option<Vec<u8>> {
+    let (mut tiff_tags, mut exif_tags): (Vec<u16>, Vec<u16>) = (Vec::new(), Vec::new());
     if e.title.is_some() {
-        drop.extend(EXIF_TITLE);
+        tiff_tags.push(0x9C9B);
+        exif_tags.push(0xA436);
     }
     if e.description.is_some() {
-        drop.extend(EXIF_DESCRIPTION);
+        tiff_tags.extend([0x010E, 0x9C9C]);
+        exif_tags.push(0x9286);
     }
     if e.author.is_some() {
-        drop.extend(EXIF_AUTHOR);
+        tiff_tags.extend([0x013B, 0x9C9D]);
+        exif_tags.push(0xA437);
     }
-    let mut out = tiff.to_vec();
-    if !drop.is_empty() {
-        let _ = scrub_ifd0(&mut out, &drop);
+    if tiff_tags.is_empty() {
+        return Some(tiff.to_vec());
     }
-    out
-}
-
-fn scrub_ifd0(b: &mut [u8], drop: &[u16]) -> Option<()> {
-    let (ifd, le) = super::makernote::tiff_header(b)?;
-    let u16_at = |b: &[u8], o: usize| -> Option<u16> {
-        let a: [u8; 2] = b.get(o..o.checked_add(2)?)?.try_into().ok()?;
-        Some(if le { u16::from_le_bytes(a) } else { u16::from_be_bytes(a) })
-    };
-    let u32_at = |b: &[u8], o: usize| -> Option<u32> {
-        let a: [u8; 4] = b.get(o..o.checked_add(4)?)?.try_into().ok()?;
-        Some(if le { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) })
-    };
-    let n = usize::from(u16_at(b, ifd)?);
-    let first = ifd.checked_add(2)?;
-    let end = first.checked_add(n * 12)?;
-    let next: [u8; 4] = b.get(end..end.checked_add(4)?)?.try_into().ok()?;
-    let mut keep: Vec<[u8; 12]> = Vec::with_capacity(n);
-    let mut zero: Vec<(usize, usize)> = Vec::new();
-    for i in 0..n {
-        let o = first + i * 12;
-        let entry: [u8; 12] = b.get(o..o + 12)?.try_into().ok()?;
-        if !drop.contains(&u16_at(b, o)?) {
-            keep.push(entry);
-            continue;
-        }
-        let unit = match u16_at(b, o + 2)? {
-            1 | 2 | 6 | 7 => 1,
-            3 | 8 => 2,
-            4 | 9 | 11 => 4,
-            5 | 10 | 12 => 8,
-            _ => 0,
-        };
-        let len = unit * (u32_at(b, o + 4)? as usize);
-        if len > 4 {
-            zero.push((u32_at(b, o + 8)? as usize, len));
-        }
-    }
-    if keep.len() == n {
-        return Some(());
-    }
-    for (off, len) in zero {
-        if let Some(v) = off.checked_add(len).and_then(|e| b.get_mut(off..e)) {
-            v.fill(0);
-        }
-    }
-    let count = if le { (keep.len() as u16).to_le_bytes() } else { (keep.len() as u16).to_be_bytes() };
-    b[ifd..ifd + 2].copy_from_slice(&count);
-    let mut o = first;
-    for entry in &keep {
-        b[o..o + 12].copy_from_slice(entry);
-        o += 12;
-    }
-    b[o..end].fill(0);
-    b[o..o + 4].copy_from_slice(&next);
-    b[o + 4..end + 4].fill(0);
-    Some(())
+    exifscrub::scrub(tiff, &Tags { tiff: &tiff_tags, exif: &exif_tags })
 }
 
 // ---------- IPTC-IIM ----------
+
+/// Texto de um registro 2:xx em UTF-8: o que já é UTF-8 válido fica, o resto é lido como Latin-1
+/// (o conjunto antigo mais comum), porque o IIM gravado passa a declarar UTF-8 (1:90).
+fn utf8_record(r: u8, n: u8, v: &[u8]) -> Vec<u8> {
+    if r != 2 || n == 0 || std::str::from_utf8(v).is_ok() {
+        return v.to_vec();
+    }
+    v.iter().map(|&b| char::from(b)).collect::<String>().into_bytes()
+}
 
 /// IIM com os registros 2:05 (título), 2:120 (legenda) e 2:80 (autor) trocados conforme `e`
 /// (`Some("")` apaga) e o resto mantido; declara UTF-8 (1:90) e ordena por registro/conjunto.
@@ -418,7 +247,7 @@ pub fn iim_with_edits(orig: Option<&[u8]>, e: &MetadataEdits) -> Vec<u8> {
         let (r, n) = (d[1], d[2]);
         let replaced = r == 2 && fields.iter().any(|(num, v, _)| *num == n && v.is_some());
         if !replaced && !(r == 1 && n == 90) {
-            records.push((r, n, d[5..5 + len].to_vec()));
+            records.push((r, n, utf8_record(r, n, &d[5..5 + len])));
         }
         d = &d[5 + len..];
     }
@@ -437,6 +266,7 @@ pub fn iim_with_edits(orig: Option<&[u8]>, e: &MetadataEdits) -> Vec<u8> {
     }
     out
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -466,7 +296,7 @@ mod tests {
 
     #[test]
     fn xmp_troca_no_lugar_e_preserva_o_resto() {
-        let orig = "<x:xmpmeta><rdf:RDF><rdf:Description rdf:about=\"\" xmlns:dc=\"d\" xmlns:xmp=\"x\" xmp:Rating=\"4\"><dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Velho</rdf:li></rdf:Alt></dc:title><dc:subject><rdf:Bag><rdf:li>k</rdf:li></rdf:Bag></dc:subject></rdf:Description></rdf:RDF></x:xmpmeta>";
+        let orig = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><rdf:Description rdf:about=\"\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmp:Rating=\"4\"><dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Velho</rdf:li></rdf:Alt></dc:title><dc:subject><rdf:Bag><rdf:li>k</rdf:li></rdf:Bag></dc:subject></rdf:Description></rdf:RDF></x:xmpmeta>";
         let e = MetadataEdits {
             title: Some("Novo".into()),
             ..Default::default()
@@ -492,7 +322,7 @@ mod tests {
 
     #[test]
     fn xmp_nome_parecido_nao_confunde() {
-        let orig = "<rdf:RDF><rdf:Description><dc:titleX>nao</dc:titleX></rdf:Description></rdf:RDF>";
+        let orig = "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><rdf:Description><dc:titleX>nao</dc:titleX></rdf:Description></rdf:RDF>";
         assert_eq!(xmp_text(orig, "dc:title"), None);
         let e = MetadataEdits {
             title: Some("Sim".into()),
@@ -505,7 +335,7 @@ mod tests {
 
     #[test]
     fn xmp_le_idiomas_entidades_e_autor_multiplo() {
-        let x = "<rdf:Description><dc:title><rdf:Alt><rdf:li xml:lang=\"en\">One</rdf:li><rdf:li xml:lang=\"x-default\">Padr&#227;o &amp; &#x41;</rdf:li></rdf:Alt></dc:title><dc:creator><rdf:Seq><rdf:li>A</rdf:li><rdf:li>B</rdf:li></rdf:Seq></dc:creator><dc:description>simples</dc:description></rdf:Description>";
+        let x = "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><rdf:Description><dc:title><rdf:Alt><rdf:li xml:lang=\"en\">One</rdf:li><rdf:li xml:lang=\"x-default\">Padr&#227;o &amp; &#x41;</rdf:li></rdf:Alt></dc:title><dc:creator><rdf:Seq><rdf:li>A</rdf:li><rdf:li>B</rdf:li></rdf:Seq></dc:creator><dc:description>simples</dc:description></rdf:Description></rdf:RDF>";
         assert_eq!(xmp_text(x, "dc:title").as_deref(), Some("Padrão & A"));
         assert_eq!(xmp_text(x, "dc:creator").as_deref(), Some("A, B"));
         assert_eq!(xmp_text(x, "dc:description").as_deref(), Some("simples"));
@@ -528,8 +358,11 @@ mod tests {
             let e = edits("a", "b", "c", "d");
             let _ = xmp_with_edits(Some(x), &e);
         }
-        let grande = format!("<dc:title>{}</dc:title>", "<rdf:li>x</rdf:li>".repeat(100_000));
-        assert!(xmp_text(&grande, "dc:title").unwrap().len() < 1000);
+        let grande = format!(
+            "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><rdf:Description><dc:creator><rdf:Seq>{}</rdf:Seq></dc:creator></rdf:Description></rdf:RDF>",
+            "<rdf:li>x</rdf:li>".repeat(100_000)
+        );
+        assert!(xmp_text(&grande, "dc:creator").unwrap().len() < 1000);
     }
 
     #[test]
@@ -643,7 +476,7 @@ mod tests {
             description: Some(String::new()),
             ..Default::default()
         };
-        let out = exif_without_text(&orig, &e);
+        let out = exif_without_text(&orig, &e).unwrap();
         for velho in ["Antigo Autor", "Autor XP antigo", "Descricao antiga", "Comentario XP antigo"] {
             assert!(!tem(&out, velho), "{velho} ainda no EXIF");
         }
@@ -656,21 +489,21 @@ mod tests {
     }
 
     #[test]
-    fn exif_sem_edicao_ou_malformado_volta_como_veio() {
+    fn exif_sem_edicao_volta_igual_e_malformado_cai() {
         let orig = exif_com_textos();
-        assert_eq!(exif_without_text(&orig, &MetadataEdits::default()), orig);
+        assert_eq!(exif_without_text(&orig, &MetadataEdits::default()), Some(orig.clone()));
         let e = MetadataEdits { author: Some("x".into()), ..Default::default() };
         for n in 0..orig.len() {
             let _ = exif_without_text(&orig[..n], &e);
         }
         let mut forjado = orig.clone();
         forjado[8..10].copy_from_slice(&u16::MAX.to_le_bytes());
-        assert_eq!(exif_without_text(&forjado, &e), forjado);
+        assert_eq!(exif_without_text(&forjado, &e), None, "bloco ilegível: o EXIF inteiro cai");
     }
 
     #[test]
     fn xmp_remove_todas_as_ocorrencias_da_propriedade() {
-        let dup = "<rdf:RDF><rdf:Description dc:creator=\"Atributo Velho\"><dc:creator><rdf:Seq><rdf:li>Velho 1</rdf:li></rdf:Seq></dc:creator></rdf:Description><rdf:Description><dc:creator><rdf:Seq><rdf:li>Velho 2</rdf:li></rdf:Seq></dc:creator></rdf:Description></rdf:RDF>";
+        let dup = "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><rdf:Description dc:creator=\"Atributo Velho\"><dc:creator><rdf:Seq><rdf:li>Velho 1</rdf:li></rdf:Seq></dc:creator></rdf:Description><rdf:Description><dc:creator><rdf:Seq><rdf:li>Velho 2</rdf:li></rdf:Seq></dc:creator></rdf:Description></rdf:RDF>";
         let e = MetadataEdits { author: Some("Ana".into()), ..Default::default() };
         let x = xmp_with_edits(Some(dup), &e);
         assert!(!x.contains("Velho"), "{x}");
@@ -685,10 +518,109 @@ mod tests {
         let t = std::time::Instant::now();
         let muitos = "&".repeat(1 << 20);
         assert_eq!(xml_unescape(&muitos).len(), MAX_UNESCAPE);
-        let xmp = format!("<dc:title>{muitos}</dc:title>");
+        let xmp = format!("<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><rdf:Description><dc:title>{muitos}</dc:title></rdf:Description></rdf:RDF>");
         let _ = xmp_text(&xmp, "dc:title");
         let _ = texts_of(Some(&xmp), &[], &[]);
         assert!(t.elapsed() < std::time::Duration::from_secs(5), "{:?}", t.elapsed());
+    }
+
+    const NS_DECL: &str = "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"";
+
+    fn so_titulo(t: &str) -> MetadataEdits {
+        MetadataEdits { title: Some(t.into()), ..Default::default() }
+    }
+
+    #[test]
+    fn xmp_com_tags_emendadas_nao_panica_e_vira_pacote_novo() {
+        // Pacote malformado: nenhuma busca de texto pode "emendar" os pedaços.
+        for orig in ["<dc:ti<dc:title/>tle>x</dc:title>", "<dc:ti<dc:title>a</dc:title>tle>x</dc:title>", "<<dc:title/>>"] {
+            let x = xmp_with_edits(Some(orig), &so_titulo("Novo"));
+            assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("Novo"), "{orig}");
+            assert!(!x.contains("tle>x"));
+        }
+    }
+
+    #[test]
+    fn xmp_atributo_com_tab_ou_quebra_de_linha_e_outro_prefixo_tambem_saem() {
+        let orig = format!(
+            "<rdf:RDF {NS_DECL} xmlns:d1=\"http://purl.org/dc/elements/1.1/\"><rdf:Description\n\tdc:creator\t=\n'Velho Atributo' d1:title=\"Velho Titulo\"><d1:description><rdf:Alt><rdf:li xml:lang=\"x-default\">Velha Desc</rdf:li></rdf:Alt></d1:description></rdf:Description></rdf:RDF>"
+        );
+        assert_eq!(xmp_text(&orig, "dc:title").as_deref(), Some("Velho Titulo")); // outro prefixo é lido
+        assert_eq!(xmp_text(&orig, "dc:creator").as_deref(), Some("Velho Atributo"));
+        let e = MetadataEdits {
+            title: Some("T".into()),
+            description: Some("D".into()),
+            author: Some("A".into()),
+            ..Default::default()
+        };
+        let x = xmp_with_edits(Some(&orig), &e);
+        assert!(!x.contains("Velh"), "{x}");
+        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("T"));
+        assert_eq!(xmp_text(&x, "dc:description").as_deref(), Some("D"));
+        assert_eq!(xmp_text(&x, "dc:creator").as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn xmp_nao_mexe_em_texto_livre_comentario_nem_cdata() {
+        let orig = format!(
+            "<rdf:RDF {NS_DECL}><!-- <dc:title>comentario</dc:title> --><rdf:Description><dc:subject>texto dc:title=\"x\" <![CDATA[<dc:title>cdata</dc:title>]]></dc:subject></rdf:Description></rdf:RDF>"
+        );
+        let x = xmp_with_edits(Some(&orig), &so_titulo("Novo"));
+        for guardado in ["<dc:title>comentario</dc:title>", "texto dc:title=\"x\"", "<![CDATA[<dc:title>cdata</dc:title>]]>"] {
+            assert!(x.contains(guardado), "{guardado} sumiu:\n{x}");
+        }
+        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("Novo"));
+    }
+
+    #[test]
+    fn xmp_titulo_em_outros_idiomas_sobrevive_a_edicao_do_padrao() {
+        let orig = format!(
+            "<rdf:RDF {NS_DECL}><rdf:Description><dc:title><rdf:Alt><rdf:li xml:lang=\"en\">English</rdf:li><rdf:li xml:lang=\"x-default\">Velho</rdf:li><rdf:li xml:lang=\"fr\">Français</rdf:li></rdf:Alt></dc:title></rdf:Description></rdf:RDF>"
+        );
+        let x = xmp_with_edits(Some(&orig), &so_titulo("Novo"));
+        assert!(x.contains("English") && x.contains("Français") && !x.contains("Velho"));
+        assert_eq!(xmp_text(&x, "dc:title").as_deref(), Some("Novo"));
+        // sem x-default: entra um novo, e as traduções ficam
+        let sem = orig.replace("x-default", "de");
+        let y = xmp_with_edits(Some(&sem), &so_titulo("Padrão"));
+        assert!(y.contains("English") && y.contains("Velho") && xmp_text(&y, "dc:title").as_deref() == Some("Padrão"));
+        // apagar tira só o padrão enquanto houver outras línguas
+        let z = xmp_with_edits(Some(&orig), &so_titulo(""));
+        assert!(z.contains("English") && !z.contains("Velho"));
+        assert_eq!(xmp_text(&z, "dc:title").as_deref(), Some("English"));
+    }
+
+    #[test]
+    fn xmp_gigante_ou_ilegivel_vira_pacote_novo_sem_travar() {
+        let t = std::time::Instant::now();
+        let grande = format!("<rdf:RDF {NS_DECL}><rdf:Description>{}</rdf:Description></rdf:RDF>", "<a/>".repeat(3 << 20));
+        let x = xmp_with_edits(Some(&grande), &so_titulo("Novo"));
+        assert!(x.len() < 2000 && xmp_text(&x, "dc:title").as_deref() == Some("Novo"));
+        assert!(t.elapsed() < std::time::Duration::from_secs(10), "{:?}", t.elapsed());
+    }
+
+    #[test]
+    fn iim_latin1_antigo_e_convertido_antes_de_declarar_utf8() {
+        // 2:116 (copyright) em Latin-1 ("Fundação" com ç e ã em ISO-8859-1) e 2:25 já em UTF-8.
+        let mut orig = vec![0x1C, 2, 116, 0, 8];
+        orig.extend_from_slice(b"Funda\xE7\xE3o");
+        orig.extend(iim(&[(2, 25, "coração")]));
+        let out = iim_with_edits(Some(&orig), &so_titulo("T"));
+        let recs = records(&out);
+        assert!(recs.contains(&(2, 116, "Fundação".to_string())), "{recs:?}");
+        assert!(recs.contains(&(2, 25, "coração".to_string())));
+        assert_eq!(recs[0], (1, 90, "\u{1b}%G".to_string()));
+    }
+
+    #[test]
+    fn editados_sem_valor_novo_so_apagam_e_over_mescla() {
+        let e = MetadataEdits { title: Some("novo".into()), author: Some("  ".into()), ..Default::default() };
+        let c = e.only_clearing();
+        assert_eq!((c.title, c.author.as_deref()), (None, Some("  ")));
+        let base = MetadataEdits { description: Some(String::new()), title: Some(String::new()), ..Default::default() };
+        let m = e.over(&base);
+        assert_eq!((m.title.as_deref(), m.description.as_deref()), (Some("novo"), Some("")));
+        assert_eq!(e.as_cleared().title.as_deref(), Some(""));
     }
 
     fn iim(v: &[(u8, u8, &str)]) -> Vec<u8> {

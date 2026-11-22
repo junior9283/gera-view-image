@@ -189,6 +189,20 @@ describe("Inspector", () => {
     expect((screen.getByLabelText("Posição X") as HTMLInputElement).value).toBe("0.06");
   });
 
+  it("aba Recorte: sair do campo sem mudar o texto não regrava a seleção", async () => {
+    const original = { type: "rect", data: { x: 4.4, y: 6, w: 10, h: 8 } } as const;
+    useSelection.setState({ selection: original });
+    await abrir();
+    fireEvent.click(screen.getByRole("tab", { name: "Recorte" }));
+    const x = (await screen.findByLabelText("Posição X")) as HTMLInputElement;
+    expect(x.value).toBe("4"); // mostra arredondado; o valor real é 4,4
+    fireEvent.blur(x);
+    expect(useSelection.getState().selection).toBe(original);
+    fireEvent.change(x, { target: { value: "5" } });
+    fireEvent.blur(x);
+    expect(useSelection.getState().selection).toEqual({ type: "rect", data: { x: 5, y: 6, w: 10, h: 8 } });
+  });
+
   it("aba Recorte: seleção livre mostra a caixa, só para leitura", async () => {
     useSelection.setState({ selection: { type: "polygon", data: [[2, 3], [12, 3], [7, 13]] } });
     await abrir();

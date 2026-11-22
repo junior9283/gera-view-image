@@ -6,7 +6,7 @@ use super::{
     makernote::{self, Maker},
     metaedit::{self, Texts, xml_unescape},
 };
-use crate::error::AppResult;
+use crate::{commands::describe::MetadataEdits, error::AppResult};
 use ::image::{ImageDecoder, ImageFormat, ImageReader};
 use exif::{Context, In, Reader, Tag, Value};
 use rayon::prelude::*;
@@ -74,6 +74,16 @@ pub struct Metadata {
 
 /// Lê os metadados de `path`. `decoded` traz EXIF, ICC e DPI já extraídos na abertura.
 pub fn read_metadata(path: &Path, decoded: &Decoded) -> AppResult<Metadata> {
+    read_metadata_with(path, decoded, &MetadataEdits::default())
+}
+
+/// Como `read_metadata`, sem os textos do EXIF que `cleared` marca (já gravados no arquivo, mas
+/// ainda presentes no EXIF guardado na abertura). EXIF que não dá para limpar não é mostrado.
+pub fn read_metadata_with(path: &Path, decoded: &Decoded, cleared: &MetadataEdits) -> AppResult<Metadata> {
+    let exif = decoded.exif.as_deref().and_then(|e| {
+        if cleared.is_empty() { Some(e.to_vec()) } else { metaedit::exif_without_text(e, cleared) }
+    });
+    let exif = exif.as_deref();
     let bytes = std::fs::read(path)?;
     let fs_meta = std::fs::metadata(path)?;
     let (width, height) = decoded
@@ -96,14 +106,14 @@ pub fn read_metadata(path: &Path, decoded: &Decoded) -> AppResult<Metadata> {
             .map(iso_utc)
             .unwrap_or_else(|_| iso_utc(UNIX_EPOCH)),
     };
-    let b = parse_blocks(&bytes, decoded.exif.as_deref());
+    let b = parse_blocks(&bytes, exif);
     Ok(Metadata {
         general,
         exif: b.exif,
         iptc: b.iptc,
         gps: b.gps,
         keywords: b.keywords,
-        sections: formatinfo::sections(&bytes, decoded.exif.as_deref()),
+        sections: formatinfo::sections(&bytes, exif),
         maker: b.maker,
         lens: b.lens,
         texts: b.texts,
@@ -321,7 +331,7 @@ const MAX_KEYWORDS: usize = 2000;
 
 /// Itens de `<dc:subject>` de um pacote XMP.
 fn xmp_keywords(xmp: &str) -> Vec<String> {
-    let xmp = metaedit::cap_str(xmp, metaedit::MAX_XMP);
+    let xmp = metaedit::cap_str(xmp, metaedit::MAX_XMP_KEYWORDS);
     let mut out = vec![];
     let Some(a) = xmp.find("<dc:subject>") else {
         return out;

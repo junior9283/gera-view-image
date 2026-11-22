@@ -57,6 +57,11 @@ impl ExportFormat {
         !matches!(self, ExportFormat::Avif | ExportFormat::Exr)
     }
 
+    /// O formato guarda XMP e IPTC, onde vão o título, a descrição, o autor e o texto alternativo.
+    pub fn carries_text(self) -> bool {
+        matches!(self, ExportFormat::Jpeg | ExportFormat::Png | ExportFormat::Tiff | ExportFormat::Webp)
+    }
+
     /// Formato em que Salvar grava o arquivo de origem (`None` = só Exportar).
     pub fn for_save(src: SourceFormat) -> Option<Self> {
         Some(match src {
@@ -129,8 +134,11 @@ pub struct MetaCarry {
     pub xmp: Option<String>,
     /// Palavras-chave editadas: substituem IPTC 2:25 e XMP `dc:subject`.
     pub iptc_keywords: Option<Vec<String>>,
-    /// Título, descrição, autor e texto alternativo editados no inspetor (Lote 9).
+    /// Título, descrição, autor e texto alternativo editados no inspetor (Lote 9): vão para XMP e IPTC.
     pub text_edits: Option<MetadataEdits>,
+    /// Campos de texto cujo valor antigo não pode ficar no EXIF: os editados agora e os já gravados
+    /// antes neste documento (o EXIF de origem não muda depois de um Salvar).
+    pub exif_cleared: Option<MetadataEdits>,
     pub dpi: Option<(f32, f32)>,
 }
 
@@ -191,12 +199,15 @@ pub fn encode<'a>(
         }
     } else {
         MetaCarry {
-            exif: meta.exif.as_deref().map(|e| {
+            // `None` também quando o EXIF não pôde ser limpo com segurança: sem EXIF, nunca com o texto antigo.
+            exif: meta.exif.as_deref().and_then(|e| {
                 let e = container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions());
-                // O texto antigo de autor/descrição/título não pode sobrar no EXIF.
-                match &meta.text_edits {
-                    Some(t) => metaedit::exif_without_text(&e, t),
-                    None => e,
+                match meta.exif_cleared.as_ref().map(|c| {
+                    // Formatos sem XMP/IPTC (AVIF, HEIC) não guardam o texto novo: só apagar vale.
+                    if fmt.carries_text() { c.clone() } else { c.only_clearing() }
+                }) {
+                    Some(c) if !c.is_empty() => metaedit::exif_without_text(&e, &c),
+                    _ => Some(e),
                 }
             }),
             icc: out_icc,
@@ -408,13 +419,14 @@ pub fn exif_reset_orientation(tiff: &[u8]) -> Vec<u8> {
 /// XMP e IPTC a gravar: os do original com as palavras-chave e os textos editados aplicados.
 fn edited_blocks(meta: &MetaCarry) -> (Option<String>, Option<Vec<u8>>) {
     let (mut xmp, mut iptc) = (meta.xmp.clone(), meta.iptc.clone());
-    if let Some(k) = &meta.iptc_keywords {
-        xmp = Some(xmp_with_keywords(xmp.as_deref(), k));
-        iptc = Some(iim_with_keywords(iptc.as_deref(), k));
-    }
+    // Textos primeiro: se o pacote XMP original não puder ser editado, o novo ainda recebe as palavras-chave.
     if let Some(e) = meta.text_edits.as_ref().filter(|e| !e.is_empty()) {
         xmp = Some(metaedit::xmp_with_edits(xmp.as_deref(), e));
         iptc = Some(metaedit::iim_with_edits(iptc.as_deref(), e));
+    }
+    if let Some(k) = &meta.iptc_keywords {
+        xmp = Some(xmp_with_keywords(xmp.as_deref(), k));
+        iptc = Some(iim_with_keywords(iptc.as_deref(), k));
     }
     (xmp, iptc)
 }

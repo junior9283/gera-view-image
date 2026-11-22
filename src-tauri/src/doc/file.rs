@@ -196,13 +196,21 @@ impl DocStore {
             .as_deref()
             .map(metadata::file_iim_xmp)
             .unwrap_or_default();
+        let text_edits = self.meta_edits(id);
+        let cleared = self.meta_cleared(id);
+        let exif_cleared = Some(match &text_edits {
+            Some(p) => p.over(&cleared),
+            None => cleared,
+        })
+        .filter(|c| !c.is_empty());
         let meta = MetaCarry {
             exif: source.exif.clone(),
             icc,
             iptc,
             xmp,
             iptc_keywords: keywords,
-            text_edits: self.meta_edits(id),
+            text_edits,
+            exif_cleared,
             dpi,
         };
         Ok((px, meta, file, state))
@@ -291,6 +299,7 @@ impl DocStore {
         };
         // Lote 5: guarda a versão atual e mantém as etiquetas (xattr `user.*`).
         super::finder::overwrite(Path::new(&path), &bytes)?;
+        self.meta_written(id, fmt.carries_text());
         let (_, info) = self.with_doc_mut(id, |d| {
             d.disk = DiskStamp::of(Path::new(&path));
             d.saved_len = if d.generation == generation && d.ops.len() >= n {
@@ -339,6 +348,7 @@ impl DocStore {
             && opts.resize.is_none()
             && ExportFormat::for_save(opts.format.source_format()).is_some();
         if adopt || same_file {
+            self.meta_written(id, opts.format.carries_text());
             self.with_doc_mut(id, |d| {
                 if adopt {
                     d.relocate(&dest_path);
@@ -426,6 +436,7 @@ impl DocStore {
             d.generation += 1;
             d.error = None;
         })?;
+        self.forget_meta(id);
         self.invalidate(id);
         Ok(info)
     }
@@ -475,6 +486,7 @@ impl DocStore {
             map.insert(new_id, dup);
             info
         };
+        self.inherit_meta(id, new_id);
         Ok(info)
     }
 

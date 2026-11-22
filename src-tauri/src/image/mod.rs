@@ -7,6 +7,7 @@ pub mod encode_heic;
 pub mod encode_jp2;
 pub mod heic;
 pub mod icc;
+pub mod exifscrub; // Lote 9
 pub mod formatinfo; // Lote 9
 pub mod makernote; // Lote 9
 pub mod metadata;
@@ -19,3 +20,4 @@ pub mod select;
 #[cfg(test)]
 mod test_util;
 pub mod thumb;
+pub mod xmpedit; // Lote 9

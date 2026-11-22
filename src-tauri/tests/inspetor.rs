@@ -6,7 +6,7 @@ mod make_fixtures;
 use gera_view_image_lib::{
     commands::describe::MetadataEdits,
     doc::{
-        file::SaveOutcome,
+        file::{RevertTarget, SaveOutcome},
         model::{DocId, Op, Rect, CropSpec},
         store::DocStore,
     },
@@ -14,7 +14,7 @@ use gera_view_image_lib::{
         decode::decode,
         encode::{ExportFormat, ExportOptions, MetaCarry, encode},
         formatinfo,
-        metadata::{Metadata, parse_blocks, read_metadata},
+        metadata::{Metadata, parse_blocks, read_metadata, read_metadata_with},
     },
 };
 use image::{DynamicImage, Rgb, RgbImage};
@@ -316,17 +316,15 @@ fn contem(bytes: &[u8], s: &str) -> bool {
 
 #[test]
 fn editar_autor_e_descricao_nao_deixa_o_valor_antigo_no_exif() {
+    // (os campos de texto vão para XMP/IPTC; o EXIF perde os antigos)
     let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
     let meta = MetaCarry {
         exif: Some(exif_com_textos_antigos()),
         icc: Some(icc_profile_named("Perfil Teste")),
         iptc: Some(iim(&[(25, "mar"), (25, "sol"), (116, "Gera")])),
         xmp: Some(XMP.to_string()),
-        text_edits: Some(MetadataEdits {
-            author: Some("Ana".into()),
-            description: Some(String::new()),
-            ..Default::default()
-        }),
+        text_edits: Some(edicao_autor_e_descricao()),
+        exif_cleared: Some(edicao_autor_e_descricao()),
         ..MetaCarry::default()
     };
     for (fmt, ext) in [(ExportFormat::Jpeg, "jpg"), (ExportFormat::Tiff, "tiff"), (ExportFormat::Png, "png")] {
@@ -347,4 +345,124 @@ fn editar_autor_e_descricao_nao_deixa_o_valor_antigo_no_exif() {
             assert_eq!(m.keywords, vec!["mar".to_string(), "sol".to_string()]);
         }
     }
+}
+
+fn edicao_autor_e_descricao() -> MetadataEdits {
+    MetadataEdits {
+        author: Some("Ana".into()),
+        description: Some(String::new()),
+        ..Default::default()
+    }
+}
+
+/// JPEG de 16x8 com o EXIF de `exif_com_textos_antigos`.
+fn jpeg_com_exif_antigo(dir: &Path) -> std::path::PathBuf {
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    let meta = MetaCarry {
+        exif: Some(exif_com_textos_antigos()),
+        icc: Some(icc_profile_named("Perfil Teste")),
+        ..MetaCarry::default()
+    };
+    let path = dir.join("origem.jpg");
+    fs::write(&path, encode(&rgba, &opts(ExportFormat::Jpeg), &meta).unwrap()).unwrap();
+    path
+}
+
+fn sem_texto_antigo(path: &Path, onde: &str) {
+    let bytes = fs::read(path).unwrap();
+    for velho in ["Antigo Autor", "Descricao antiga", "Autor XP antigo"] {
+        assert!(!contem(&bytes, velho), "{velho} voltou em {onde}");
+    }
+}
+
+#[test]
+fn texto_apagado_nao_volta_ao_exif_em_salvar_exportar_salvar_como_e_duplicar() {
+    let dir = tmp("insp-ciclo");
+    let src = jpeg_com_exif_antigo(&dir);
+    let store = DocStore::new();
+    let id = store.open_documents(&[s(&src)]).remove(0).id;
+    store.wait_ready(id).unwrap();
+    store.set_meta_edits(id, &edicao_autor_e_descricao());
+    assert!(matches!(store.save(id, None).unwrap(), SaveOutcome::Saved(_)));
+    sem_texto_antigo(&src, "1º Salvar");
+
+    // O front limpa as edições depois de salvar; o EXIF de origem do documento continua com o antigo.
+    store.set_meta_edits(id, &MetadataEdits::default());
+    store.apply_op(id, Op::FlipH).unwrap();
+    assert!(matches!(store.save(id, None).unwrap(), SaveOutcome::Saved(_)));
+    sem_texto_antigo(&src, "2º Salvar");
+
+    // A aba também não mostra o valor antigo.
+    let source = store.with_doc(id, |d| d.source.clone()).unwrap();
+    let m = read_metadata_with(&src, &source, &store.meta_cleared(id)).unwrap();
+    assert_eq!(m.texts.author.as_deref(), Some("Ana"));
+    assert_eq!(m.texts.description, None);
+    assert!(campo(&m.exif, "Make").unwrap().contains("Gera"));
+    let sem = read_metadata(&src, &source).unwrap();
+    // sem a limpeza, a leitura ainda enxerga o EXIF antigo guardado na abertura
+    assert!(campo(&sem.exif, "Artist").is_some());
+
+    let fora = dir.join("exportado.jpg");
+    store.export(id, &s(&fora), &opts(ExportFormat::Jpeg), None).unwrap();
+    sem_texto_antigo(&fora, "Exportar");
+
+    let como = dir.join("como.jpg");
+    store.save_as(id, &s(&como), &opts(ExportFormat::Jpeg), None).unwrap();
+    sem_texto_antigo(&como, "Salvar Como");
+
+    let dup = store.duplicate(id, "copia").unwrap().id;
+    let dup_fora = dir.join("dup.jpg");
+    store.export(dup, &s(&dup_fora), &opts(ExportFormat::Jpeg), None).unwrap();
+    sem_texto_antigo(&dup_fora, "Duplicar");
+}
+
+#[test]
+fn reverter_esquece_o_que_ja_foi_gravado() {
+    let dir = tmp("insp-reverter");
+    let src = jpeg_com_exif_antigo(&dir);
+    let store = DocStore::new();
+    let id = store.open_documents(&[s(&src)]).remove(0).id;
+    store.wait_ready(id).unwrap();
+    store.set_meta_edits(id, &edicao_autor_e_descricao());
+    store.save(id, None).unwrap();
+    assert!(!store.meta_cleared(id).is_empty());
+    store.revert(id, RevertTarget::Original).unwrap();
+    assert!(store.meta_cleared(id).is_empty());
+    assert_eq!(store.meta_edits(id), None);
+    store.close(id).unwrap();
+    assert!(store.meta_cleared(id).is_empty());
+}
+
+#[test]
+fn avif_e_heic_so_apagam_e_o_novo_texto_fica_pendente() {
+    let dir = tmp("insp-avif");
+    let src = jpeg_com_exif_antigo(&dir);
+    let store = DocStore::new();
+    let id = store.open_documents(&[s(&src)]).remove(0).id;
+    store.wait_ready(id).unwrap();
+    store.set_meta_edits(id, &edicao_autor_e_descricao()); // autor novo, descrição apagada
+    let avif = dir.join("a.avif");
+    store.export(id, &s(&avif), &opts(ExportFormat::Avif), None).unwrap();
+    let exif = decode(&avif).unwrap().exif.expect("EXIF no AVIF");
+    assert!(!contem(&exif, "Descricao antiga"), "apagar vale em qualquer formato");
+    assert!(!contem(&exif, "Comentario"), "XPComment");
+    assert!(contem(&exif, "Antigo Autor"), "AVIF não guarda o autor novo: o antigo fica, com a pendência");
+    assert!(store.meta_edits(id).is_some(), "a edição segue pendente");
+    // exportar para outro arquivo não marca nada como gravado no documento
+    assert!(store.meta_cleared(id).is_empty());
+}
+
+#[test]
+fn exif_ilegivel_com_edicao_pendente_e_descartado_em_vez_de_vazar() {
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    let mut exif = exif_com_textos_antigos();
+    exif[8..10].copy_from_slice(&u16::MAX.to_le_bytes()); // tabela do IFD0 forjada
+    let meta = MetaCarry {
+        exif: Some(exif),
+        text_edits: Some(edicao_autor_e_descricao()),
+        exif_cleared: Some(edicao_autor_e_descricao()),
+        ..MetaCarry::default()
+    };
+    let out = encode(&rgba, &opts(ExportFormat::Jpeg), &meta).unwrap();
+    assert!(!contem(&out, "Antigo Autor") && !contem(&out, "Descricao antiga"));
 }

@@ -48,7 +48,11 @@ export function CropTab({ doc, dpi }: { doc: DocInfo; dpi: number | null }) {
               inputMode="decimal"
               disabled={!editable}
               defaultValue={formatUnit(bounds[f], unit, dpi)}
-              onBlur={(e) => (e.target.value = formatUnit(commit(f, e.target.value)[f], unit, dpi))}
+              onBlur={(e) => {
+                // Sair do campo sem mudar o texto não regrava a seleção (não refaz o arredondamento).
+                if (e.target.value === formatUnit(bounds[f], unit, dpi)) return;
+                e.target.value = formatUnit(commit(f, e.target.value)[f], unit, dpi);
+              }}
               onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             />
           </label>

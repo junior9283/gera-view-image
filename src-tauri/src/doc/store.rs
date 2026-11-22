@@ -290,8 +290,18 @@ struct Inner {
     pipeline_runs: AtomicUsize,
     /// Cache de 1 entrada da base reduzida da prévia de ajuste (`preview_base`).
     preview: Mutex<Option<(PreviewKey, Arc<Vec<u8>>)>>,
-    /// Título, descrição, autor e texto alternativo editados no Inspetor (Lote 9), por documento.
-    meta_edits: Mutex<HashMap<DocId, MetadataEdits>>,
+    /// Título, descrição, autor e texto alternativo do Inspetor (Lote 9), por documento.
+    meta_text: Mutex<HashMap<DocId, TextMeta>>,
+}
+
+/// Estado dos textos editados de um documento.
+#[derive(Default)]
+struct TextMeta {
+    /// Edições ainda não gravadas no arquivo do documento.
+    pending: Option<MetadataEdits>,
+    /// Campos (valor vazio) já gravados no arquivo do documento: o EXIF de origem continua com o
+    /// texto antigo, então toda gravação e a leitura dos metadados o limpam de novo.
+    cleared: MetadataEdits,
 }
 
 /// Documentos abertos (`Mutex<HashMap<DocId, Document>>`), compartilhável entre threads.
@@ -373,27 +383,61 @@ impl DocStore {
                 inflight: Mutex::new(HashMap::new()),
                 pipeline_runs: AtomicUsize::new(0),
                 preview: Mutex::new(None),
-                meta_edits: Mutex::new(HashMap::new()),
+                meta_text: Mutex::new(HashMap::new()),
             }),
         }
+    }
+
+    fn meta_text<R>(&self, f: impl FnOnce(&mut HashMap<DocId, TextMeta>) -> R) -> R {
+        f(&mut self.inner.meta_text.lock().unwrap_or_else(|p| p.into_inner()))
     }
 
     /// Guarda (ou, vazio, esquece) as edições de texto do documento para o próximo Salvar/Exportar.
     /// O front reenvia o conjunto inteiro antes de cada gravação.
     pub fn set_meta_edits(&self, id: DocId, edits: &MetadataEdits) {
         let e = edits.cleaned();
-        let mut map = self.inner.meta_edits.lock().unwrap_or_else(|p| p.into_inner());
-        if e.is_empty() {
-            map.remove(&id);
-        } else {
-            map.insert(id, e);
-        }
+        self.meta_text(|m| {
+            let t = m.entry(id).or_default();
+            t.pending = (!e.is_empty()).then_some(e);
+        });
     }
 
     /// Edições de texto a gravar para `id`, se houver.
     pub fn meta_edits(&self, id: DocId) -> Option<MetadataEdits> {
-        let map = self.inner.meta_edits.lock().unwrap_or_else(|p| p.into_inner());
-        map.get(&id).cloned()
+        self.meta_text(|m| m.get(&id).and_then(|t| t.pending.clone()))
+    }
+
+    /// Campos que já foram gravados no arquivo do documento (valor vazio): o EXIF não pode ter o antigo.
+    pub fn meta_cleared(&self, id: DocId) -> MetadataEdits {
+        self.meta_text(|m| m.get(&id).map(|t| t.cleared.clone()).unwrap_or_default())
+    }
+
+    /// O documento acabou de ser gravado no próprio arquivo. Em formato que guarda o texto, as
+    /// edições passam a estar no arquivo; nos outros, ficam pendentes.
+    pub fn meta_written(&self, id: DocId, carries_text: bool) {
+        if !carries_text {
+            return;
+        }
+        self.meta_text(|m| {
+            if let Some(t) = m.get_mut(&id)
+                && let Some(p) = t.pending.take()
+            {
+                t.cleared = p.as_cleared().over(&t.cleared);
+            }
+        });
+    }
+
+    /// Esquece os textos do documento (fechar, reverter, restaurar versão).
+    pub fn forget_meta(&self, id: DocId) {
+        self.meta_text(|m| m.remove(&id));
+    }
+
+    /// O documento `to` nasce de `from` (Duplicar): leva o que `from` já gravou no EXIF.
+    pub(super) fn inherit_meta(&self, from: DocId, to: DocId) {
+        let cleared = self.meta_cleared(from);
+        if !cleared.is_empty() {
+            self.meta_text(|m| m.entry(to).or_default().cleared = cleared);
+        }
     }
 
     /// Chamado (fora de qualquer trava) quando um documento muda sozinho.
@@ -533,6 +577,7 @@ impl DocStore {
 
     pub fn close(&self, id: DocId) -> AppResult<()> {
         let removed = self.lock().remove(&id);
+        self.forget_meta(id);
         self.inner.ready.notify_all();
         self.invalidate(id);
         removed.map(|_| ()).ok_or_else(|| not_found(id))
