@@ -2,7 +2,7 @@
 //!
 //! O documento trabalha em 8 bits. Para não perder profundidade ao Salvar, o arquivo de 16
 //! bits é relido e as mesmas operações são refeitas aqui em 16 bits (ajustes de cor em f32).
-use super::{color, ops};
+use super::{cicp, color, hdr, ops};
 use crate::doc::model::{CropSpec, Mask, Op, ResizeFilter, SourceFormat};
 use ::image::{
     ColorType, DynamicImage, ImageBuffer, ImageDecoder, ImageFormat, ImageReader, Rgb, Rgba,
@@ -131,7 +131,14 @@ pub fn decode16(bytes: &[u8], format: SourceFormat) -> Option<Rgba16Image> {
         let orientation = dec.orientation().unwrap_or(Orientation::NoTransforms);
         let mut img = DynamicImage::from_decoder(dec).ok()?;
         img.apply_orientation(orientation);
-        Some(img.into_rgba16())
+        let mut img = img.into_rgba16();
+        // Os pixels do documento já saíram do PQ/HLG (ver `decode`).
+        if format == SourceFormat::Png
+            && let Some(cicp::Color::Hdr(t, _)) = cicp::png_color(bytes)
+        {
+            hdr::to_sdr(&mut img, t);
+        }
+        Some(img)
     })
     .ok()
     .flatten()

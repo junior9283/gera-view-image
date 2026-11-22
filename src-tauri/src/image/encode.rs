@@ -124,8 +124,9 @@ impl ExportFormat {
             ExportFormat::Ico => SourceFormat::Ico,
             ExportFormat::Tga => SourceFormat::Tga,
             ExportFormat::Psd => SourceFormat::Psd,
+            ExportFormat::Exr => SourceFormat::Exr,
             // Sem leitura própria: o documento fica sem Salvar (vai para Exportar).
-            ExportFormat::Exr | ExportFormat::Pdf => SourceFormat::Raw,
+            ExportFormat::Pdf => SourceFormat::Raw,
         }
     }
 }
@@ -470,7 +471,8 @@ fn tiff(px: &DynamicImage, compression: TiffCompression) -> AppResult<Vec<u8>> {
     Ok(c.into_inner())
 }
 
-/// OpenEXR com as primárias do sRGB em luz linear (desfaz a curva sRGB), em half ou float.
+/// OpenEXR com as primárias do sRGB em luz linear (desfaz a curva sRGB), em half ou float. A cor
+/// vai pré-multiplicada pelo alfa, como a especificação pede.
 fn exr(px: &DynamicImage, half: bool, dpi: Option<(f32, f32)>) -> AppResult<Vec<u8>> {
     use ::exr::prelude::{
         Encoding, Image, Layer, LayerAttributes, SpecificChannels, Vec2, WritableImage, f16,
@@ -508,8 +510,9 @@ fn exr(px: &DynamicImage, half: bool, dpi: Option<(f32, f32)>) -> AppResult<Vec<
         DynamicImage::ImageRgba16(i) => {
             let at = |p: Vec2<usize>| {
                 let [r, g, b, a] = i.get_pixel(p.x() as u32, p.y() as u32).0;
-                let l = |v: u16| lut[v as usize];
-                (l(r), l(g), l(b), a as f32 / u16::MAX as f32)
+                let a = a as f32 / u16::MAX as f32;
+                let l = |v: u16| lut[v as usize] * a;
+                (l(r), l(g), l(b), a)
             };
             if !half {
                 return write_exr!(rgba, at);
@@ -1241,7 +1244,9 @@ mod tests {
             assert!(h.channels.list.iter().all(|c| c.sample_type == want), "half={exr_half}");
             assert_eq!(h.own_attributes.horizontal_density, Some(300.0));
             let px = ::image::load_from_memory(&out).unwrap().into_rgba32f().get_pixel(3, 3).0;
-            let linear = [1.0, 0.5029, 0.0, 128.0 / 255.0];
+            // A especificação do OpenEXR pede cor pré-multiplicada pelo alfa.
+            let a = 128.0 / 255.0;
+            let linear = [a, 0.5029 * a, 0.0, a];
             assert!(px.iter().zip(linear).all(|(a, b)| (a - b).abs() < 2e-3), "{px:?}");
         }
         // Origem de 16 bits: guarda mais níveis que 8 bits conseguem.
@@ -1250,7 +1255,7 @@ mod tests {
         let out = encode(&deep, &opts, &MetaCarry::default()).unwrap();
         let got = ::image::load_from_memory(&out).unwrap().into_rgba32f().get_pixel(0, 0).0[0];
         let c = 32800f32 / 65535.0;
-        assert!((got - ((c + 0.055) / 1.055).powf(2.4)).abs() < 1e-6, "{got}");
+        assert!((got - ((c + 0.055) / 1.055).powf(2.4) * c).abs() < 1e-6, "{got}");
     }
 
     #[test]

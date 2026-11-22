@@ -1891,6 +1891,7 @@ dependencies = [
  "image",
  "imagesize",
  "jpeg-decoder",
+ "jxl-oxide",
  "kamadak-exif",
  "libc",
  "libheif-rs",

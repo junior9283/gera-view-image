@@ -24,6 +24,16 @@ pub enum SourceFormat {
     Tga,
     Raw,
     Jp2,
+    /// Só leitura (Salvar leva a Exportar).
+    Exr,
+    Hdr,
+    Pnm,
+    Icns,
+    /// Codestream JPEG 2000 sem contêiner: regravá-lo viraria outro tipo de arquivo.
+    J2c,
+    Jxl,
+    Dds,
+    Farbfeld,
 }
 
 impl SourceFormat {
