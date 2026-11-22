@@ -334,6 +334,8 @@
       "none": "Nenhuma fonte encontrada."
     },
     "props": {
+      "x": "X",
+      "y": "Y",
       "title": "Propriedades",
       "none": "Selecione uma anotação para ver as propriedades.",
       "many": "{{n}} anotações",

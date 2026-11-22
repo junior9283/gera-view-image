@@ -57,8 +57,8 @@ export function PropertiesPanel() {
           <p className="props-kind">{chosen.length > 1 ? t("markup.props.many", { n: chosen.length }) : t(`markup.kind.${first.kind}`)}</p>
           {one && box && (
             <div className="props-grid">
-              <NumberField label="X" value={box.x} onCommit={(x) => updateSelected(id, (a) => withBox(a, { x }))} />
-              <NumberField label="Y" value={box.y} onCommit={(y) => updateSelected(id, (a) => withBox(a, { y }))} />
+              <NumberField label={t("markup.props.x")} value={box.x} onCommit={(x) => updateSelected(id, (a) => withBox(a, { x }))} />
+              <NumberField label={t("markup.props.y")} value={box.y} onCommit={(y) => updateSelected(id, (a) => withBox(a, { y }))} />
               <NumberField label={t("markup.props.width")} value={box.w} min={1} onCommit={(w) => updateSelected(id, (a) => withBox(a, { w }))} />
               <NumberField label={t("markup.props.height")} value={box.h} min={1} onCommit={(h) => updateSelected(id, (a) => withBox(a, { h }))} />
             </div>

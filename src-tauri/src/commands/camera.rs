@@ -47,7 +47,7 @@ mod webkit {
     };
     use tauri::{AppHandle, Manager};
     use webkit2gtk::{
-        PermissionRequestExt, SettingsExt, UserMediaPermissionRequest,
+        glib::Cast, PermissionRequestExt, SettingsExt, UserMediaPermissionRequest,
         UserMediaPermissionRequestExt, WebView, WebViewExt,
     };
 

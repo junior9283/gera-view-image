@@ -334,6 +334,8 @@
       "none": "No fonts found."
     },
     "props": {
+      "x": "X",
+      "y": "Y",
       "title": "Properties",
       "none": "Select an annotation to see its properties.",
       "many": "{{n}} annotations",

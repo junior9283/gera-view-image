@@ -58,7 +58,7 @@ export function FontsPanel() {
           </li>
         ))}
       </ul>
-      {list.length > SHOWN && <p className="sig-hint">{t("markup.fonts.more", { n: list.length - SHOWN })}</p>}
+      <p className="sig-hint" hidden={list.length <= SHOWN}>{t("markup.fonts.more", { n: list.length - SHOWN })}</p>
       {list.length === 0 && state.status === "ready" && <p className="sig-hint">{t("markup.fonts.none")}</p>}
       <div className="markup-menu-row">
         <label>
