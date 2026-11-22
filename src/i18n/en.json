@@ -3,7 +3,8 @@
     "minimize": "Minimize",
     "maximize": "Maximize",
     "restore": "Restore",
-    "close": "Close"
+    "close": "Close",
+    "menu": "Window menu"
   },
   "update": {
     "title": "New version available",
@@ -46,7 +47,43 @@
       "en": "English"
     },
     "colorManagement": "Color matching (ICC profiles)",
-    "dragPans": "Dragging moves the image (instead of selecting)"
+    "dragPans": "Dragging moves the image (instead of selecting)",
+    "tab": {
+      "general": "General",
+      "images": "Images",
+      "signatures": "Signatures"
+    },
+    "openFilesIn": "Open files",
+    "openIn": {
+      "tabs": "In tabs",
+      "window": "In the same window (sidebar)",
+      "windows": "In separate windows"
+    },
+    "tabBar": "Show the tab bar",
+    "versionsMaxMb": "Space for previous versions (MB; 0 turns off)",
+    "actualSize": "100% equals",
+    "actual": {
+      "pixel": "One screen pixel per image pixel",
+      "print": "Printed size"
+    },
+    "showImageBackground": "Show the background behind transparency",
+    "liveText": "Live Text",
+    "sortBy": "Sort images by",
+    "sort": {
+      "manual": "Manual order",
+      "name": "Name",
+      "date": "Date",
+      "kind": "Kind",
+      "size": "Size"
+    },
+    "sig": {
+      "empty": "No saved signatures.",
+      "name": "Signature {{n}}",
+      "remove": "Remove",
+      "removeNamed": "Remove signature {{n}}",
+      "create": "Create Signature…",
+      "needsImage": "Open an image to create a signature"
+    }
   },
   "about": {
     "title": "About Gera View Image",
@@ -85,7 +122,8 @@
     "empty": "Drag images into this window to open them",
     "zoomLevel": "Zoom {{pct}}%",
     "zoomPercent": "{{pct}}%",
-    "dropHere": "Drop to open"
+    "dropHere": "Drop to open",
+    "imageAlt": "{{name}}: {{text}}"
   },
   "sidebar": {
     "label": "Thumbnails",
@@ -366,7 +404,7 @@
           "denied": "Camera permission denied.",
           "notFound": "No camera found. Connect one and try again.",
           "disconnected": "The camera was disconnected.",
-        "busy": "The camera is in use by another program.",
+          "busy": "The camera is in use by another program.",
           "failed": "Could not turn the camera on."
         }
       }
@@ -449,7 +487,8 @@
       "share": "Share",
       "shareEmail": "Email…",
       "shareDevice": "KDE Connect…",
-      "importScanner": "Import from Scanner…"
+      "importScanner": "Import from Scanner…",
+      "clearMenu": "Clear Menu"
     },
     "edit": {
       "title": "Edit",
@@ -484,7 +523,7 @@
       "zoomToSelection": "Zoom to Selection",
       "markupBar": "Show Markup Toolbar",
       "slideshow": "Slideshow",
-      "fullscreen": "Full Screen",
+      "fullscreen": "Enter Full Screen",
       "sortBy": "Sort By",
       "sortByName": "Name",
       "sortByDate": "Date",
@@ -494,7 +533,12 @@
       "customizeToolbar": "Customize Toolbar…",
       "imageBackground": "Show Image Background",
       "tabBar": "Show Tab Bar",
-      "allTabs": "Show All Tabs"
+      "allTabs": "Show All Tabs",
+      "fullscreenHide": "Exit Full Screen",
+      "markupBarHide": "Hide Markup Toolbar",
+      "toolbarShow": "Show Toolbar",
+      "imageBackgroundHide": "Hide Image Background",
+      "tabBarHide": "Hide Tab Bar"
     },
     "go": {
       "title": "Go",
@@ -547,7 +591,13 @@
       "copyAllText": "Copy All Text",
       "translateText": "Translate…",
       "searchText": "Search Text on the Web…",
-      "searchImageWeb": "Search Image on the Web…"
+      "searchImageWeb": "Search Image on the Web…",
+      "inspectorHide": "Hide Inspector",
+      "magnifierHide": "Hide Magnifier",
+      "showColorsHide": "Hide Colors",
+      "showFontsHide": "Hide Fonts",
+      "markupInspectorHide": "Hide Markup Inspector",
+      "liveTextHide": "Hide Live Text"
     },
     "window": {
       "title": "Window",
@@ -593,7 +643,11 @@
       "fit": "Zoom to Fit",
       "slideshow": "Slideshow",
       "export": "Export",
-      "print": "Print"
+      "print": "Print",
+      "selection": "Selection",
+      "removeBackground": "Remove Background",
+      "colors": "Colors",
+      "fonts": "Fonts"
     },
     "openWith": "Open With",
     "openWithOther": "Other…"
@@ -713,10 +767,7 @@
       "cancel": "Cancel"
     },
     "recent": {
-      "title": "Open Recent",
-      "empty": "No recent files.",
-      "clear": "Clear Menu",
-      "close": "Close"
+      "missing": "“{{name}}” was not found and was removed from the recent files."
     },
     "disk": {
       "changed": "“{{name}}” was changed outside the app.",
@@ -875,7 +926,8 @@
       "copy": "Copy",
       "search": "Search the Web",
       "translate": "Translate",
-      "speak": "Speak"
+      "speak": "Speak",
+      "label": "Selected text"
     },
     "linkEmailTitle": "Write an email to this address?",
     "linkPhoneTitle": "Call this number?",

@@ -211,4 +211,29 @@ describe("Inspector", () => {
     expect(h.value).toBe("10");
     expect(h.disabled).toBe(true);
   });
+
+  it("rótulos e valores comuns em português; texto do arquivo como está", async () => {
+    metadata.mockResolvedValue({ ...meta, exif: [["Make", "Yes"], ["MeteringMode", "pattern"], ["Tag X", "v"]] });
+    await abrir();
+    fireEvent.click(screen.getByRole("tab", { name: "EXIF" }));
+    const row = (dt: string) => screen.getByText(dt).nextElementSibling?.textContent;
+    await screen.findByText("Fabricante");
+    expect([row("Fabricante"), row("Modo de Medição"), row("Tag X")]).toEqual(["Yes", "Matricial", "v"]);
+  });
+
+  it("Anotações mostram o tipo em português, sem repetir o nome", async () => {
+    setAnnotationSource({
+      list: () => [
+        { id: "a", kind: "text", label: "Olá, açaí" },
+        { id: "b", kind: "roundRect", label: "Retângulo arredondado" },
+        { id: "c", kind: "novo.tipo", label: "x" },
+      ],
+      subscribe: () => () => {},
+      select: () => {},
+    });
+    await abrir();
+    fireEvent.click(screen.getByRole("tab", { name: "Anotações" }));
+    const texts = (await screen.findAllByRole("listitem")).map((li) => li.textContent?.trim());
+    expect(texts).toEqual(["Texto Olá, açaí", "Retângulo arredondado", "novo.tipo x"]);
+  });
 });

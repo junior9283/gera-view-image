@@ -40,7 +40,6 @@
   display: grid;
   place-items: center;
   color: var(--chrome-fg);
-  opacity: 0.6;
   font: 14px system-ui, sans-serif;
   pointer-events: none;
 }
@@ -61,7 +60,7 @@
   color: #d9534f;
 }
 .doc-error-name {
-  opacity: 0.7;
+  color: var(--chrome-muted);
   word-break: break-all;
 }
 .zoom-badge {

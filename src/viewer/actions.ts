@@ -8,6 +8,7 @@ import { getPrefs } from "../store/prefs";
 import { openHere } from "../tabs/open";
 import { useUi, type SidebarMode } from "../store/ui";
 import { dpr } from "./paint";
+import { zoomUnit } from "./unit";
 import { clampPan, fitState, nextStep, rectState, zoomAt, type Size, type ViewState } from "./zoom";
 
 export function activeDoc(): DocInfo | null {
@@ -23,16 +24,16 @@ export const viewable = (d: DocInfo | null): d is DocInfo => !!d && !d.error && 
 /**
  * Recalcula a view do ativo para o tamanho atual da área e a escala da tela. `reset` (troca de
  * documento) aplica `prefs.openBehavior`; senão `fit` continua ajustado, `actual` continua em
- * 1 px da imagem por px físico (ancorado no centro) e `free` só limita o pan.
+ * 100% (ancorado no centro) e `free` só limita o pan.
  */
 export function syncView(reset = false): void {
   const d = activeDoc();
   const { view, viewSize, setView } = useUi.getState();
   if (!viewable(d) || viewSize.w <= 0 || viewSize.h <= 0) return setView(null);
   const img = imgSize(d);
-  const k = dpr();
-  if (reset || !view) setView(fitState(img, viewSize, getPrefs().openBehavior, k));
-  else if (view.mode === "fit") setView(fitState(img, viewSize, "fit", k));
+  const mode = reset || !view ? getPrefs().openBehavior : view.mode;
+  if (mode === "fit") setView(fitted(img, viewSize));
+  else if (reset || !view) setView(fitState(img, viewSize, "actual", zoomUnit()));
   else if (view.mode === "actual") setView(clampPan(toActual(view, center(viewSize)), img, viewSize));
   else setView(clampPan(view, img, viewSize));
 }
@@ -49,32 +50,35 @@ function changeView(f: (v: ViewState, img: Size, view: Size) => ViewState): void
 
 const center = (s: Size) => ({ x: s.w / 2, y: s.h / 2 });
 
-/** Tamanho Real (1 px da imagem por px físico) ancorado em `anchor`. */
+/** Ajustado à janela: nunca passa de 1 px da imagem por px físico. */
+const fitted = (img: Size, view: Size) => fitState(img, view, "fit", dpr());
+
+/** Tamanho Real (100% de `zoomUnit`) ancorado em `anchor`. */
 function toActual(v: ViewState, anchor: { x: number; y: number }): ViewState {
-  const k = dpr();
+  const k = zoomUnit();
   return { ...zoomAt(v, 1 / (k * v.scale), anchor, k), mode: "actual" };
 }
 
 const stepZoom = (dir: 1 | -1) => () =>
   changeView((v, _img, size) => {
-    const k = dpr();
+    const k = zoomUnit();
     return zoomAt(v, nextStep(v.scale, dir, k) / v.scale, center(size), k);
   });
 
 export const zoomIn = stepZoom(1);
 export const zoomOut = stepZoom(-1);
 export const actualSize = () => changeView((v, _img, size) => toActual(v, center(size)));
-export const fitToWindow = () => changeView((_v, img, size) => fitState(img, size, "fit", dpr()));
+export const fitToWindow = () => changeView((_v, img, size) => fitted(img, size));
 
 /** Ampliar Seleção: enquadra o retângulo (px da imagem). */
-export const zoomToRect = (r: Rect) => changeView((_v, _img, size) => rectState(r, size, dpr()));
+export const zoomToRect = (r: Rect) => changeView((_v, _img, size) => rectState(r, size, zoomUnit()));
 
 /** Zoom contínuo (Ctrl+roda, pinça) ancorado no cursor. */
-export const zoomBy = (factor: number, anchor: { x: number; y: number }) => changeView((v) => zoomAt(v, factor, anchor, dpr()));
+export const zoomBy = (factor: number, anchor: { x: number; y: number }) => changeView((v) => zoomAt(v, factor, anchor, zoomUnit()));
 
 /** Duplo clique: alterna entre ajustar e 100 % (ancorado no clique). */
 export const toggleFitActual = (anchor: { x: number; y: number }) =>
-  changeView((v, img, size) => (v.mode === "fit" ? toActual(v, anchor) : fitState(img, size, "fit", dpr())));
+  changeView((v, img, size) => (v.mode === "fit" ? toActual(v, anchor) : fitted(img, size)));
 
 export const panBy = (dx: number, dy: number) => changeView((v) => ({ ...v, panX: v.panX + dx, panY: v.panY + dy }));
 

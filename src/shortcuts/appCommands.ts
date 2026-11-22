@@ -17,7 +17,7 @@ import { applyToTargets } from "../sidebar/batch";
 import { batchTargets } from "../sidebar/selection";
 import { useDocs } from "../store/docs";
 import { quit } from "../tabs/closing";
-import { openHere } from "../tabs/open";
+import { openFiles } from "../file/openFiles";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
 import { CHECK_UPDATES_EVENT } from "../updater/UpdateDialog";
@@ -85,19 +85,17 @@ const nav = (dir: "next" | "prev") => () => view[dir]({ wrap: useUi.getState().s
 type Entry = [CommandId, () => unknown, (() => boolean)?];
 
 /** Arquivo › Abrir…: diálogo do sistema filtrado pelas extensões que o núcleo abre. */
-async function openFiles() {
+async function pickFiles() {
   const picked = await openDialog({
     multiple: true,
     directory: false,
     filters: [{ name: i18n.t("dialog.images"), extensions: [...SUPPORTED_EXTENSIONS] }],
   });
-  if (!picked?.length) return;
-  const [first] = await openHere(picked);
-  if (first) view.activate(first.id);
+  if (picked?.length) await openFiles(picked);
 }
 
 const ENTRIES: Entry[] = [
-  ["file.open", openFiles],
+  ["file.open", pickFiles],
   ["file.close", withActive((id) => view.closeDocs([id])), () => !!view.activeDoc()],
 
   ["edit.undo", withActive(undo), activeCan(canUndo)],

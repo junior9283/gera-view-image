@@ -19,6 +19,9 @@ import { DialogHost } from "./prefs/DialogHost";
 import { AdjustHost } from "./adjust/AdjustHost";
 import { InspectorHost } from "./inspector/Inspector";
 import { FileHost } from "./file/FileHost";
+import { openIds, separateWindows, showMany } from "./file/openFiles";
+import type { DocId } from "./ipc/types";
+import { MAIN_WINDOW, windowLabel } from "./lib/window";
 import { initDocs, useDocs } from "./store/docs";
 import { TAB_PANEL_ID } from "./tabs/TabBar";
 import { receiveDocs } from "./tabs/transfer";
@@ -32,15 +35,25 @@ import { subscribe } from "./lib/events";
 const joinWindow = () =>
   installWindowEvents().then(receiveDocs).catch((e) => console.error("falha ao ligar a janela:", e));
 
+/** Liga a janela e abre os arquivos da linha de comando (só a principal os tem). */
+async function startUp(): Promise<void> {
+  let adopted: DocId[] = [];
+  await initDocs(async () => {
+    await joinWindow();
+    adopted = openIds();
+  });
+  if (windowLabel() === MAIN_WINDOW) await separateWindows(useDocs.getState().docs.filter((d) => !adopted.includes(d.id)));
+}
+
 let autoShown = false;
 
-/** Com mais de uma imagem aberta, a barra de miniaturas aparece uma vez (como no Preview). */
+/** Com mais de uma imagem aberta, a barra de miniaturas (ou a de abas) aparece uma vez (como no Preview). */
 function useAutoSidebar() {
   const many = useDocs((s) => s.docs.length > 1);
   useEffect(() => {
-    if (many && useUi.getState().sidebar === "hidden" && !autoShown) {
+    if (many && !autoShown) {
       autoShown = true;
-      useUi.getState().setSidebar("thumbs");
+      showMany();
     }
   }, [many]);
 }
@@ -57,7 +70,7 @@ export default function App() {
   useAutoSidebar();
 
   useEffect(() => {
-    initDocs(joinWindow).catch((e) => console.error("falha ao abrir imagens:", e));
+    startUp().catch((e) => console.error("falha ao abrir imagens:", e));
   }, []);
 
   // A tela cheia também muda por fora (gerenciador de janelas): o estado segue a janela real.

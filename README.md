@@ -127,7 +127,7 @@ Itens de funções ainda em desenvolvimento aparecem desabilitados nos menus, e 
 | Visualizar | Ampliar Seleção | `Ctrl+*` |
 | Visualizar | Mostrar Barra de Marcação | `Ctrl+Shift+M` |
 | Visualizar | Apresentação | `Ctrl+Shift+F` |
-| Visualizar | Tela Cheia | `F11` ou `Ctrl+Meta+F` |
+| Visualizar | Entrar em Tela Cheia | `F11` ou `Ctrl+Meta+F` |
 | Visualizar | Ocultar Barra de Ferramentas | `Ctrl+Shift+T` |
 | Visualizar | Mostrar Todas as Abas | `Ctrl+\|` |
 | Ir | Anterior | `←` ou `PageUp` ou `↑` |

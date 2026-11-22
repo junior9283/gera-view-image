@@ -95,6 +95,17 @@ describe("barra de título", () => {
     expect(document.querySelector(".window-buttons.style-adwaita")).not.toBeNull();
   });
 
+  it("a cor de destaque do sistema vale na interface toda, com texto legível sobre ela", async () => {
+    render(createElement(TitleBar, { title: "x" }));
+    const root = document.documentElement.style;
+    await waitFor(() => expect(root.getPropertyValue("--wm-accent")).toBe("#3daee9"));
+    expect(root.getPropertyValue("--wm-accent-fg")).toBe("#000000");
+    await act(async () => themeListener!({ payload: { ...base, accent: "#9141ac" } }));
+    expect(root.getPropertyValue("--wm-accent-fg")).toBe("#ffffff");
+    await act(async () => themeListener!({ payload: { ...base, accent: null } }));
+    expect(root.getPropertyValue("--wm-accent")).toBe("");
+  });
+
   it("botão maximizar vira restaurar quando maximizado", async () => {
     render(createElement(TitleBar, { title: "x" }));
     await waitFor(() => expect(document.querySelector('[data-button="maximize"]')).not.toBeNull());

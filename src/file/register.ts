@@ -7,6 +7,7 @@ import { listenHere } from "../lib/window";
 import { flattenAnnotations } from "../markup/flatten";
 import { DOC_CHANGED_ON_DISK_EVENT, type DiskChanged } from "../ipc/types";
 import { registerCommand, type CommandId } from "../shortcuts/commands";
+import { OPEN_RECENT_EVENT } from "../shortcuts/events";
 import { useDocs } from "../store/docs";
 import { addRecent, getPrefs } from "../store/prefs";
 import { registerBeforeSave } from "./beforeSave";
@@ -27,7 +28,7 @@ type Entry = [CommandId, () => unknown, (() => boolean)?];
 
 const ENTRIES: Entry[] = [
   ["file.newFromClipboard", file.newFromClipboard],
-  ["file.openRecent", () => file.openFileDialog({ kind: "recent" }), () => getPrefs().recent.length > 0],
+  ["file.openRecent", () => window.dispatchEvent(new Event(OPEN_RECENT_EVENT)), () => getPrefs().recent.length > 0],
   ["file.save", () => {
     const d = file.current();
     return d && file.saveDoc(d);
