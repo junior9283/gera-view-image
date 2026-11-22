@@ -196,7 +196,7 @@ mod tests {
         let (store, id) = store_with(Some(p3()));
         let seen = view_px(&store, id);
         let png = solid_png(4, 3, seen);
-        store.apply_op(id, Op::Composite { png }).unwrap();
+        store.apply_op(id, Op::Composite { png, frame: None }).unwrap();
         near(view_px(&store, id), [seen[0], seen[1], seen[2]]);
         near(store.render_full(id, 0).unwrap().get_pixel(0, 0).0, [200, 100, 50]);
     }
@@ -207,13 +207,13 @@ mod tests {
     fn anotacao_achatada_mantem_a_cor_da_tela() {
         let (store, id) = store_with(Some(p3()));
         let png = solid_png(4, 3, [255, 0, 0, 255]);
-        store.apply_op(id, Op::Composite { png }).unwrap();
+        store.apply_op(id, Op::Composite { png, frame: None }).unwrap();
         near(view_px(&store, id), [255, 0, 0]);
         near(store.render_full(id, 0).unwrap().get_pixel(0, 0).0, [234, 51, 35]);
         // Sem perfil, o PNG entra como está.
         let (store, id) = store_with(None);
         let png = solid_png(4, 3, [255, 0, 0, 255]);
-        store.apply_op(id, Op::Composite { png }).unwrap();
+        store.apply_op(id, Op::Composite { png, frame: None }).unwrap();
         assert_eq!(view_px(&store, id), [255, 0, 0, 255]);
     }
 
@@ -232,6 +232,7 @@ mod tests {
             strip_metadata: false,
             resize: None,
             color_profile: None,
+            ..encode::ExportOptions::new(encode::ExportFormat::Png)
         };
         let meta = encode::MetaCarry {
             icc: Some(p3()),
@@ -242,7 +243,7 @@ mod tests {
         let store = DocStore::new();
         let id = store.open_documents(&[path.to_string_lossy().into_owned()])[0].id;
         let png = solid_png(4, 3, [255, 0, 0, 255]);
-        store.apply_op(id, Op::Composite { png }).unwrap();
+        store.apply_op(id, Op::Composite { png, frame: None }).unwrap();
         store.save(id, None).unwrap();
         let saved = ::image::open(&path).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();

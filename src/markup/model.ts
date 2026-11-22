@@ -33,7 +33,12 @@ export type StylePatch = Partial<Omit<Style, "font">> & { font?: Partial<FontSty
 export interface Box { x: number; y: number; w: number; h: number }
 export interface Seg { x1: number; y1: number; x2: number; y2: number }
 
-interface Base { id: string; style: Style }
+interface Base {
+  id: string;
+  style: Style;
+  /** Página do documento (várias páginas, como TIFF); ausente = a primeira. */
+  page?: number;
+}
 
 export type Annotation = Base &
   (

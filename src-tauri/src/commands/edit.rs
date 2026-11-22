@@ -69,10 +69,13 @@ pub async fn copy_region(
     store: State<'_, DocStore>,
     id: DocId,
     mask: Option<Mask>,
+    frame: Option<u32>,
 ) -> AppResult<()> {
     let store = store.inner().clone();
+    let frame = frame.unwrap_or(0);
     let region =
-        blocking(move || super::paste::copied_region(&store, id, mask.as_ref(), None)).await?;
+        blocking(move || super::paste::copied_region(&store, id, frame, mask.as_ref(), None))
+            .await?;
     let (w, h) = region.dimensions();
     app.clipboard()
         .write_image(&Image::new_owned(region.into_raw(), w, h))

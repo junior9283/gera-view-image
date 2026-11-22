@@ -71,8 +71,8 @@ palavras-chave editáveis e a lista de anotações.
 
 ### Arquivo
 Salvar (Ctrl+S) grava de forma atômica, preserva EXIF/IPTC/ICC e zera a orientação depois de girar.
-Exportar oferece JPEG, PNG, TIFF, WebP, AVIF, OpenEXR e BMP, com qualidade, profundidade, alfa e **tamanho
-estimado**. Também há Exportar Selecionadas (lote), Duplicar, Renomear, Mover Para, Reverter, Imprimir,
+Exportar oferece JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000, OpenEXR, BMP e PDF (com Alt, também GIF, ICO,
+TGA e PSD), com qualidade, resolução, profundidade, alfa, etiquetas e **tamanho estimado**. Também há Exportar Selecionadas (lote), Duplicar, Renomear, Mover Para, Reverter, Imprimir,
 Capturar Tela (via portal, funciona no Wayland) e Novo da Área de Transferência. Nada é gravado sem Salvar;
 ao fechar com alterações, o app pergunta. Se o arquivo mudar ou for apagado fora do app, aparece um aviso
 com a opção de recarregar.

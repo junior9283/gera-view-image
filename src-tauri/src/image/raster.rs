@@ -86,7 +86,7 @@ impl<'a> Raster<'a> {
 }
 
 /// RGB8 com a transparência composta sobre branco (formatos sem alfa), numa passada só.
-fn rgb_on_white(img: &RgbaImage) -> ::image::RgbImage {
+pub(super) fn rgb_on_white(img: &RgbaImage) -> ::image::RgbImage {
     ::image::RgbImage::from_fn(img.width(), img.height(), |x, y| {
         let p = img.get_pixel(x, y);
         let a = p[3] as u32;
@@ -164,7 +164,7 @@ pub fn apply16(img: &Rgba16Image, op: &Op) -> Rgba16Image {
         Op::Adjust(adj) => color::adjust16(img, adj),
         Op::Erase(mask) => masked16(img, mask, |p| *p = [0; 4]),
         Op::MakeTransparent(mask) => masked16(img, mask, |p| p[3] = 0),
-        Op::Composite { png } => composite16(img, png),
+        Op::Composite { png, .. } => composite16(img, png),
         Op::AssignProfile { .. } => img.clone(),
     }
 }
@@ -280,10 +280,10 @@ mod tests {
         over.put_pixel(3, 3, Rgba([0, 0, 255, 128]));
         let mut png = Vec::new();
         over.write_to(&mut Cursor::new(&mut png), ImageFormat::Png).unwrap();
-        let out = apply16(&img16(), &Op::Composite { png: png.clone() });
+        let out = apply16(&img16(), &Op::Composite { png: png.clone(), frame: None });
         assert_eq!(out.get_pixel(2, 2).0, [65535, 0, 0, 65535]);
         assert_eq!(out.get_pixel(0, 0), img16().get_pixel(0, 0));
-        let flat = ops::apply(&DynamicImage::ImageRgba16(img16()).into_rgba8(), &Op::Composite { png });
+        let flat = ops::apply(&DynamicImage::ImageRgba16(img16()).into_rgba8(), &Op::Composite { png, frame: None });
         let p = out.get_pixel(3, 3);
         let q = flat.get_pixel(3, 3);
         for c in 0..4 {

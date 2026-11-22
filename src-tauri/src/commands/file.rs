@@ -1,9 +1,9 @@
 //! Comandos de arquivo: salvar, exportar, reverter, renomear/mover, duplicar, abrir com,
-//! imprimir e o vigia de alterações externas (`doc-changed-on-disk`).
+//! e o vigia de alterações externas (`doc-changed-on-disk`).
 use super::blocking;
 use crate::{
     doc::{
-        file::{RevertTarget, SaveOutcome, render_png},
+        file::{RevertTarget, SaveOutcome},
         model::{DocId, DocInfo},
         store::DocStore,
     },
@@ -15,13 +15,10 @@ use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    sync::{Mutex, mpsc},
+    sync::mpsc,
     time::Duration,
 };
-use tauri::{
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-    ipc::Response,
-};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
@@ -142,63 +139,6 @@ pub async fn reveal(app: AppHandle, store: State<'_, DocStore>, id: DocId) -> Ap
     app.opener()
         .reveal_item_in_dir(path)
         .map_err(|e| AppError::Io(e.to_string()))
-}
-
-// ---------- impressão ----------
-
-/// PNG em resolução cheia aguardando a página `print.html`.
-#[derive(Default)]
-pub struct PrintJob(Mutex<Option<Vec<u8>>>);
-
-pub const PRINT_WINDOW: &str = "print";
-
-/// Imprimir: renderiza o documento em PNG e abre a página interna de impressão.
-#[tauri::command]
-pub async fn print_document(
-    app: AppHandle,
-    store: State<'_, DocStore>,
-    job: State<'_, PrintJob>,
-    id: DocId,
-    title: String,
-) -> AppResult<()> {
-    let store = store.inner().clone();
-    let png = blocking(move || render_png(&store, id)).await?;
-    *job.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(png);
-    if let Some(w) = app.get_webview_window(PRINT_WINDOW) {
-        // Página já aberta: recarrega com a imagem nova.
-        let _ = w.eval("location.reload()");
-        return w.set_focus().map_err(|e| AppError::Io(e.to_string()));
-    }
-    WebviewWindowBuilder::new(&app, PRINT_WINDOW, WebviewUrl::App("print.html".into()))
-        .title(title)
-        .inner_size(720.0, 640.0)
-        .build()
-        .map(|_| ())
-        .map_err(|e| AppError::Io(e.to_string()))
-}
-
-/// Bytes do PNG a imprimir (lidos pela `print.html`).
-#[tauri::command]
-pub fn print_image(job: State<'_, PrintJob>) -> AppResult<Response> {
-    job.0
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
-        .map(Response::new)
-        .ok_or_else(|| AppError::NotFound("nada para imprimir".into()))
-}
-
-/// Abre o diálogo de impressão do sistema (GTK) para a página que chamou.
-#[tauri::command]
-pub fn print_page(window: WebviewWindow) -> AppResult<()> {
-    window.print().map_err(|e| AppError::Io(e.to_string()))
-}
-
-/// Fecha a página de impressão e libera o PNG.
-#[tauri::command]
-pub fn print_close(window: WebviewWindow, job: State<'_, PrintJob>) -> AppResult<()> {
-    *job.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    window.close().map_err(|e| AppError::Io(e.to_string()))
 }
 
 // ---------- vigia de alterações externas ----------

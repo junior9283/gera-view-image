@@ -1,15 +1,17 @@
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "../ipc/types";
 import type { OverlayProps } from "../lib/slots";
 import { toImage } from "../select/tools";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
+import { useUi } from "../store/ui";
 import { dpr } from "../viewer/paint";
 import { addAnnotation, commit, deleteSelected } from "./actions";
 import { loadSource } from "./flatten";
 import { cssFont } from "./fontCss";
 import { DEFAULT_FONT, hitTest, moveItems, normBox, type Annotation, type Point } from "./model";
+import { onCurrentPage, onPage, pageItems } from "./pages";
 import { render, renderSelection, type Source, type ViewXf } from "./render";
 import { getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
 import { createShape, createStroke, createText, toImageStyle } from "./tools/create";
@@ -33,19 +35,19 @@ const isEditable = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
 /** Pixels do documento para a Lupa, só quando há lupa; recarrega a cada revisão. */
-function useLoupeSource(doc: DocInfo | null, needed: boolean): Source | null {
+function useLoupeSource(doc: DocInfo | null, needed: boolean, page: number): Source | null {
   const [src, setSrc] = useState<{ key: string; s: Source } | null>(null);
-  const key = doc ? `${doc.id}:${doc.rev}` : "";
+  const key = doc ? `${doc.id}:${doc.rev}:${page}` : "";
   useEffect(() => {
     if (!needed || !doc || doc.error || src?.key === key) return;
     let alive = true;
-    loadSource(doc.id, doc.width, doc.height, LOUPE_SOURCE_MAX)
+    loadSource(doc.id, doc.width, doc.height, LOUPE_SOURCE_MAX, page)
       .then((s) => alive && setSrc({ key, s }))
       .catch((e) => console.error("falha ao carregar a imagem da lupa:", e));
     return () => {
       alive = false;
     };
-  }, [needed, key, doc, src?.key]);
+  }, [needed, key, doc, src?.key, page]);
   return src?.key === key ? src.s : null;
 }
 
@@ -81,7 +83,9 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
   const { t } = useTranslation();
   const doc = useDocs((s) => s.docs.find((d) => d.id === s.activeId) ?? null);
   const docId = doc?.id ?? null;
-  const items = useItems(docId);
+  const all = useItems(docId);
+  const page = useUi((s) => s.page);
+  const items = useMemo(() => onPage(all, doc, page), [all, doc, page]);
   const visible = useMarkup((s) => s.visible);
   const tool = useMarkup((s) => s.tool);
   const selected = useMarkup((s) => (docId === null ? NO_IDS : (s.selected[docId] ?? NO_IDS)));
@@ -95,7 +99,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<Drag | null>(null);
-  const source = useLoupeSource(doc, items.some((a) => a.kind === "loupe"));
+  const source = useLoupeSource(doc, items.some((a) => a.kind === "loupe"), page ?? 0);
   useMarkupKeys();
 
   /** Estado atual para os ouvintes nativos (registrados uma vez). */
@@ -149,13 +153,14 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       let d: Drag | null = null;
       if (st.tool === "select") {
         const sel = getSelected(id);
-        for (const a of items) {
+        const shown = pageItems(id);
+        for (const a of shown) {
           if (!sel.includes(a.id)) continue;
           const h = hitHandle(handlesFor(a, scale), p[0], p[1], scale);
           if (h) d = { kind: "handle", start: p, before: items, orig: a, handle: h.id };
         }
         if (!d) {
-          const hit = hitTest(items, p[0], p[1], HIT_PX / scale);
+          const hit = hitTest(shown, p[0], p[1], HIT_PX / scale);
           if (!hit) {
             st.select(id, []);
             return; // área vazia: o arrasto continua sendo o pan do Viewport
@@ -168,7 +173,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
         }
       } else if (st.tool === "text") {
         // Entra no histórico só ao confirmar o texto (TextEditor).
-        const a = createText(p, st.style, scale, "");
+        const a = onCurrentPage(id, createText(p, st.style, scale, ""));
         st.setItems(id, [...items, a]);
         st.select(id, [a.id]);
         st.setTool("select");
@@ -229,7 +234,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       const st = useMarkup.getState();
       if (!st.visible || id === null) return;
       const p = at(e);
-      const hit = hitTest(getItems(id), p[0], p[1], HIT_PX / cur.current.view.scale);
+      const hit = hitTest(pageItems(id), p[0], p[1], HIT_PX / cur.current.view.scale);
       if (hit?.kind === "text") {
         e.stopPropagation();
         st.setEditing(hit.id);

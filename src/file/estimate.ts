@@ -6,11 +6,16 @@ import type { DocId, ExportFormat, ExportOptions, SourceFormat } from "../ipc/ty
 export const ESTIMATE_DEBOUNCE_MS = 300;
 
 /** Formatos do Exportar. HEIC só com a libkvazaar (opcional): ver `exportFormats`. */
-export const EXPORT_FORMATS: ExportFormat[] = ["jpeg", "png", "tiff", "heic", "webp", "avif", "jp2", "exr", "bmp"];
+export const EXPORT_FORMATS: ExportFormat[] = ["jpeg", "png", "tiff", "heic", "webp", "avif", "jp2", "exr", "bmp", "pdf"];
+
+/** Formatos que só aparecem com a tecla Alt, como no Pré-Visualização. */
+export const ALT_FORMATS: ExportFormat[] = ["gif", "ico", "tga", "psd"];
 
 /** Formatos com codificador nesta máquina (`heic` depende da libkvazaar). */
-export const exportFormats = (heic: boolean): ExportFormat[] =>
-  heic ? EXPORT_FORMATS : EXPORT_FORMATS.filter((f) => f !== "heic");
+export const exportFormats = (heic: boolean, alt = false): ExportFormat[] => {
+  const list = heic ? EXPORT_FORMATS : EXPORT_FORMATS.filter((f) => f !== "heic");
+  return alt ? [...list, ...ALT_FORMATS] : list;
+};
 
 let heicProbe: Promise<boolean> | null = null;
 
@@ -35,6 +40,7 @@ export const resetHeicProbeForTests = () => {
 
 export const EXTENSIONS: Record<ExportFormat, string> = {
   jpeg: "jpg", png: "png", tiff: "tiff", webp: "webp", avif: "avif", exr: "exr", bmp: "bmp", heic: "heic", jp2: "jp2",
+  pdf: "pdf", gif: "gif", ico: "ico", tga: "tga", psd: "psd",
 };
 
 /** Formato de exportação que corresponde ao do arquivo (para o tamanho resultante). */

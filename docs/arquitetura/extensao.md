@@ -66,7 +66,7 @@ registerSlot("viewport-overlay", "magnifier", Magnifier);
 | 8 Visualizar extras | `src/viewer/register.ts` | `src/viewer/Magnifier.tsx`, `history.ts`, `register.ts` (novos) | — | `showImageBackground` |
 | 9 Inspetor | `src/inspector/register.ts` | `src/inspector/*`, `src-tauri/src/commands/describe.rs`; `image/metadata.rs` depois do merge do agente `meta` | `edit_metadata` | — |
 | 10 Marcação extra | `src/markup/register.ts` | `src/markup/*`, `src-tauri/src/commands/fonts.rs` | `system_fonts` | `recentColors` |
-| 11 Exportar e Imprimir | `src/print/register.ts` | `src/print/*`, `print.html`, `src-tauri/src/commands/print.rs`, `src-tauri/src/image/pdf.rs` (novo); `ExportDialog.tsx`, `estimate.ts` e `encode.rs` depois do merge de `heic`/`meta` | `export_pdf`, `print_native` | — |
+| 11 Exportar e Imprimir | `src/print/register.ts` | `src/print/*`, `src-tauri/src/commands/print.rs`, `src-tauri/src/image/pdf.rs` (novo); `ExportDialog.tsx`, `estimate.ts` e `encode.rs` depois do merge de `heic`/`meta` | `export_pdf`, `print_native` | — |
 | 12 Janelas e Abas | `src/tabs/register.ts` (slot `above-content`) | `src/tabs/*`, `src-tauri/src/commands/window.rs`, `src-tauri/src/doc/store.rs` (estado por janela) | `new_window`, `list_windows`, `focus_window`, `merge_windows`, `scan_image` | `tabBar` |
 
 ### Observações por lote
@@ -97,9 +97,16 @@ registerSlot("viewport-overlay", "magnifier", Magnifier);
 - **Lote 8.** `file.closeAll` (Ctrl+Alt+W) fecha todos os documentos e passa pelo diálogo de não
   salvo (`confirmAndSave`). Mostrar Lupa usa a tecla `` ` ``. No ABNT2 ela é tecla morta, e o lote
   pode acrescentar um alias em `ALIASES`.
-- **Lote 11.** A impressão atual (`print_document`, `print_image`, `print_page`, `print_close`)
-  continua em `commands/file.rs`. Se o lote a mover para `commands/print.rs`, troca só essas quatro
-  linhas em `lib.rs`.
+- **Lote 11.** `printDocs(ids?)` e `exportPdf(ids?)` (`src/print/print.ts`) aceitam uma lista de
+  documentos, na ordem dada; sem ela, usam o ativo. A multisseleção da barra lateral chama essas duas.
+  Documentos com anotações não achatadas entram como cópias, fechadas no fim. Em TIFF de várias
+  páginas a anotação tem `page`, e `annotationLayers` gera um `Op::Composite { frame }` por página
+  anotada; sem `frame`, o composite vale para todos os quadros (animação). Gravar achata só a página
+  que vai para o arquivo (`runBeforeSave(id, page)`, `ExportOptions.frame`). No Rust,
+  `print_preview` e `print_native` usam o mesmo cálculo de página (`image/print_layout.rs`), e as
+  imagens são decodificadas e reduzidas fora da thread do GTK (`draw_page` com desenho adiado).
+  Os formatos que só aparecem com Alt ficam em `ALT_FORMATS` (`estimate.ts`). A página interna
+  `print.html` e os comandos `print_document`, `print_image`, `print_page` e `print_close` saíram.
 - **Lote 12.** A barra de abas entra pelo slot `above-content`, que fica entre a barra de título e
   o corpo da janela e também é renderizado em tela cheia. `file.closeWindow` é Ctrl+Shift+W;
   `window.nextTab`/`prevTab` são Ctrl+Tab/Ctrl+Shift+Tab.

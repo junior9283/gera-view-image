@@ -9,6 +9,7 @@ vi.mock("../ipc/commands", async (orig) => ({ ...(await orig<typeof import("../i
 
 import i18n from "../i18n";
 import { resetToastsForTests } from "../chrome/notify";
+import { closePrint, usePrintUi } from "../print/print";
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { getPrefs, resetPrefsForTests, setPrefs } from "../store/prefs";
 import { useBatch } from "./batch";
@@ -99,6 +100,18 @@ describe("menu de contexto da miniatura", () => {
       [3, { type: "rotate", data: { quarterTurns: 1 } }],
     ]);
     expect(useDocs.getState().docs.map((d) => d.canUndo)).toEqual([true, false, true, false]);
+  });
+
+  it("Imprimir com várias selecionadas abre um diálogo só, com todas, sem trocar a imagem ativa", () => {
+    render(<Sidebar />);
+    fireEvent.click(item(1));
+    fireEvent.click(item(3), { ctrlKey: true });
+    open(3);
+    const antes = active();
+    fireEvent.click(within(screen.getByRole("menu")).getByText("Imprimir 2 Imagens…"));
+    expect(usePrintUi.getState().ids).toEqual([1, 3]);
+    expect(active()).toBe(antes);
+    closePrint();
   });
 
   it("uma falha no meio do lote não impede as demais e vira um aviso com o nome", async () => {

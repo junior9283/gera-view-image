@@ -43,15 +43,16 @@ pub fn layer_png(mut img: RgbaImage) -> AppResult<Vec<u8>> {
     png_bytes(&img)
 }
 
-/// O que Copiar põe na área de transferência: a região de `id` em sRGB (o conteúdo vai sem
-/// perfil), com as anotações `png` compostas por cima, igual ao que está na tela.
+/// O que Copiar põe na área de transferência: a região da página `frame` de `id` em sRGB (o
+/// conteúdo vai sem perfil), com as anotações `png` compostas por cima, igual ao que está na tela.
 pub fn copied_region(
     store: &DocStore,
     id: DocId,
+    frame: u32,
     mask: Option<&Mask>,
     png: Option<Vec<u8>>,
 ) -> AppResult<RgbaImage> {
-    let img = store.render_full(id, 0)?;
+    let img = store.render_full(id, frame)?;
     let png = png.map(|png| store.png_from_display(id, png));
     let region = flattened_region(&img, mask, png).ok_or(AppError::EmptySelection)?;
     if !icc::enabled() {
@@ -62,7 +63,7 @@ pub fn copied_region(
 
 /// Região de `img` com as anotações (`png`, no tamanho da imagem) compostas por cima.
 fn flattened_region(img: &RgbaImage, mask: Option<&Mask>, png: Option<Vec<u8>>) -> Option<RgbaImage> {
-    let flat = png.map(|png| ops::apply(img, &Op::Composite { png }));
+    let flat = png.map(|png| ops::apply(img, &Op::Composite { png, frame: None }));
     select::extract_region(flat.as_ref().unwrap_or(img), mask)
 }
 
@@ -89,9 +90,11 @@ pub async fn copy_image(
     id: DocId,
     mask: Option<Mask>,
     png: Option<Vec<u8>>,
+    frame: Option<u32>,
 ) -> AppResult<()> {
     let store = store.inner().clone();
-    let region = blocking(move || copied_region(&store, id, mask.as_ref(), png)).await?;
+    let frame = frame.unwrap_or(0);
+    let region = blocking(move || copied_region(&store, id, frame, mask.as_ref(), png)).await?;
     let (w, h) = region.dimensions();
     app.clipboard()
         .write_image(&Image::new_owned(region.into_raw(), w, h))
@@ -150,6 +153,7 @@ mod tests {
             strip_metadata: false,
             resize: None,
             color_profile: Some("display-p3".into()),
+            ..ExportOptions::new(ExportFormat::Png)
         };
         let img = solid(4, 3, [215, 93, 31, 255]);
         std::fs::write(&path, encode(&img, &opts, &MetaCarry::default()).unwrap()).unwrap();
@@ -182,10 +186,10 @@ mod tests {
     fn copiar_colar_e_achatar_em_p3_preserva_a_cor_vista() {
         let (store, id) = store_with(Some("display-p3"));
         let seen = store.render_view(id, 0, 4, 3, None).unwrap()[8..12].to_vec();
-        let copied = copied_region(&store, id, None, None).unwrap();
+        let copied = copied_region(&store, id, 0, None, None).unwrap();
         near(&copied.get_pixel(1, 1).0, [215, 93, 31], 2);
         let png = layer_png(copied).unwrap();
-        store.apply_op(id, Op::Composite { png }).unwrap();
+        store.apply_op(id, Op::Composite { png, frame: None }).unwrap();
         near(
             &store.render_view(id, 0, 4, 3, None).unwrap()[8..12],
             [seen[0], seen[1], seen[2]],
@@ -199,7 +203,7 @@ mod tests {
         let (store, id) = store_with(Some("display-p3"));
         let mut over = solid(4, 3, [0, 0, 0, 0]);
         over.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
-        let out = copied_region(&store, id, None, Some(png_bytes(&over).unwrap())).unwrap();
+        let out = copied_region(&store, id, 0, None, Some(png_bytes(&over).unwrap())).unwrap();
         near(&out.get_pixel(0, 0).0, [255, 0, 0], 1);
         near(&out.get_pixel(3, 2).0, [215, 93, 31], 2);
     }
@@ -209,9 +213,9 @@ mod tests {
         for profile in [None, Some("srgb")] {
             let (store, id) = store_with(profile);
             let original = store.render_full(id, 0).unwrap().clone();
-            assert_eq!(copied_region(&store, id, None, None).unwrap(), original);
+            assert_eq!(copied_region(&store, id, 0, None, None).unwrap(), original);
             let mask = Mask::Rect(Rect { x: 1, y: 1, w: 2, h: 2 });
-            let part = copied_region(&store, id, Some(&mask), None).unwrap();
+            let part = copied_region(&store, id, 0, Some(&mask), None).unwrap();
             assert_eq!(part, solid(2, 2, [200, 100, 50, 255]));
             assert_eq!(decode_png(&layer_png(original.clone()).unwrap()), original);
         }

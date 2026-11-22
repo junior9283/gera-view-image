@@ -47,6 +47,7 @@ fn opts(format: ExportFormat) -> ExportOptions {
         strip_metadata: false,
         resize: None,
         color_profile: None,
+        ..ExportOptions::new(ExportFormat::Png)
     }
 }
 

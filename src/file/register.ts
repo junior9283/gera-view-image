@@ -50,7 +50,6 @@ const ENTRIES: Entry[] = [
   ["file.captureSelection", file.capture("selection")],
   ["file.captureWindow", file.capture("window")],
   ["file.captureScreen", file.capture("screen")],
-  ["file.print", file.printActive, hasDoc],
 ];
 
 /** Documentos já vistos (para pôr nos Recentes só os recém-abertos). */
@@ -73,7 +72,7 @@ export function registerFileCommands(): () => void {
   const offs = ENTRIES.map(([id, run, enabled]) => registerCommand(id, run, enabled));
   setSaveHandler(file.saveDoc);
   // Anotações da Marcação (Task 8) viram pixels (Op::Composite) antes de qualquer gravação.
-  offs.push(registerBeforeSave(async (id) => void (await flattenAnnotations(id))));
+  offs.push(registerBeforeSave(async (id, page) => void (await flattenAnnotations(id, page))));
   offs.push(registerSlot("below-toolbar", "disk-banner", DiskBanner));
   offs.push(trackRecents());
   offs.push(

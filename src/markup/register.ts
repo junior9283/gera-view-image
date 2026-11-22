@@ -7,6 +7,7 @@ import { setAnnotationSource } from "../inspector/annotations";
 import { registerSlot } from "../lib/slots";
 import { TOGGLE_MARKUP_EVENT } from "../shortcuts/events";
 import { useDocs } from "../store/docs";
+import { useUi } from "../store/ui";
 import { registerMarkupCommands } from "./commands";
 import { flattenAnnotations } from "./flatten";
 import { installHistory } from "./history";
@@ -14,7 +15,8 @@ import { Eyedropper } from "./Eyedropper";
 import { MarkupBar } from "./MarkupBar";
 import { MarkupLayer } from "./MarkupLayer";
 import "./markup.css";
-import { getItems, toggleMarkupBar, useMarkup } from "./store";
+import { docOf, hasPages, pageItems } from "./pages";
+import { getItems, getSelected, toggleMarkupBar, useMarkup } from "./store";
 
 installHistory();
 registerMarkupCommands();
@@ -24,6 +26,18 @@ registerDirtySource(
   (id) => getItems(id).length > 0,
   (cb) => useMarkup.subscribe((s, prev) => s.docs !== prev.docs && cb()),
 );
+/** Selecionada que não aparece (outra página) fica desmarcada: Delete e estilo não a alcançam. */
+function deselectHidden(): void {
+  const { activeId } = useDocs.getState();
+  if (activeId === null) return;
+  const selected = getSelected(activeId);
+  if (!selected.length) return;
+  const shown = new Set(pageItems(activeId).map((a) => a.id));
+  const keep = selected.filter((id) => shown.has(id));
+  if (keep.length < selected.length) useMarkup.getState().select(activeId, keep);
+}
+useUi.subscribe((s, prev) => s.page !== prev.page && deselectHidden());
+useDocs.subscribe((s, prev) => (s.activeId !== prev.activeId || s.docs !== prev.docs) && deselectHidden());
 registerSlot("below-toolbar", "markup-bar", MarkupBar);
 registerSlot("viewport-overlay", "eyedropper", Eyedropper);
 // Ouvinte de módulo (não de componente): a Toolbar e o Ctrl+Shift+M (Task 6) alternam a
@@ -39,6 +53,9 @@ setAnnotationSource({
     })),
   subscribe: (cb) => useMarkup.subscribe((s, prev) => s.docs !== prev.docs && cb()),
   select: (id, annotationId) => {
+    if (hasPages(docOf(id))) {
+      useUi.getState().setPage(getItems(id).find((a) => a.id === annotationId)?.page ?? 0);
+    }
     const st = useMarkup.getState();
     st.setVisible(true);
     st.setTool("select");

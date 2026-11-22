@@ -1,11 +1,10 @@
-// Imprimir e Duplicar com anotações não salvas: achatam numa cópia, nunca no documento aberto.
+// Duplicar com anotações não salvas: achata numa cópia, nunca no documento aberto (Imprimir e PDF: src/print).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocInfo } from "../ipc/types";
 
 const ipc = vi.hoisted(() => ({
   duplicate: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   applyOp: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
-  printDocument: vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => {}),
   closeDocument: vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => {}),
   save: vi.fn(),
   exportDoc: vi.fn(),
@@ -23,7 +22,7 @@ import { useDocs } from "../store/docs";
 import { getItems, useMarkup } from "../markup/store";
 import type { Annotation } from "../markup/model";
 import { hasUnsaved, registerDirtySource } from "./dirty";
-import { duplicateActive, printActive } from "./fileActions";
+import { duplicateActive } from "./fileActions";
 import { registerFileCommands } from "./register";
 
 const doc: DocInfo = {
@@ -58,22 +57,6 @@ const originalUntouched = () => {
 afterEach(() => off());
 
 describe("cópia achatada", () => {
-  it("Imprimir achata numa cópia temporária, imprime a cópia e a fecha", async () => {
-    await printActive();
-    expect(ipc.applyOp).toHaveBeenCalledWith(8, { type: "composite", data: { png: PNG } });
-    expect(ipc.printDocument).toHaveBeenCalledWith(8, expect.any(String));
-    expect(ipc.closeDocument).toHaveBeenCalledWith(8);
-    expect(useDocs.getState().docs.map((d) => d.id)).toEqual([7]);
-    originalUntouched();
-  });
-
-  it("Imprimir sem anotações imprime o próprio documento", async () => {
-    useMarkup.setState({ docs: {} });
-    await printActive();
-    expect(ipc.duplicate).not.toHaveBeenCalled();
-    expect(ipc.printDocument).toHaveBeenCalledWith(7, expect.any(String));
-  });
-
   it("Duplicar põe as anotações achatadas só na cópia", async () => {
     await duplicateActive();
     expect(ipc.applyOp).toHaveBeenCalledWith(8, { type: "composite", data: { png: PNG } });

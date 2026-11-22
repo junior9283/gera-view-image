@@ -152,6 +152,20 @@ impl DocStore {
         self.with_doc(id, Document::dpi)
     }
 
+    /// Tamanho de cada página a imprimir ou exportar em PDF: todas as de um TIFF, só o primeiro
+    /// quadro de uma animação. Com operações, as demais páginas são aproximadas pela primeira.
+    pub fn page_sizes(&self, id: DocId) -> AppResult<Vec<(u32, u32)>> {
+        self.with_doc(id, |d| {
+            let pages = if d.info.delays_ms.is_empty() { d.source.frames.len() } else { 1 };
+            (0..pages)
+                .map(|f| match d.source.frames.get(f) {
+                    Some(img) if f > 0 && d.ops.is_empty() => img.dimensions(),
+                    _ => d.size_after_ops(),
+                })
+                .collect()
+        })
+    }
+
     /// Ver [`Document::disk_change`].
     pub fn disk_change(&self, id: DocId) -> AppResult<Option<bool>> {
         self.with_doc(id, Document::disk_change)
@@ -176,15 +190,16 @@ impl DocStore {
             .collect()
     }
 
-    /// Pixels finais (quadro 0), os metadados a levar, os bytes atuais do arquivo (IPTC/XMP)
+    /// Pixels finais (página `frame`), os metadados a levar, os bytes atuais do arquivo (IPTC/XMP)
     /// e o estado `(ops.len(), geração)` que os pixels refletem.
     fn render_for_write(
         &self,
         id: DocId,
+        frame: u32,
         keywords: Option<Vec<String>>,
         read_file: bool,
     ) -> AppResult<(Pixels, MetaCarry, Option<Vec<u8>>, RenderState)> {
-        let (px, _, _, state) = self.pixels(id, 0, false)?;
+        let (px, _, _, state) = self.pixels(id, frame, false)?;
         let (path, source, dpi, icc) = self.with_doc(id, |d| {
             let icc = d.profile().map(|p| p.bytes().to_vec());
             (d.info.path.clone(), d.source.clone(), d.dpi(), icc)
@@ -246,7 +261,7 @@ impl DocStore {
         };
         let out = ops[start..]
             .iter()
-            .filter(|op| !op.keeps_pixels())
+            .filter(|op| op.touches(0))
             .fold(base, |img, op| raster::apply16(&img, op));
         (out.dimensions() == px.dimensions()).then_some(out)
     }
@@ -263,7 +278,7 @@ impl DocStore {
         if let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, file, state) = self.render_for_write(id, keywords, true)?;
+        let (px, meta, file, state) = self.render_for_write(id, 0, keywords, true)?;
         let (n, generation) = state;
         // PNG/TIFF de 16 bits continuam com 16 bits.
         let deep = matches!(fmt, ExportFormat::Png | ExportFormat::Tiff)
@@ -283,6 +298,7 @@ impl DocStore {
             strip_metadata: false,
             resize: None,
             color_profile: None,
+            ..ExportOptions::new(ExportFormat::Png)
         };
         let bytes = match &deep {
             Some(d) => encode::encode(d, &opts, &meta)?,
@@ -323,10 +339,10 @@ impl DocStore {
         if same_file && let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
         }
-        let (px, meta, file, state) = self.render_for_write(id, keywords, true)?;
-        // Exportar em 16 bits de uma origem de 16 bits usa os 16 bits de verdade.
-        let deep = opts
-            .depth16
+        let (px, meta, file, state) = self.render_for_write(id, opts.frame, keywords, true)?;
+        // Exportar em 16 bits (ou EXR) de uma origem de 16 bits usa os 16 bits de verdade.
+        // (o leitor de 16 bits só lê a primeira página).
+        let deep = (opts.deep() && opts.frame == 0)
             .then(|| self.render_deep(id, file.as_deref(), &px, state))
             .flatten();
         let bytes = match &deep {
@@ -346,7 +362,7 @@ impl DocStore {
                     d.info.writable =
                         Document::can_save(dest, d.info.format, d.source.frames.len());
                     if d.generation == generation && d.ops.len() >= n {
-                        d.saved_len = n;
+                        d.mark_saved(n, opts.frame);
                     }
                 } else {
                     d.disk = DiskStamp::of(&dest_path);
@@ -358,10 +374,11 @@ impl DocStore {
 
     /// Tamanho estimado do arquivo com `opts` (codifica de verdade; imagens grandes por amostra).
     pub fn estimate_size(&self, id: DocId, opts: &ExportOptions) -> AppResult<u64> {
-        let (px, meta, ..) = self.render_for_write(id, None, false)?;
+        let (px, meta, ..) = self.render_for_write(id, opts.frame, None, false)?;
         let (w, h) = opts.resize.unwrap_or(px.dimensions());
         let area = w as u64 * h as u64;
-        if area <= ESTIMATE_MAX_PIXELS {
+        // O ICO é sempre pequeno (o codificador reduz a 256 px): nada a extrapolar.
+        if area <= ESTIMATE_MAX_PIXELS || opts.format == ExportFormat::Ico {
             return Ok(encode::encode(&*px, opts, &meta)?.len() as u64);
         }
         let k = (ESTIMATE_MAX_PIXELS as f64 / area as f64).sqrt();
@@ -511,7 +528,7 @@ fn webp_is_lossy(b: &[u8]) -> bool {
     b.windows(4).take(4096).any(|w| w == b"VP8 ")
 }
 
-/// Bytes PNG (rápido) do quadro 0 com as operações, em sRGB: usado pela impressão e pelo arraste.
+/// Bytes PNG (rápido) do quadro 0 com as operações, em sRGB: usado pelo arraste.
 pub fn render_png(store: &DocStore, id: DocId) -> AppResult<Vec<u8>> {
     use ::image::{
         ImageEncoder,

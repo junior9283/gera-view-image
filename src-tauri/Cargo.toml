@@ -58,6 +58,8 @@ kamadak-exif = "0.6.2"
 # WebP com perda (libwebp compilada estática pelo libwebp-sys; nada novo no NEEDED).
 webp = { version = "0.3", default-features = false }
 crc32fast = "1"
+# Quantização do GIF com transparência (a mesma da crate `gif`).
+color_quant = "1.1.0"
 # GUID do XMP estendido do JPEG (MD5 do pacote, exigido pela especificação).
 md5 = "0.8"
 # Gerência de cor (Lote 1): Rust puro, já vinha pela crate `image`; nada novo no NEEDED.
@@ -78,6 +80,9 @@ sha2 = "0.10"
 rten = { version = "0.28", default-features = false, features = ["onnx_format"] }
 rten-tensor = "0.28"
 rqrr = { version = "0.11", default-features = false }
+# Lote 11 (Exportar): EXR half/float e o Flate do PDF. Rust puro, já vinham pela crate `image`.
+exr = { version = "1.74", default-features = false }
+flate2 = "1"
 # Reconstrói os links lidos da imagem antes de abrir (já vem pelo reqwest).
 url = "2"
 

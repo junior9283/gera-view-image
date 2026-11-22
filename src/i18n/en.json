@@ -583,6 +583,7 @@
     "saved": "Saved: {{name}}",
     "keywordsNotSaved": "Keywords were not saved: this format does not store IPTC/XMP. Export as JPEG, TIFF, PNG or WebP.",
     "exported": "Exported: {{name}}",
+    "otherPages": "Only page {{page}} was written. The annotations on the other pages stay in the document, unsaved.",
     "exportedMany": "{{count}} images exported",
     "unsaved": {
       "titleOne": "Save changes to “{{name}}”?",
@@ -611,6 +612,7 @@
       "resize": "Resize (longest side)",
       "pixels": "px",
       "estimate": "Estimated size: {{size}}",
+      "onlyPage": "Only page {{page}} of {{total}} will be written.",
       "estimating": "Estimating size…",
       "images": "Images",
       "progress": "Exporting {{done}} of {{total}}…",
@@ -632,7 +634,12 @@
         "exr": "OpenEXR",
         "bmp": "BMP",
         "heic": "HEIC",
-        "jp2": "JPEG 2000"
+        "jp2": "JPEG 2000",
+        "pdf": "PDF",
+        "gif": "GIF",
+        "ico": "ICO",
+        "tga": "TGA",
+        "psd": "Photoshop"
       },
       "profile": "Color profile",
       "profiles": {
@@ -640,6 +647,23 @@
         "srgb": "Convert to sRGB",
         "display-p3": "Convert to Display P3",
         "adobe-rgb": "Convert to Adobe RGB (1998)"
+      },
+      "altFormats": "Press Alt to show more formats (GIF, ICO, TGA and Photoshop)",
+      "resolution": "Resolution",
+      "keepResolution": "Keep",
+      "ppi": "ppi",
+      "compression": "Compression",
+      "depth": "Depth",
+      "tagsNotSaved": "The file was exported, but the file system can’t store the tags.",
+      "compressions": {
+        "none": "None",
+        "lzw": "LZW",
+        "packbits": "PackBits",
+        "deflate": "Deflate (ZIP)"
+      },
+      "depths": {
+        "half": "16 bits (half)",
+        "float": "32 bits (float)"
       }
     },
     "rename": {
@@ -662,13 +686,40 @@
     },
     "print": {
       "title": "Print",
-      "fit": "Fit to page",
+      "titleMany": "Print {{count}} images",
+      "copies": "Copies",
+      "paper": "Paper",
+      "papers": {
+        "iso_a4": "A4",
+        "na_letter": "US Letter",
+        "na_legal": "US Legal",
+        "iso_a3": "A3",
+        "iso_a5": "A5",
+        "iso_a6": "A6",
+        "iso_b5": "B5",
+        "na_index-4x6": "Photo 4 × 6 in",
+        "na_5x7": "Photo 5 × 7 in"
+      },
       "orientation": "Orientation",
-      "auto": "Automatic",
       "portrait": "Portrait",
       "landscape": "Landscape",
+      "autoRotate": "Auto rotate",
+      "scale": "Scale",
+      "fit": "Scale to fit",
+      "whole": "Print entire image",
+      "fill": "Fill entire paper",
+      "perPage": "Images per page",
+      "showMarkup": "Show markup",
+      "page": "Page {{page}} of {{total}}",
+      "prev": "Previous page",
+      "next": "Next page",
+      "preview": "Print preview",
       "print": "Print…",
-      "close": "Close"
+      "printing": "Printing…",
+      "cancel": "Cancel",
+      "sent": "Print job sent.",
+      "jobMany": "{{count}} images",
+      "pdfSaved": "PDF “{{name}}” exported."
     }
   },
   "color": {

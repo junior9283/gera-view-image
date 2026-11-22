@@ -13,7 +13,7 @@ import { activate } from "./actions";
 import { back, canBack, canForward, forward, installHistory } from "./history";
 
 const info = (id: number, extra: Partial<DocInfo> = {}): DocInfo => ({
-  id, path: `/pasta/${id}.png`, name: `${id}.png`, format: "png", width: 40, height: 30, frames: 1,
+  id, path: `/pasta/${id}.png`, name: `${id}.png`, format: "tiff", width: 40, height: 30, frames: 5,
   writable: true, dirty: false, canUndo: false, canRedo: false, rev: 0, error: null, ...extra,
 });
 

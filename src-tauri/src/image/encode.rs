@@ -2,8 +2,7 @@
 //! HEIC e JPEG 2000 ficam em `encode_heic.rs` e `encode_jp2.rs`.
 use super::{
     container::{self, TiffMeta},
-    encode_heic, encode_jp2,
-    icc,
+    encode_heic, encode_jp2, encode_psd, icc, pdf,
     raster::Raster,
 };
 use crate::{
@@ -15,13 +14,15 @@ use ::image::{
     codecs::{
         avif::AvifEncoder,
         bmp::BmpEncoder,
+        gif::GifEncoder,
+        ico::IcoEncoder,
         jpeg::{JpegEncoder, PixelDensity},
-        openexr::OpenExrEncoder,
         png::{CompressionType, FilterType, PngEncoder},
-        tiff::TiffEncoder,
+        tga::TgaEncoder,
         webp::WebPEncoder,
     },
 };
+use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -43,17 +44,45 @@ pub enum ExportFormat {
     Jp2,
     Exr,
     Bmp,
+    Pdf,
+    Gif,
+    Ico,
+    Tga,
+    /// Photoshop achatado: só a imagem composta, sem camadas.
+    Psd,
+}
+
+/// Compressão do TIFF (todas sem perdas). LZW e Deflate usam o preditor horizontal.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TiffCompression {
+    #[default]
+    None,
+    Lzw,
+    Packbits,
+    Deflate,
 }
 
 impl ExportFormat {
     fn keeps_alpha(self) -> bool {
         use ExportFormat::*;
-        matches!(self, Png | Tiff | Webp | Avif | Exr | Heic | Jp2)
+        matches!(
+            self,
+            Png | Tiff | Webp | Avif | Exr | Heic | Jp2 | Pdf | Gif | Ico | Tga | Psd
+        )
     }
 
-    /// O codificador grava o perfil ICC no arquivo (no AVIF e no EXR, não).
+    /// O codificador grava o perfil ICC da imagem no arquivo. O PDF leva sempre o sRGB, e os
+    /// outros não têm onde guardar (ou o codificador não grava).
     fn embeds_icc(self) -> bool {
-        !matches!(self, ExportFormat::Avif | ExportFormat::Exr)
+        use ExportFormat::*;
+        !matches!(self, Avif | Exr | Pdf | Gif | Ico | Tga)
+    }
+
+    /// Só guarda a resolução (ppp) no EXIF: sem EXIF no original, ganha um com ela.
+    fn dpi_in_exif(self) -> bool {
+        use ExportFormat::*;
+        matches!(self, Webp | Avif | Heic)
     }
 
     /// Formato em que Salvar grava o arquivo de origem (`None` = só Exportar).
@@ -82,8 +111,12 @@ impl ExportFormat {
             ExportFormat::Avif => SourceFormat::Avif,
             ExportFormat::Bmp => SourceFormat::Bmp,
             ExportFormat::Jp2 => SourceFormat::Jp2,
+            ExportFormat::Gif => SourceFormat::Gif,
+            ExportFormat::Ico => SourceFormat::Ico,
+            ExportFormat::Tga => SourceFormat::Tga,
+            ExportFormat::Psd => SourceFormat::Psd,
             // Sem leitura própria: o documento fica sem Salvar (vai para Exportar).
-            ExportFormat::Exr => SourceFormat::Raw,
+            ExportFormat::Exr | ExportFormat::Pdf => SourceFormat::Raw,
         }
     }
 }
@@ -92,7 +125,7 @@ impl ExportFormat {
 #[serde(rename_all = "camelCase")]
 pub struct ExportOptions {
     pub format: ExportFormat,
-    /// 1..=100. `None`: JPEG 90, WebP sem perdas, AVIF 80.
+    /// 1..=100. `None`: JPEG 90, WebP e PDF sem perdas, AVIF 80.
     pub quality: Option<u8>,
     #[serde(default = "yes")]
     pub alpha: bool,
@@ -105,11 +138,57 @@ pub struct ExportOptions {
     pub resize: Option<(u32, u32)>,
     /// Perfil de saída (Lote 1): os pixels são convertidos do perfil da imagem para este e ele é
     /// embutido no arquivo, mesmo sem metadados. `None` = manter o perfil da imagem.
-    /// Valores: os ids de `icc::BUILTIN` ou o caminho de um .icc do sistema; AVIF e EXR não levam
-    /// perfil e só aceitam sRGB (manter um perfil que não seja sRGB também converte para sRGB).
+    /// Valores: os ids de `icc::BUILTIN` ou o caminho de um .icc do sistema; os formatos sem perfil
+    /// (`embeds_icc`) só aceitam sRGB (manter um perfil que não seja sRGB também converte para sRGB).
     #[serde(default)]
     pub color_profile: Option<String>,
+    #[serde(default)]
+    pub tiff_compression: TiffCompression,
+    /// OpenEXR em 16 bits (half) por canal, em vez de 32 (float).
+    #[serde(default)]
+    pub exr_half: bool,
+    /// Resolução gravada (ppp); `None` = a do documento. No PDF, define o tamanho da página.
+    #[serde(default)]
+    pub dpi: Option<f32>,
+    /// Página gravada (TIFF de várias páginas). O PDF de todas é `write_pdf`.
+    #[serde(default)]
+    pub frame: u32,
 }
+
+impl ExportOptions {
+    /// As opções padrão do formato.
+    pub fn new(format: ExportFormat) -> Self {
+        ExportOptions {
+            format,
+            quality: None,
+            alpha: true,
+            depth16: false,
+            strip_metadata: false,
+            resize: None,
+            color_profile: None,
+            tiff_compression: TiffCompression::None,
+            exr_half: false,
+            dpi: None,
+            frame: 0,
+        }
+    }
+
+    /// Grava mais de 8 bits por canal: vale refazer os pixels em 16 bits a partir do original.
+    pub fn deep(&self) -> bool {
+        match self.format {
+            ExportFormat::Png | ExportFormat::Tiff => self.depth16,
+            ExportFormat::Exr => true,
+            _ => false,
+        }
+    }
+}
+
+/// ppp aceitos: ao gravar, o valor é puxado para o limite; lido do arquivo, é ignorado.
+pub(super) const DPI_MIN: f32 = 1.0;
+pub(super) const DPI_MAX: f32 = 10_000.0;
+const ICO_MAX: u32 = 256;
+/// Maior EXIF de um JPEG: os 65 533 bytes do APP1 menos o `Exif\0\0`.
+const JPEG_EXIF_MAX: usize = 65_533 - 6;
 
 fn yes() -> bool {
     true
@@ -154,6 +233,15 @@ pub fn encode<'a>(
         Some((w, h)) => img.into().resized(w, h),
         None => img.into(),
     };
+    let img = match (fmt, img.dimensions()) {
+        // O ICO vai até 256×256.
+        (ExportFormat::Ico, (w, h)) if w.max(h) > ICO_MAX => {
+            let k = ICO_MAX as f64 / w.max(h) as f64;
+            let side = |v: u32| ((v as f64 * k).round() as u32).max(1);
+            img.resized(side(w), side(h))
+        }
+        _ => img,
+    };
     // Só um perfil RGB descreve os pixels; CMYK e cinza já viraram RGB na decodificação.
     let src = meta.icc.as_deref().filter(|p| container::icc_is_rgb(p));
     let target = match &opts.color_profile {
@@ -180,9 +268,14 @@ pub fn encode<'a>(
         (None, None) if !opts.strip_metadata => src.map(<[u8]>::to_vec),
         _ => None,
     };
-    let meta = if opts.strip_metadata {
+    let new_dpi = opts
+        .dpi
+        .filter(|d| d.is_finite())
+        .map(|d| d.clamp(DPI_MIN, DPI_MAX));
+    let dpi = new_dpi.map(|d| (d, d)).or(meta.dpi);
+    let mut meta = if opts.strip_metadata {
         MetaCarry {
-            dpi: meta.dpi,
+            dpi,
             icc: out_icc,
             ..MetaCarry::default()
         }
@@ -192,15 +285,21 @@ pub fn encode<'a>(
                 container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions())
             }),
             icc: out_icc,
+            dpi,
             ..meta.clone()
         }
     };
+    // A resolução nova também vai para o EXIF (leitores que olham primeiro para ele).
+    // O que não cabe no APP1 do JPEG fica de fora: o codificador gravaria o tamanho truncado.
+    let fits = |e: &Vec<u8>| fmt != ExportFormat::Jpeg || e.len() <= JPEG_EXIF_MAX;
+    if let Some(d) = new_dpi
+        && (meta.exif.is_some() || fmt.dpi_in_exif())
+    {
+        meta.exif = container::exif_with_dpi(meta.exif.as_deref(), d).filter(fits).or(meta.exif);
+    }
+    meta.exif = meta.exif.filter(fits);
     let with_alpha = opts.alpha && fmt.keeps_alpha() && img.has_alpha();
-    // Só PNG/TIFF gravam 16 bits por canal.
-    let pixels = img.into_pixels(
-        with_alpha,
-        opts.depth16 && matches!(fmt, ExportFormat::Png | ExportFormat::Tiff),
-    );
+    let pixels = img.into_pixels(with_alpha, opts.deep());
     let xmp = match &meta.iptc_keywords {
         Some(k) => Some(xmp_with_keywords(meta.xmp.as_deref(), k)),
         None => meta.xmp.clone(),
@@ -235,13 +334,7 @@ pub fn encode<'a>(
             out = png_insert_chunks(&out, meta.dpi, xmp.as_deref());
         }
         ExportFormat::Tiff => {
-            let mut c = Cursor::new(Vec::new());
-            let mut e = TiffEncoder::new(&mut c);
-            if let Some(icc) = &meta.icc {
-                let _ = e.set_icc_profile(icc.clone());
-            }
-            pixels.write_with_encoder(e).map_err(enc_err)?;
-            out = c.into_inner();
+            out = tiff(&pixels, opts.tiff_compression)?;
             let tm = TiffMeta {
                 exif: meta.exif.as_deref(),
                 iptc: iptc.as_deref(),
@@ -292,13 +385,34 @@ pub fn encode<'a>(
             if let Some(icc) = &meta.icc {
                 out = container::bmp_with_icc(&out, icc).unwrap_or(out);
             }
+            if let Some(dpi) = meta.dpi {
+                bmp_set_dpi(&mut out, dpi);
+            }
         }
         ExportFormat::Exr => {
-            let mut c = Cursor::new(Vec::new());
-            linear_f32(&pixels)
-                .write_with_encoder(OpenExrEncoder::new(&mut c))
+            out = exr(&pixels, opts.exr_half, meta.dpi)?;
+        }
+        ExportFormat::Pdf => {
+            let mut doc = pdf::Pdf::new();
+            doc.add_page(&pixels, opts.quality, meta.dpi)?;
+            out = doc.finish();
+        }
+        ExportFormat::Gif => {
+            let mut px = binary_alpha(pixels.into_rgba8());
+            reserve_transparent(&mut px);
+            GifEncoder::new(&mut out)
+                .encode(&px, px.width(), px.height(), ::image::ExtendedColorType::Rgba8)
                 .map_err(enc_err)?;
-            out = c.into_inner();
+        }
+        // Sempre RGBA: leitores de ICO (e o da crate `image`) recusam PNG sem alfa.
+        ExportFormat::Ico => DynamicImage::ImageRgba8(pixels.into_rgba8())
+            .write_with_encoder(IcoEncoder::new(&mut out))
+            .map_err(enc_err)?,
+        ExportFormat::Tga => pixels
+            .write_with_encoder(TgaEncoder::new(&mut out))
+            .map_err(enc_err)?,
+        ExportFormat::Psd => {
+            out = encode_psd::encode(&pixels, &meta, iptc.as_deref(), xmp.as_deref())?;
         }
         ExportFormat::Heic => out = encode_heic::encode(&pixels, opts.quality, &meta)?,
         ExportFormat::Jp2 => out = encode_jp2::encode(&pixels, opts.quality, &meta)?,
@@ -316,11 +430,45 @@ fn set_meta(e: &mut impl ImageEncoder, meta: &MetaCarry) {
     }
 }
 
-/// EXR guarda luz linear: desfaz a curva sRGB.
-fn linear_f32(img: &DynamicImage) -> DynamicImage {
-    let lut: Vec<f32> = (0..256)
+/// TIFF sem metadados (entram depois, com `tiff_with_meta`).
+fn tiff(px: &DynamicImage, compression: TiffCompression) -> AppResult<Vec<u8>> {
+    use ::tiff::{
+        encoder::{Compression, TiffEncoder, colortype as ct},
+        tags::Predictor,
+    };
+    let (compression, predictor) = match compression {
+        TiffCompression::None => (Compression::Uncompressed, Predictor::None),
+        TiffCompression::Packbits => (Compression::Packbits, Predictor::None),
+        TiffCompression::Lzw => (Compression::Lzw, Predictor::Horizontal),
+        TiffCompression::Deflate => {
+            (Compression::Deflate(Default::default()), Predictor::Horizontal)
+        }
+    };
+    let mut c = Cursor::new(Vec::new());
+    let mut e = TiffEncoder::new(&mut c)
+        .map_err(enc_err)?
+        .with_compression(compression)
+        .with_predictor(predictor);
+    let (w, h) = (px.width(), px.height());
+    match px {
+        DynamicImage::ImageRgba16(i) => e.write_image::<ct::RGBA16>(w, h, i.as_raw()),
+        DynamicImage::ImageRgb16(i) => e.write_image::<ct::RGB16>(w, h, i.as_raw()),
+        DynamicImage::ImageRgba8(i) => e.write_image::<ct::RGBA8>(w, h, i.as_raw()),
+        other => e.write_image::<ct::RGB8>(w, h, other.to_rgb8().as_raw()),
+    }
+    .map_err(enc_err)?;
+    Ok(c.into_inner())
+}
+
+/// OpenEXR com as primárias do sRGB em luz linear (desfaz a curva sRGB), em half ou float.
+fn exr(px: &DynamicImage, half: bool, dpi: Option<(f32, f32)>) -> AppResult<Vec<u8>> {
+    use ::exr::prelude::{
+        Encoding, Image, Layer, LayerAttributes, SpecificChannels, Vec2, WritableImage, f16,
+    };
+    // Um valor por código de 16 bits (os de 8 bits chegam expandidos).
+    let lut: Vec<f32> = (0..=u16::MAX)
         .map(|v| {
-            let c = v as f32 / 255.0;
+            let c = v as f32 / u16::MAX as f32;
             if c <= 0.04045 {
                 c / 12.92
             } else {
@@ -328,30 +476,96 @@ fn linear_f32(img: &DynamicImage) -> DynamicImage {
             }
         })
         .collect();
-    match img {
-        DynamicImage::ImageRgba8(i) => DynamicImage::ImageRgba32F(::image::Rgba32FImage::from_fn(
-            i.width(),
-            i.height(),
-            |x, y| {
-                let p = i.get_pixel(x, y);
-                ::image::Rgba([
-                    lut[p[0] as usize],
-                    lut[p[1] as usize],
-                    lut[p[2] as usize],
-                    p[3] as f32 / 255.0,
-                ])
-            },
-        )),
+    let size = (px.width() as usize, px.height() as usize);
+    let attributes = LayerAttributes {
+        horizontal_density: dpi.map(|(x, _)| x),
+        ..Default::default()
+    };
+    // Um ramo por tipo de amostra e de canais: o tipo do arquivo sai do tipo da função.
+    macro_rules! write_exr {
+        ($channels:ident, $pixel:expr) => {{
+            let channels = SpecificChannels::$channels($pixel);
+            let mut c = Cursor::new(Vec::new());
+            Image::from_layer(Layer::new(size, attributes, Encoding::default(), channels))
+                .write()
+                .to_buffered(&mut c)
+                .map_err(enc_err)?;
+            Ok(c.into_inner())
+        }};
+    }
+    let h = f16::from_f32;
+    match px {
+        DynamicImage::ImageRgba16(i) => {
+            let at = |p: Vec2<usize>| {
+                let [r, g, b, a] = i.get_pixel(p.x() as u32, p.y() as u32).0;
+                let l = |v: u16| lut[v as usize];
+                (l(r), l(g), l(b), a as f32 / u16::MAX as f32)
+            };
+            if !half {
+                return write_exr!(rgba, at);
+            }
+            write_exr!(rgba, |p: Vec2<usize>| {
+                let (r, g, b, a) = at(p);
+                (h(r), h(g), h(b), h(a))
+            })
+        }
         other => {
-            let i = other.to_rgb8();
-            DynamicImage::ImageRgb32F(::image::Rgb32FImage::from_fn(
-                i.width(),
-                i.height(),
-                |x, y| {
-                    let p = i.get_pixel(x, y);
-                    ::image::Rgb([lut[p[0] as usize], lut[p[1] as usize], lut[p[2] as usize]])
-                },
-            ))
+            let i = other.to_rgb16();
+            let at = |p: Vec2<usize>| {
+                let [r, g, b] = i.get_pixel(p.x() as u32, p.y() as u32).0;
+                let l = |v: u16| lut[v as usize];
+                (l(r), l(g), l(b))
+            };
+            if !half {
+                return write_exr!(rgb, at);
+            }
+            write_exr!(rgb, |p: Vec2<usize>| {
+                let (r, g, b) = at(p);
+                (h(r), h(g), h(b))
+            })
+        }
+    }
+}
+
+/// Transparência de 1 bit do GIF: menos da metade some; o resto fica opaco, composto sobre
+/// branco (sem halo da cor de um pixel quase transparente).
+fn binary_alpha(mut img: ::image::RgbaImage) -> ::image::RgbaImage {
+    for p in img.pixels_mut() {
+        let a = p[3] as u32;
+        if a < 128 {
+            p.0 = [0; 4];
+        } else {
+            let c = |v: u8| ((v as u32 * a + 255 * (255 - a) + 127) / 255) as u8;
+            p.0 = [c(p[0]), c(p[1]), c(p[2]), 255];
+        }
+    }
+    img
+}
+
+/// Com transparência e mais de 255 cores opacas, reduz só as opacas a 255: o índice transparente
+/// fica fora da quantização do `GifEncoder`, que o juntaria a tons escuros opacos (furos).
+fn reserve_transparent(img: &mut ::image::RgbaImage) {
+    let mut colors = std::collections::HashSet::new();
+    let over = img.pixels().any(|p| p[3] != 0 && colors.insert(p.0) && colors.len() > 255);
+    if !over || img.pixels().all(|p| p[3] != 0) {
+        return;
+    }
+    let opaque: Vec<u8> = img.pixels().filter(|p| p[3] != 0).flat_map(|p| p.0).collect();
+    let palette = color_quant::NeuQuant::new(1, 255, &opaque).color_map_rgb();
+    // Comparação exata: a busca do NeuQuant é aproximada e pega cores distantes em áreas escuras.
+    img.par_pixels_mut().filter(|p| p[3] != 0).for_each(|p| {
+        let dist = |c: &&[u8; 3]| (0..3).map(|i| (c[i] as i32 - p[i] as i32).pow(2)).sum::<i32>();
+        if let Some(c) = palette.as_chunks::<3>().0.iter().min_by_key(dist) {
+            p.0[..3].copy_from_slice(c);
+        }
+    });
+}
+
+/// `biXPelsPerMeter`/`biYPelsPerMeter` (mesma posição em todos os cabeçalhos de 40+ bytes).
+fn bmp_set_dpi(bmp: &mut [u8], (x, y): (f32, f32)) {
+    for (at, d) in [(38, x), (42, y)] {
+        if let Some(b) = bmp.get_mut(at..at + 4) {
+            b.copy_from_slice(&((d / 0.0254).round() as i32).to_le_bytes());
         }
     }
 }
@@ -791,6 +1005,7 @@ mod tests {
             strip_metadata: false,
             resize: None,
             color_profile: None,
+            ..ExportOptions::new(ExportFormat::Png)
         };
         assert_eq!(reread(&base), ([200, 100, 50, 255], Some(p3.clone())));
         for strip in [false, true] {
@@ -824,6 +1039,7 @@ mod tests {
             strip_metadata,
             resize: None,
             color_profile: color_profile.map(Into::into),
+            ..ExportOptions::new(ExportFormat::Png)
         };
         let near = |px: &[u8], want: [u8; 3], tol: u8| {
             assert!(px[..3].iter().zip(want).all(|(a, b)| a.abs_diff(b) <= tol), "{px:?}");
@@ -873,6 +1089,7 @@ mod tests {
             strip_metadata: false,
             resize: None,
             color_profile: None,
+            ..ExportOptions::new(ExportFormat::Png)
         };
         assert!(encode(&img, &opts, &meta).is_ok());
         opts.color_profile = Some("display-p3".into());
@@ -890,11 +1107,287 @@ mod tests {
             strip_metadata: true,
             resize: None,
             color_profile: Some("display-p3".into()),
+            ..ExportOptions::new(ExportFormat::Png)
         };
         let png = encode(&img, &opts, &MetaCarry::default()).unwrap();
         let d = ::image::load_from_memory(&png).unwrap().into_rgba16();
         let p = d.get_pixel(0, 0).0;
         let want = [234.0, 51.0, 35.0];
         assert!(p[..3].iter().zip(want).all(|(c, w)| (*c as f64 / 257.0 - w).abs() <= 2.0), "{p:?}");
+    }
+
+    // ---------- Lote 11 ----------
+
+    fn reopen(name: &str, bytes: &[u8]) -> super::super::decode::Decoded {
+        super::super::decode::decode_bytes(Path::new(name), bytes).unwrap()
+    }
+
+    /// Duas cores e três graus de transparência (cabe na paleta do GIF sem perdas).
+    fn sprite() -> ::image::RgbaImage {
+        ::image::RgbaImage::from_fn(40, 20, |x, y| match (x / 10, y / 10) {
+            (0, _) => ::image::Rgba([0, 0, 0, 0]),
+            (1, _) => ::image::Rgba([200, 0, 0, 64]),
+            (2, _) => ::image::Rgba([200, 0, 0, 191]),
+            (_, 0) => ::image::Rgba([10, 20, 30, 255]),
+            _ => ::image::Rgba([240, 130, 5, 255]),
+        })
+    }
+
+    #[test]
+    fn ico_tga_e_psd_voltam_identicos() {
+        let img = sprite();
+        for (format, name) in
+            [(ExportFormat::Ico, "a.ico"), (ExportFormat::Tga, "a.tga"), (ExportFormat::Psd, "a.psd")]
+        {
+            let out = encode(&img, &ExportOptions::new(format), &MetaCarry::default()).unwrap();
+            assert_eq!(reopen(name, &out).frames[0], img, "{name}");
+            // Sem alfa: composto sobre branco.
+            let opts = ExportOptions { alpha: false, ..ExportOptions::new(format) };
+            let d = reopen(name, &encode(&img, &opts, &MetaCarry::default()).unwrap());
+            assert_eq!(d.frames[0].get_pixel(0, 0).0, [255; 4], "{name}");
+        }
+    }
+
+    #[test]
+    fn gif_tem_transparencia_de_um_bit_sem_halo() {
+        let opts = ExportOptions::new(ExportFormat::Gif);
+        let out = encode(&sprite(), &opts, &MetaCarry::default()).unwrap();
+        assert!(out.starts_with(b"GIF89a"));
+        let d = reopen("a.gif", &out);
+        let at = |x, y| d.frames[0].get_pixel(x, y).0;
+        assert_eq!((at(5, 5)[3], at(15, 5)[3]), (0, 0), "menos da metade some");
+        assert_eq!(at(25, 5), [214, 64, 64, 255], "composto sobre branco");
+        assert_eq!((at(35, 5), at(35, 15)), ([10, 20, 30, 255], [240, 130, 5, 255]));
+    }
+
+    #[test]
+    fn ico_reduz_a_256() {
+        let img = ::image::RgbaImage::new(1000, 400);
+        let opts = ExportOptions::new(ExportFormat::Ico);
+        let d = reopen("a.ico", &encode(&img, &opts, &MetaCarry::default()).unwrap());
+        assert_eq!(d.frames[0].dimensions(), (256, 102));
+    }
+
+    #[test]
+    fn tiff_com_cada_compressao() {
+        let img = DynamicImage::ImageRgb8(super::super::test_util::gradiente(300, 200));
+        let deep = img.to_rgba16();
+        let mut sizes = Vec::new();
+        for (compression, code) in [
+            (TiffCompression::None, 1),
+            (TiffCompression::Lzw, 5),
+            (TiffCompression::Packbits, 32773),
+            (TiffCompression::Deflate, 8),
+        ] {
+            let opts = ExportOptions {
+                tiff_compression: compression,
+                ..ExportOptions::new(ExportFormat::Tiff)
+            };
+            let meta = MetaCarry { dpi: Some((300.0, 300.0)), ..MetaCarry::default() };
+            let out = encode(&img.to_rgba8(), &opts, &meta).unwrap();
+            let d = reopen("a.tiff", &out);
+            assert_eq!((&d.frames[0], d.dpi), (&img.to_rgba8(), meta.dpi), "{compression:?}");
+            let tag = container::tiff_tag(&out, 259).unwrap();
+            assert_eq!(u16::from_le_bytes([tag[0], tag[1]]), code, "{compression:?}");
+            sizes.push(out.len());
+            let opts16 = ExportOptions { depth16: true, ..opts };
+            let back = ::image::load_from_memory(&encode(&deep, &opts16, &meta).unwrap()).unwrap();
+            assert_eq!(back.to_rgba16(), deep, "16 bits, {compression:?}");
+        }
+        assert!(sizes[1] < sizes[0] / 2 && sizes[3] < sizes[0] / 2, "{sizes:?}");
+    }
+
+    #[test]
+    fn exr_half_e_float() {
+        use ::exr::prelude::{MetaData, SampleType};
+        let img = ::image::RgbaImage::from_pixel(8, 6, ::image::Rgba([255, 188, 0, 128]));
+        for (exr_half, want) in [(true, SampleType::F16), (false, SampleType::F32)] {
+            let opts = ExportOptions {
+                exr_half,
+                dpi: Some(300.0),
+                ..ExportOptions::new(ExportFormat::Exr)
+            };
+            let out = encode(&img, &opts, &MetaCarry::default()).unwrap();
+            let meta = MetaData::read_from_buffered(Cursor::new(&out), false).unwrap();
+            let h = &meta.headers[0];
+            assert_eq!(h.channels.list.len(), 4);
+            assert!(h.channels.list.iter().all(|c| c.sample_type == want), "half={exr_half}");
+            assert_eq!(h.own_attributes.horizontal_density, Some(300.0));
+            let px = ::image::load_from_memory(&out).unwrap().into_rgba32f().get_pixel(3, 3).0;
+            let linear = [1.0, 0.5029, 0.0, 128.0 / 255.0];
+            assert!(px.iter().zip(linear).all(|(a, b)| (a - b).abs() < 2e-3), "{px:?}");
+        }
+        // Origem de 16 bits: guarda mais níveis que 8 bits conseguem.
+        let deep = super::super::raster::Rgba16Image::from_pixel(2, 2, ::image::Rgba([32800; 4]));
+        let opts = ExportOptions::new(ExportFormat::Exr);
+        let out = encode(&deep, &opts, &MetaCarry::default()).unwrap();
+        let got = ::image::load_from_memory(&out).unwrap().into_rgba32f().get_pixel(0, 0).0[0];
+        let c = 32800f32 / 65535.0;
+        assert!((got - ((c + 0.055) / 1.055).powf(2.4)).abs() < 1e-6, "{got}");
+    }
+
+    #[test]
+    fn resolucao_escolhida_vai_para_o_arquivo_e_o_exif() {
+        let img = ::image::RgbaImage::from_pixel(16, 16, ::image::Rgba([9, 90, 200, 255]));
+        let meta = MetaCarry {
+            exif: container::exif_with_dpi(None, 72.0),
+            dpi: Some((72.0, 72.0)),
+            ..MetaCarry::default()
+        };
+        let exif_dpi = |exif: &[u8]| {
+            let t = container::tiff_tag(exif, 282).unwrap();
+            let n = |i: usize| u32::from_le_bytes(t[i..i + 4].try_into().unwrap()) as f32;
+            n(0) / n(4)
+        };
+        for (format, name) in [
+            (ExportFormat::Jpeg, "a.jpg"),
+            (ExportFormat::Png, "a.png"),
+            (ExportFormat::Tiff, "a.tiff"),
+        ] {
+            let opts = ExportOptions { dpi: Some(300.0), ..ExportOptions::new(format) };
+            let d = reopen(name, &encode(&img, &opts, &meta).unwrap());
+            let (x, y) = d.dpi.unwrap();
+            assert!((x - 300.0).abs() < 0.1 && (y - 300.0).abs() < 0.1, "{name}: {x}");
+            if format != ExportFormat::Tiff {
+                assert_eq!(exif_dpi(&d.exif.unwrap()), 300.0, "{name}");
+            }
+            // Sem escolha, fica a do documento.
+            let d = reopen(name, &encode(&img, &ExportOptions::new(format), &meta).unwrap());
+            assert!((d.dpi.unwrap().0 - 72.0).abs() < 0.1, "{name}");
+        }
+        // Sem lugar próprio (nem EXIF no original): ganha um EXIF só com ela, até sem metadados.
+        for strip_metadata in [false, true] {
+            let opts = ExportOptions {
+                dpi: Some(240.0),
+                strip_metadata,
+                ..ExportOptions::new(ExportFormat::Webp)
+            };
+            let d = reopen("a.webp", &encode(&img, &opts, &MetaCarry::default()).unwrap());
+            assert_eq!(exif_dpi(&d.exif.unwrap()), 240.0);
+        }
+        let opts = ExportOptions { dpi: Some(254.0), ..ExportOptions::new(ExportFormat::Bmp) };
+        let bmp = encode(&img, &opts, &MetaCarry::default()).unwrap();
+        assert_eq!(&bmp[38..46], [10_000i32.to_le_bytes(), 10_000i32.to_le_bytes()].concat());
+        // Fora da faixa ou inválida não quebra nem grava lixo.
+        for (bad, want) in [(0.0, 1.0), (f32::NAN, 72.0), (1e9, 10_000.0)] {
+            let opts = ExportOptions { dpi: Some(bad), ..ExportOptions::new(ExportFormat::Tiff) };
+            let d = reopen("a.tiff", &encode(&img, &opts, &meta).unwrap());
+            assert_eq!(d.dpi.unwrap().0, want);
+        }
+    }
+
+    #[test]
+    fn pdf_no_seletor_usa_a_resolucao() {
+        let img = ::image::RgbaImage::from_pixel(600, 300, ::image::Rgba([1, 2, 3, 255]));
+        let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+        let opts = ExportOptions { dpi: Some(300.0), ..ExportOptions::new(ExportFormat::Pdf) };
+        let out = encode(&img, &opts, &MetaCarry::default()).unwrap();
+        assert!(out.starts_with(b"%PDF-"));
+        assert!(text(&out).contains("/MediaBox [0 0 144.0000 72.0000]"));
+        assert!(!text(&out).contains("/DCTDecode"), "sem qualidade, sem perdas");
+        let opts = ExportOptions { quality: Some(80), ..opts };
+        let out = encode(&img, &opts, &MetaCarry::default()).unwrap();
+        assert!(text(&out).contains("/DCTDecode"));
+    }
+
+    /// GIF, TGA, ICO e PDF não levam o perfil da imagem: saem em sRGB, e outro destino é recusado.
+    #[test]
+    fn formatos_novos_sem_perfil_saem_em_srgb() {
+        use ExportFormat::*;
+        let img = ::image::RgbaImage::from_pixel(16, 16, ::image::Rgba([200, 100, 50, 255]));
+        let p3 = icc::profile_bytes("display-p3").unwrap().to_vec();
+        let meta = MetaCarry { icc: Some(p3.clone()), ..MetaCarry::default() };
+        for (format, name) in [(Gif, "a.gif"), (Tga, "a.tga"), (Ico, "a.ico")] {
+            let d = reopen(name, &encode(&img, &ExportOptions::new(format), &meta).unwrap());
+            let px = d.frames[0].get_pixel(3, 3).0;
+            let near = px[..3].iter().zip([215, 93, 31]).all(|(a, b)| a.abs_diff(b) <= 2);
+            assert!(near, "{name} {px:?}");
+            assert_eq!(d.icc, None);
+        }
+        for format in [Gif, Tga, Ico, Pdf] {
+            let opts = ExportOptions {
+                color_profile: Some("adobe-rgb".into()),
+                ..ExportOptions::new(format)
+            };
+            assert_eq!(encode(&img, &opts, &meta).unwrap_err().code(), "unsupported");
+        }
+        // O PSD leva o perfil e os pixels como estão.
+        let out = encode(&img, &ExportOptions::new(Psd), &meta).unwrap();
+        assert_eq!(reopen("a.psd", &out).frames[0].get_pixel(0, 0).0, [200, 100, 50, 255]);
+        assert!(out.windows(p3.len()).any(|w| w == p3));
+    }
+
+    /// EXIF com uma ImageDescription de `n` bytes.
+    fn exif_com(n: usize) -> Vec<u8> {
+        let mut e = b"II*\0\x08\0\0\0\x01\0\x0e\x01\x02\0".to_vec();
+        e.extend((n as u32).to_le_bytes());
+        e.extend(26u32.to_le_bytes());
+        e.extend([0; 4]);
+        e.extend(std::iter::repeat_n(b'x', n - 1));
+        e.push(0);
+        e
+    }
+
+    /// O APP1 vai até 65 533 bytes: um EXIF que cresceu com o ppp não pode corromper o JPEG.
+    #[test]
+    fn exif_no_limite_do_app1_nao_corrompe_o_jpeg() {
+        let img = ::image::RgbaImage::from_pixel(16, 16, ::image::Rgba([9, 90, 200, 255]));
+        let jpeg = |exif: &[u8], dpi: Option<f32>| {
+            let meta = MetaCarry { exif: Some(exif.to_vec()), ..MetaCarry::default() };
+            let opts = ExportOptions { dpi, ..ExportOptions::new(ExportFormat::Jpeg) };
+            let d = reopen("a.jpg", &encode(&img, &opts, &meta).unwrap());
+            assert_eq!(d.frames[0].dimensions(), (16, 16));
+            assert!(d.dpi.is_none() || d.dpi.unwrap().0 == dpi.unwrap());
+            d.exif
+        };
+        let max = 65_533 - 6;
+        let at = |len: usize| exif_com(len - 26);
+        // Pequeno: o ppp entra no EXIF.
+        let small = jpeg(&at(1000), Some(300.0)).unwrap();
+        assert!(container::tiff_tag(&small, 282).is_some());
+        // No limite: cresceria além do APP1, então fica o anterior.
+        for len in [max, max - 10] {
+            assert_eq!(jpeg(&at(len), Some(300.0)).as_deref(), Some(&at(len)[..]), "{len}");
+            assert_eq!(jpeg(&at(len), None).as_deref(), Some(&at(len)[..]), "{len}");
+        }
+        // Nem o anterior cabe (veio de um PNG ou TIFF): sai sem EXIF.
+        for len in [max + 1, 65_536 + 30, 200_000] {
+            assert_eq!(jpeg(&at(len), Some(300.0)), None, "{len}");
+            assert_eq!(jpeg(&at(len), None), None, "{len}");
+        }
+    }
+
+    /// Foto escura com mais de 256 cores e pouco alfa: preto opaco não pode virar furo, e a
+    /// área transparente continua transparente.
+    #[test]
+    fn gif_escuro_com_pouco_alfa_nao_fura() {
+        // Lado, pixels transparentes (0,1% e um só), faixa de tons e se há preto em xadrez.
+        for (side, holes, range, chess) in
+            [(64, 4, 60, true), (200, 40, 60, true), (64, 1, 8, false), (64, 1, 20, true), (64, 1, 60, true)]
+        {
+            let mut n = side * 31 + range * 7 + chess as u32 * 2;
+            let img = ::image::RgbaImage::from_fn(side, side, |x, y| {
+                n = n.wrapping_mul(1_103_515_245).wrapping_add(12345);
+                let v = |s: u32| (((n >> 8) & 0xffff) >> s) as u8 as u32 % range;
+                if y * side + x < holes {
+                    ::image::Rgba([0, 0, 0, 0])
+                } else if chess && (x + y) % 2 == 0 {
+                    ::image::Rgba([0, 0, 0, 255])
+                } else {
+                    ::image::Rgba([v(0) as u8, v(4) as u8, v(7) as u8, 255])
+                }
+            });
+            let opts = ExportOptions::new(ExportFormat::Gif);
+            let d = reopen("a.gif", &encode(&img, &opts, &MetaCarry::default()).unwrap());
+            let pairs = || img.pixels().zip(d.frames[0].pixels());
+            let wrong = pairs().filter(|(a, b)| a[3] != b[3]).count();
+            let far = pairs()
+                .filter(|(a, _)| a[3] == 255)
+                .flat_map(|(a, b)| (0..3).map(|c| a[c].abs_diff(b[c])))
+                .max();
+            println!("{side} {holes} {range} {chess}: trocados {wrong}, desvio {far:?}");
+            assert_eq!(wrong, 0, "{side} {holes} {range} {chess}: transparência trocada");
+            assert!(far < Some(32), "{side} {holes} {range} {chess}: cor longe da original");
+        }
     }
 }

@@ -7,9 +7,10 @@ import { MenuList, type ActionItem, type ListItem } from "../chrome/MenuBar";
 import { openFileDialog } from "../file/fileActions";
 import { reveal } from "../ipc/commands";
 import type { DocId, DocInfo, Op } from "../ipc/types";
+import { printDocs } from "../print/print";
 import { runCommand } from "../shortcuts/commands";
 import { activate, closeDocs } from "../viewer/actions";
-import { applyToTargets, printSelection } from "./batch";
+import { applyToTargets } from "./batch";
 
 export interface MenuTarget {
   x: number;
@@ -51,7 +52,7 @@ export function thumbMenuItems({ pressed, ids }: MenuTarget, t: T): ListItem[] {
       false,
       n,
     ),
-    item(many ? "printMany" : "print", () => printSelection(ids), false, n),
+    item(many ? "printMany" : "print", () => printDocs(ids), false, n),
     sep,
     item("reveal", () => reveal(pressed.id), !single),
     item("trash", () => runCommand("file.moveToTrash"), !single),

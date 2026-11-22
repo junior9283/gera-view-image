@@ -4,17 +4,20 @@ import { notify } from "../chrome/notify";
 import { defaultOptions, EXTENSIONS, exportFormatOf } from "../file/estimate";
 import { runBeforeSave } from "../file/beforeSave";
 import { hasUnsaved } from "../file/dirty";
-import { current, dirname, markChanged, settleKeywords, stem } from "../file/fileActions";
+import { current, dirname, markChanged, settleKeywords, stem, warnLeftOut } from "../file/fileActions";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
 import * as ipc from "../ipc/commands";
 import type { DocId, DocInfo, ExportFormat } from "../ipc/types";
 import { forgetHistory } from "../markup/history";
+import { shownPage } from "../markup/pages";
 import { useMarkup } from "../markup/store";
 import { useDocs } from "../store/docs";
 import { addRecent } from "../store/prefs";
 import { activeDoc } from "../viewer/actions";
 import { askDiscard, closePopover, setLockedState } from "./store";
+
+export { addTags, splitTags } from "./tags";
 
 const t = (k: string, o: Record<string, unknown> = {}) => i18n.t(k, o);
 const update = (info: DocInfo) => useDocs.getState().update(info);
@@ -49,13 +52,15 @@ export async function saveAsActive(): Promise<void> {
   if (!dest) return;
   const format = saveAsFormat(dest);
   if (!format) return notify(t("finder.saveAs.badFormat"));
-  await runBeforeSave(d.id);
-  const info = await ipc.saveAs(d.id, dest, defaultOptions(format), getPendingKeywords(d.id));
+  const frame = shownPage(d.id);
+  await runBeforeSave(d.id, frame);
+  const info = await ipc.saveAs(d.id, dest, { ...defaultOptions(format), frame }, getPendingKeywords(d.id));
   update(info);
   addRecent(info.path);
   markChanged(d.id, null);
   settleKeywords(d.id, format);
   notify(t("file.saved", { name: info.name }));
+  warnLeftOut(info, frame, dest);
 }
 
 /** Mover para o Lixo (Ctrl+Backspace). Com alterações, pergunta antes. Nunca apaga. */
@@ -88,15 +93,6 @@ export async function toggleLockActive(): Promise<void> {
   const d = activeFile();
   if (d) await setLocked(d.id, !(await refreshLocked(d.id)));
 }
-
-/**
- * Divide o texto digitado em etiquetas: a vírgula separa (é o separador do `user.xdg.tags`,
- * então nunca entra numa etiqueta).
- */
-export const splitTags = (raw: string): string[] => raw.split(",").map((s) => s.trim()).filter(Boolean);
-
-/** Acrescenta etiquetas sem repetir, na ordem. */
-export const addTags = (tags: string[], raw: string): string[] => [...new Set([...tags, ...splitTags(raw)])];
 
 /**
  * Restaurar uma versão: vira o conteúdo do documento, que fica com alterações (o Salvar grava).

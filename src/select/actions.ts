@@ -1,6 +1,7 @@
 // Ações de seleção para os menus/atalhos (Task 6). Atuam no documento ativo.
 import * as ipc from "../ipc/commands";
 import { annotationsPng } from "../markup/flatten";
+import { shownPage } from "../markup/pages";
 import type { DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
@@ -42,13 +43,14 @@ export async function cropToSelection() {
   deselect();
 }
 
-/** Copiar: a seleção ou, sem seleção, a imagem inteira, sempre como aparece (com as anotações). */
+/** Copiar: a seleção ou, sem seleção, a página inteira, sempre como aparece (com as anotações). */
 export async function copySelection() {
   const doc = activeDoc();
   if (!doc) return;
   const { selection } = sel();
-  const png = await annotationsPng(doc.id);
-  await (png ? ipc.copyImage(doc.id, selection, png) : ipc.copyRegion(doc.id, selection));
+  const page = shownPage(doc.id);
+  const png = await annotationsPng(doc.id, page);
+  await (png ? ipc.copyImage(doc.id, selection, png, page) : ipc.copyRegion(doc.id, selection, page));
 }
 
 export async function deleteSelection() {

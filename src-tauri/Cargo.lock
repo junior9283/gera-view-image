@@ -1882,8 +1882,11 @@ version = "0.4.1"
 dependencies = [
  "base64 0.22.1",
  "cc",
+ "color_quant",
  "crc32fast",
+ "exr",
  "fast_image_resize",
+ "flate2",
  "gtk",
  "image",
  "imagesize",

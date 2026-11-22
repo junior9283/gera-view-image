@@ -329,7 +329,7 @@ fn composite_sobrepoe_png() {
     let mut png = Vec::new();
     over.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
         .unwrap();
-    let r = apply(&img, &Op::Composite { png });
+    let r = apply(&img, &Op::Composite { png, frame: None });
     assert_eq!(r.get_pixel(1, 1).0, [255, 0, 0, 255]);
     assert_eq!(r.get_pixel(0, 0).0, [0, 0, 255, 255]);
 }

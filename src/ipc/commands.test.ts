@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 
-import { applyOp, decodeViewBuffer, renderView } from "./commands";
+import { applyOp, copyImage, copyRegion, decodeViewBuffer, renderView } from "./commands";
 
 function buffer(w: number, h: number): ArrayBuffer {
   const buf = new ArrayBuffer(8 + w * h * 4);
@@ -40,6 +40,24 @@ describe("decodeViewBuffer", () => {
 
 describe("wrappers", () => {
   beforeEach(() => invoke.mockReset());
+
+  it("composite: os bytes vão como lista e a página não se perde", async () => {
+    await applyOp(1, { type: "composite", data: { png: new Uint8Array([1, 2]), frame: 3 } });
+    expect(invoke).toHaveBeenCalledWith("apply_op", { id: 1, op: { type: "composite", data: { png: [1, 2], frame: 3 } } });
+    await applyOp(1, { type: "composite", data: { png: new Uint8Array([1]) } });
+    expect(Object.keys(invoke.mock.calls[1][1].op.data)).toEqual(["png"]);
+  });
+
+  it("copiar leva a página, se não for a primeira", async () => {
+    await copyRegion(1, null, 2);
+    await copyImage(1, null, new Uint8Array([9]), 1);
+    await copyRegion(1, null);
+    expect(invoke.mock.calls).toEqual([
+      ["copy_region", { id: 1, mask: null, frame: 2 }],
+      ["copy_image", { id: 1, mask: null, png: [9], frame: 1 }],
+      ["copy_region", { id: 1, mask: null }],
+    ]);
+  });
 
   it("renderView chama render_view com argumentos camelCase e decodifica", async () => {
     invoke.mockResolvedValue(buffer(4, 3));

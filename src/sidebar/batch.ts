@@ -1,13 +1,11 @@
-// Ações em lote sobre a seleção da barra lateral (girar, espelhar, Ajustar Cor/Tamanho, imprimir).
+// Ações em lote sobre a seleção da barra lateral (girar, espelhar, Ajustar Cor/Tamanho).
 // Cada imagem recebe a própria `apply_op` (e, portanto, o próprio desfazer); uma falha não para as
 // outras e o resultado é relatado por arquivo; a interface respira entre uma imagem e a seguinte.
 import { create } from "zustand";
 import { notify } from "../chrome/notify";
-import { printActive } from "../file/fileActions";
 import i18n from "../i18n";
 import type { DocId, DocInfo, Op } from "../ipc/types";
 import { useDocs } from "../store/docs";
-import { activate } from "../viewer/actions";
 
 export interface BatchFailure {
   id: DocId;
@@ -117,14 +115,4 @@ export function resizeFor(
   if (mode === "exact") return { w: box.w, h: box.h };
   const k = mode === "ratio" ? box.w / orig.w : Math.min(box.w / d.width, box.h / d.height);
   return { w: Math.max(1, Math.round(d.width * k)), h: Math.max(1, Math.round(d.height * k)) };
-}
-
-/** Imprimir a seleção: entrega cada imagem, em ordem, ao comando de impressão existente. */
-export async function printSelection(ids: DocId[]): Promise<BatchResult> {
-  const result = await runBatch(ids, async (id) => {
-    activate(id);
-    await printActive();
-  });
-  reportBatch(result);
-  return result;
 }

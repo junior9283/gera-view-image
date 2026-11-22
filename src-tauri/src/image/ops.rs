@@ -27,7 +27,7 @@ pub fn apply(img: &RgbaImage, op: &Op) -> RgbaImage {
                 p[3] = 0;
             }
         }),
-        Op::Composite { png } => composite(img, png),
+        Op::Composite { png, .. } => composite(img, png),
         Op::AssignProfile { .. } => img.clone(),
     }
 }

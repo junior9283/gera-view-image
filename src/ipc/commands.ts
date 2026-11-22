@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppEntry, CaptureMode, ColorAdjust, ColorProfile, DetectedCode, DocId, DocInfo, DragSource, ExportOptions, FileStat,
-  FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, Rect, RevertTarget, SaveOutcome, TextLine,
+  FileVersion, Histogram, Mask, Metadata, MetadataEdits, Op, PrintOptions, PrintPreview, Rect, RevertTarget, SaveOutcome, TaggedExport, TextLine,
   ViewBuffer, WindowEntry,
 } from "./types";
 // Lote 6
@@ -38,7 +38,7 @@ export const thumbnail = async (id: DocId, frame: number, size: number) =>
 
 /** `JSON.stringify(Uint8Array)` vira objeto; os bytes do PNG precisam ir como lista. */
 const toWire = (op: Op): Op =>
-  op.type === "composite" && op.data.png instanceof Uint8Array ? { ...op, data: { png: Array.from(op.data.png) } } : op;
+  op.type === "composite" && op.data.png instanceof Uint8Array ? { ...op, data: { ...op.data, png: Array.from(op.data.png) } } : op;
 
 export const applyOp = (id: DocId, op: Op) => invoke<DocInfo>("apply_op", { id, op: toWire(op) });
 
@@ -54,8 +54,12 @@ export const instantAlpha = (id: DocId, x: number, y: number, tolerance: number)
 export const snapLasso = (id: DocId, points: [number, number][]) =>
   invoke<[number, number][]>("snap_lasso", { id, points });
 
-/** Copia a região (ou a imagem toda, sem máscara) para a área de transferência como PNG. */
-export const copyRegion = (id: DocId, mask: Mask | null) => invoke<void>("copy_region", { id, mask });
+/** A primeira página é o padrão no Rust. */
+const onFrame = (frame: number) => (frame ? { frame } : {});
+
+/** Copia a região da página (ou ela toda, sem máscara) para a área de transferência como PNG. */
+export const copyRegion = (id: DocId, mask: Mask | null, frame = 0) =>
+  invoke<void>("copy_region", { id, mask, ...onFrame(frame) });
 
 /** Prévia de um ajuste de cor em resolução reduzida; não altera o documento. */
 export const previewAdjust = async (id: DocId, adjust: ColorAdjust, maxW: number, maxH: number) =>
@@ -102,7 +106,6 @@ export const reveal = (id: DocId) => invoke<void>("reveal", { id });
 /** Arraste nativo para fora da janela; resolve quando ele termina. */
 export const startDrag = (items: DragSource[]) => invoke<void>("start_drag", { items });
 
-export const printDocument = (id: DocId, title: string) => invoke<void>("print_document", { id, title });
 
 export const newFromClipboard = (name: string) => invoke<DocInfo>("new_from_clipboard", { name });
 
@@ -125,8 +128,8 @@ export const clipboardImage = async () => new Uint8Array(await invoke<ArrayBuffe
 /** PNG do primeiro quadro de um arquivo solto sobre a imagem aberta. */
 export const imageFilePng = async (path: string) => new Uint8Array(await invoke<ArrayBuffer>("image_file_png", { path }));
 /** Copiar com as anotações (`png` no tamanho da imagem) compostas por cima; `mask` nula = imagem inteira. */
-export const copyImage = (id: DocId, mask: Mask | null, png: Uint8Array) =>
-  invoke<void>("copy_image", { id, mask, png: Array.from(png) });
+export const copyImage = (id: DocId, mask: Mask | null, png: Uint8Array | number[], frame = 0) =>
+  invoke<void>("copy_image", { id, mask, png: Array.from(png), ...onFrame(frame) });
 
 // Lote 3: Texto ao Vivo e fala
 export const recognizeText = (id: DocId, frame: number) => invoke<TextLine[]>("recognize_text", { id, frame });
@@ -183,7 +186,12 @@ export const cameraAllow = (allowed: boolean) => invoke<void>("camera_allow", { 
 
 // Lote 11: PDF e impressão nativa
 export const exportPdf = (ids: DocId[], dest: string) => invoke<void>("export_pdf", { ids, dest });
-export const printNative = (ids: DocId[], opts: PrintOptions) => invoke<void>("print_native", { ids, opts });
+/** `true` = entregue à impressora (ou gravado em arquivo); `false` = cancelado. */
+export const printNative = (ids: DocId[], opts: PrintOptions, title: string) =>
+  invoke<boolean>("print_native", { ids, opts, title });
+export const printPreview = (ids: DocId[], opts: PrintOptions) => invoke<PrintPreview>("print_preview", { ids, opts });
+export const exportTagged = (id: DocId, dest: string, opts: ExportOptions, keywords: string[] | null, tags: string[]) =>
+  invoke<TaggedExport>("export_tagged", { id, dest, opts, keywords, tags });
 
 // Lote 12: janelas e scanner
 export const newWindow = (ids: DocId[]) => invoke<string>("new_window", { ids });

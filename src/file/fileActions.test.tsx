@@ -9,10 +9,14 @@ const ipc = vi.hoisted(() => ({
   estimateSize: vi.fn(async () => 2048),
   pathExists: vi.fn(async () => false),
   heicEncoderAvailable: vi.fn(async () => true),
+  documentDpi: vi.fn<(...a: unknown[]) => Promise<number | null>>(async () => null),
+  exportTagged: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
 }));
 vi.mock("../ipc/commands", () => ipc);
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 
+import { getToasts, resetToastsForTests } from "../chrome/notify";
+import { useUi } from "../store/ui";
 import { useDocs } from "../store/docs";
 import { setPrefs } from "../store/prefs";
 import { addKeyword, getPendingKeywords, resetKeywordsForTests } from "../inspector/keywords";
@@ -160,6 +164,179 @@ describe("ExportDialog", () => {
     render(createElement(ExportDialog, { doc, mode: "export", onClose: () => {} }));
     expect(screen.getByTestId("export-estimate").textContent).toContain("Calculando");
     await vi.waitFor(() => expect(screen.getByTestId("export-estimate").textContent).toContain("2 KB"));
+  });
+});
+
+describe("ExportDialog completo (Lote 11)", () => {
+  const open = () => {
+    ipc.exportDoc.mockResolvedValue(doc);
+    ipc.pathExists.mockResolvedValue(false);
+    render(createElement(ExportDialog, { doc, mode: "export", onClose: () => {} }));
+  };
+  const format = () => screen.getByLabelText("Formato") as HTMLSelectElement;
+  const formats = () => [...format().options].map((o) => o.value);
+  const choose = (f: string) => fireEvent.change(format(), { target: { value: f } });
+  const ok = () => act(async () => fireEvent.click(screen.getByTestId("export-ok")));
+  const sent = (dest: string, opts: object) =>
+    expect(ipc.exportDoc).toHaveBeenCalledWith(1, dest, expect.objectContaining(opts), null);
+
+  it("PDF sai sem perdas por padrão e aceita qualidade", async () => {
+    open();
+    choose("pdf");
+    expect(screen.queryByRole("slider")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Sem perdas"));
+    expect(screen.getByRole("slider")).toHaveProperty("value", "90");
+    fireEvent.click(screen.getByLabelText("Sem perdas"));
+    await ok();
+    sent("/fotos/Ação 1.pdf", { format: "pdf", quality: null });
+  });
+
+  it("GIF, ICO, TGA e Photoshop só aparecem com Alt, que não chega à barra de menus", () => {
+    open();
+    expect(formats()).not.toContain("gif");
+    const menu = vi.fn();
+    window.addEventListener("keydown", menu);
+    fireEvent.keyDown(document.body, { key: "Alt" });
+    window.removeEventListener("keydown", menu);
+    expect(menu).not.toHaveBeenCalled();
+    expect(formats().slice(-4)).toEqual(["gif", "ico", "tga", "psd"]);
+    choose("gif");
+    expect((screen.getByTestId("export-name") as HTMLInputElement).value).toBe("Ação 1.gif");
+    const profile = screen.getByLabelText("Perfil de cor") as HTMLSelectElement;
+    expect([...profile.options].map((o) => o.value)).toEqual(["keep", "srgb"]);
+  });
+
+  it("Alt+clique no formato também mostra os extras", () => {
+    open();
+    fireEvent.pointerDown(format(), { altKey: false });
+    expect(formats()).not.toContain("psd");
+    fireEvent.pointerDown(format(), { altKey: true });
+    expect(formats()).toContain("psd");
+  });
+
+  it("TIFF tem compressão e EXR tem half/float", async () => {
+    open();
+    expect(screen.queryByLabelText("Compressão")).toBeNull();
+    choose("tiff");
+    fireEvent.change(screen.getByLabelText("Compressão"), { target: { value: "lzw" } });
+    await ok();
+    sent("/fotos/Ação 1.tiff", { format: "tiff", tiffCompression: "lzw" });
+    cleanup();
+    open();
+    choose("exr");
+    fireEvent.change(screen.getByLabelText("Profundidade"), { target: { value: "half" } });
+    await ok();
+    sent("/fotos/Ação 1.exr", { format: "exr", exrHalf: true });
+  });
+
+  it("ppp: sugere o do documento, vazio o mantém e some onde o formato não guarda", async () => {
+    ipc.documentDpi.mockResolvedValueOnce(300);
+    open();
+    const dpi = () => screen.getByTestId("export-dpi") as HTMLInputElement;
+    await vi.waitFor(() => expect(dpi().placeholder).toBe("300"));
+    await ok();
+    cleanup();
+    open();
+    expect((ipc.exportDoc.mock.calls[0][2] as { dpi?: number }).dpi ?? null).toBeNull();
+    fireEvent.change(dpi(), { target: { value: "144" } });
+    await ok();
+    sent("/fotos/Ação 1.jpg", { dpi: 144 });
+    cleanup();
+    open();
+    fireEvent.change(dpi(), { target: { value: "144" } });
+    fireEvent.keyDown(document.body, { key: "Alt" });
+    choose("gif");
+    expect(screen.queryByTestId("export-dpi")).toBeNull();
+    await ok();
+    sent("/fotos/Ação 1.gif", { dpi: null });
+  });
+
+  it("etiquetas vão com a exportação; se o disco não as guarda, avisa e o arquivo sai", async () => {
+    resetToastsForTests();
+    ipc.exportTagged.mockResolvedValue({ info: doc, tagsError: { code: "unsupported", message: "" } });
+    open();
+    const tags = screen.getByPlaceholderText("Adicionar etiqueta");
+    fireEvent.change(tags, { target: { value: "Férias" } });
+    fireEvent.blur(tags);
+    await ok();
+    expect(ipc.exportDoc).not.toHaveBeenCalled();
+    expect(ipc.exportTagged).toHaveBeenCalledWith(1, "/fotos/Ação 1.jpg", expect.objectContaining({ format: "jpeg" }), null, ["Férias"]);
+    expect(getToasts().some((t) => t.text.includes("não guarda as etiquetas"))).toBe(true);
+  });
+});
+
+describe("Exportar em documento de várias páginas", () => {
+  const tiff: DocInfo = { ...doc, format: "tiff", frames: 3 };
+  const open = (page: number | null) => {
+    useDocs.setState({ docs: [tiff], activeId: 1 });
+    useUi.setState({ page });
+    render(createElement(ExportDialog, { doc: tiff, mode: "export", onClose: () => {} }));
+  };
+  beforeEach(() => void ipc.exportDoc.mockResolvedValue(tiff));
+  afterEach(() => {
+    useDocs.setState({ docs: [doc], activeId: 1 });
+    useUi.setState({ page: null });
+  });
+
+  it("avisa e grava a página exibida, também depois de trocar o formato", async () => {
+    open(1);
+    expect(screen.getByTestId("export-page").textContent).toBe("Só a página 2 de 3 será gravada.");
+    fireEvent.change(screen.getByLabelText("Formato"), { target: { value: "png" } });
+    await act(async () => fireEvent.click(screen.getByTestId("export-ok")));
+    expect(ipc.exportDoc).toHaveBeenCalledWith(1, expect.any(String), expect.objectContaining({ format: "png", frame: 1 }), null);
+  });
+
+  it("numa imagem simples não há aviso", () => {
+    render(createElement(ExportDialog, { doc, mode: "export", onClose: () => {} }));
+    expect(screen.queryByTestId("export-page")).toBeNull();
+  });
+});
+
+describe("Substituir só o arquivo do aviso", () => {
+  const replace = () => screen.queryByRole("button", { name: "Substituir" });
+  const ok = () => act(async () => fireEvent.click(screen.getByTestId("export-ok")));
+  const set = (id: string, value: string) => fireEvent.change(screen.getByTestId(id), { target: { value } });
+
+  beforeEach(() => {
+    ipc.exportDoc.mockResolvedValue(doc);
+    ipc.pathExists.mockResolvedValue(true);
+    render(createElement(ExportDialog, { doc, mode: "export", onClose: () => {} }));
+  });
+  afterEach(() => void ipc.pathExists.mockResolvedValue(false));
+
+  it.each([
+    ["nome", () => set("export-name", "outra.jpg")],
+    ["pasta", () => set("export-folder", "/outra")],
+    ["formato", () => fireEvent.change(screen.getByLabelText("Formato"), { target: { value: "png" } })],
+  ])("mudar %s retira o aviso e o botão", async (_, change) => {
+    await ok();
+    expect(replace()).not.toBeNull();
+    change();
+    expect(replace()).toBeNull();
+    await ok();
+    expect(ipc.exportDoc).not.toHaveBeenCalled();
+    expect(replace()).not.toBeNull();
+  });
+
+  it("mudar outra opção mantém o aviso, e Substituir grava o arquivo avisado", async () => {
+    await ok();
+    fireEvent.click(screen.getByLabelText("Remover metadados (EXIF, GPS, IPTC)"));
+    await act(async () => fireEvent.click(replace()!));
+    expect(ipc.exportDoc).toHaveBeenCalledWith(1, "/fotos/Ação 1.jpg", expect.anything(), null);
+  });
+
+  it("nome trocado durante a checagem: Substituir pergunta pelo novo antes de gravar", async () => {
+    let exists!: (v: boolean) => void;
+    ipc.pathExists.mockImplementationOnce(() => new Promise<boolean>((r) => (exists = r)));
+    await ok();
+    set("export-name", "outra.jpg");
+    await act(async () => exists(true));
+    const b = replace();
+    if (b) await act(async () => fireEvent.click(b));
+    expect(ipc.exportDoc).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain("outra.jpg");
+    await act(async () => fireEvent.click(replace()!));
+    expect(ipc.exportDoc).toHaveBeenCalledWith(1, "/fotos/outra.jpg", expect.anything(), null);
   });
 });
 

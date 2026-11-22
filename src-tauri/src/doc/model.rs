@@ -171,6 +171,9 @@ pub enum Op {
     Composite {
         #[serde(with = "serde_bytes")]
         png: Vec<u8>,
+        /// Só nesta página; `None` = em todas (animação ou imagem simples).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        frame: Option<u32>,
     },
     /// Atribuir Perfil… (Lote 1): reinterpreta os pixels com outro perfil ICC, sem mudá-los.
     /// `profile`: id de `image::icc::BUILTIN` ou caminho absoluto de um .icc/.icm.
@@ -183,5 +186,13 @@ impl Op {
     /// A operação não altera os pixels (só como eles são interpretados).
     pub fn keeps_pixels(&self) -> bool {
         matches!(self, Op::AssignProfile { .. })
+    }
+
+    /// A operação muda os pixels do quadro `frame`.
+    pub fn touches(&self, frame: u32) -> bool {
+        match self {
+            Op::Composite { frame: Some(f), .. } => *f == frame,
+            op => !op.keeps_pixels(),
+        }
     }
 }

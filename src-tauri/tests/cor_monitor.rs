@@ -39,9 +39,9 @@ fn near(got: &[u8], want: &[u8]) {
 fn copia_cola_achata(profile: Option<&str>) -> RgbaImage {
     let (store, id) = store_with(profile);
     let seen = view(&store, id);
-    let copied = copied_region(&store, id, None, None).unwrap();
+    let copied = copied_region(&store, id, 0, None, None).unwrap();
     let png = layer_png(copied.clone()).unwrap();
-    store.apply_op(id, Op::Composite { png }).unwrap();
+    store.apply_op(id, Op::Composite { png, frame: None }).unwrap();
     near(&view(&store, id), &seen);
     near(&store.render_full(id, 0).unwrap().get_pixel(1, 1).0, &PX);
     copied

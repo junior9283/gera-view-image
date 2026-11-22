@@ -20,6 +20,7 @@ import { getItems, resetMarkupForTests, useMarkup } from "./store";
 import { addAnnotation } from "./actions";
 import { resetHistoryForTests } from "./history";
 import { useSelection } from "../store/selection";
+import { useUi } from "../store/ui";
 
 const info: DocInfo = {
   id: 7, path: "/a.png", name: "a.png", format: "png", width: 400, height: 300, frames: 1,
@@ -216,5 +217,58 @@ describe("inspetor", () => {
     src.select(7, "t");
     expect(useMarkup.getState().selected[7]).toEqual(["t"]);
     expect(useMarkup.getState().visible).toBe(true);
+  });
+});
+
+describe("documento de várias páginas", () => {
+  const pages: DocInfo = { ...info, id: 9, format: "tiff", frames: 3 };
+  const down = (x: number, y: number) =>
+    fireEvent.pointerDown(screen.getByTestId("markup-layer"), { clientX: x, clientY: y, button: 0, pointerId: 1 });
+
+  beforeEach(() => {
+    useDocs.getState().add([pages]);
+    useDocs.setState({ activeId: 9 });
+    useUi.setState({ page: null });
+    useMarkup.setState({ visible: true, tool: "select" });
+  });
+  afterEach(() => useUi.setState({ page: null }));
+
+  it("a anotação só recebe o clique na página em que foi feita", () => {
+    useUi.setState({ page: 1 });
+    addAnnotation(9, rect("p1"), false);
+    render(<Slot name="viewport-overlay" props={overlay} />);
+    down(12, 12);
+    expect(useMarkup.getState().selected[9]).toEqual(["p1"]);
+    act(() => useUi.setState({ page: 0 }));
+    down(12, 12);
+    expect(useMarkup.getState().selected[9]).toEqual([]);
+  });
+
+  it("trocar de página desmarca: Delete não apaga o que não se vê", () => {
+    useUi.setState({ page: 1 });
+    addAnnotation(9, rect("p1"));
+    expect(useMarkup.getState().selected[9]).toEqual(["p1"]);
+    act(() => useUi.setState({ page: 2 }));
+    expect(useMarkup.getState().selected[9]).toEqual([]);
+  });
+
+  it("escolher na lista do Inspetor vai para a página da anotação", () => {
+    useUi.setState({ page: 2 });
+    addAnnotation(9, rect("p2"), false);
+    useUi.setState({ page: 0 });
+    getAnnotationSource()!.select(9, "p2");
+    expect(useUi.getState().page).toBe(2);
+    expect(useMarkup.getState().selected[9]).toEqual(["p2"]);
+  });
+
+  it("texto novo fica na página mostrada; numa imagem simples nada muda", () => {
+    useUi.setState({ page: 2 });
+    useMarkup.setState({ tool: "text" });
+    render(<Slot name="viewport-overlay" props={overlay} />);
+    down(20, 20);
+    expect(getItems(9)[0].page).toBe(2);
+    useDocs.setState({ activeId: 7 });
+    addAnnotation(7, rect("s"));
+    expect(getItems(7)).toEqual([rect("s")]);
   });
 });
