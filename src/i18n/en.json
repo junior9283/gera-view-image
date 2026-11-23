@@ -1005,6 +1005,7 @@
     "dpi": "{{value}} dpi",
     "area": "Scans the whole glass area.",
     "searching": "Looking for scanners…",
+    "reading": "Reading scanner options…",
     "scanning": "Scanning…",
     "scan": "Scan",
     "cancel": "Cancel",

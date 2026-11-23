@@ -58,11 +58,12 @@ function ScanForm() {
     setBusy("options");
     ipc.scanOptions(name).then(
       (o) => {
-        if (asked.current !== name || !alive.current || !o) return;
+        if (asked.current !== name || !alive.current) return;
+        setBusy(null);
+        if (!o) return; // cancelado: escolher o dispositivo de novo volta a ler
         setOptions(o);
         setMode((m) => (o.modes.includes(m) ? m : o.modes[0] ?? "color"));
         setDpi(o.resolution);
-        setBusy(null);
       },
       (e) => {
         if (asked.current !== name || !alive.current) return;
@@ -76,9 +77,10 @@ function ScanForm() {
     alive.current = true;
     ipc.scanDevices().then(
       (list) => {
-        if (!alive.current || !list) return;
-        setDevices(list);
+        if (!alive.current) return;
         setBusy(null);
+        if (!list) return; // cancelado
+        setDevices(list);
         if (list.length) choose(list[0].name);
         else setError(t("scan.noDevice"));
       },
@@ -118,7 +120,7 @@ function ScanForm() {
     }
   };
 
-  const status = busy === "devices" ? "scan.searching" : busy === "scanning" ? "scan.scanning" : null;
+  const status = busy && { devices: "scan.searching", options: "scan.reading", scanning: "scan.scanning" }[busy];
   const ready = !!device && !!options && !busy;
   return (
     <div className="file-backdrop" role="presentation">

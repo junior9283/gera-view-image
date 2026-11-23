@@ -1005,6 +1005,7 @@
     "dpi": "{{value}} ppp",
     "area": "Digitaliza a área inteira do vidro.",
     "searching": "Procurando scanners…",
+    "reading": "Lendo as opções do scanner…",
     "scanning": "Digitalizando…",
     "scan": "Digitalizar",
     "cancel": "Cancelar",

@@ -140,4 +140,33 @@ describe("Importar do Scanner", () => {
     await flush();
     expect(screen.getByRole("alert").textContent).toBe("O scanner demorou demais e a digitalização foi interrompida.");
   });
+
+  it("lendo as opções do dispositivo, o estado é anunciado", async () => {
+    let finish: (v: ScanOptions | null) => void = () => {};
+    ipc.scanOptions.mockImplementation(() => new Promise((r) => (finish = r)));
+    await openDialog();
+    expect(screen.getByRole("status").textContent).toBe("Lendo as opções do scanner…");
+    await act(async () => finish(OPTIONS));
+    await flush();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("opções canceladas (null) não deixam o diálogo ocupado para sempre", async () => {
+    ipc.scanOptions.mockResolvedValueOnce(null);
+    await openDialog();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-busy")).toBe("false");
+    expect(screen.queryByRole("status")).toBeNull();
+    // Escolher de novo o dispositivo volta a ler as opções.
+    fireEvent.change(screen.getByLabelText("Dispositivo"), { target: { value: "epson2:net:10.0.0.9" } });
+    await flush();
+    expect((screen.getByRole("button", { name: "Digitalizar" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("busca de dispositivos cancelada (null) não deixa o diálogo ocupado", async () => {
+    ipc.scanDevices.mockResolvedValueOnce(null);
+    await openDialog();
+    expect(screen.getByRole("dialog").getAttribute("aria-busy")).toBe("false");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
 });
