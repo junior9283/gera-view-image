@@ -82,6 +82,18 @@
     <mediatype>image/heif</mediatype>
     <mediatype>image/avif</mediatype>
     <mediatype>image/jp2</mediatype>
+    <mediatype>image/jpx</mediatype>
+    <mediatype>image/x-jp2-codestream</mediatype>
+    <mediatype>image/jxl</mediatype>
+    <mediatype>image/x-exr</mediatype>
+    <mediatype>image/x-hdr</mediatype>
+    <mediatype>image/vnd.radiance</mediatype>
+    <mediatype>image/x-portable-anymap</mediatype>
+    <mediatype>image/x-portable-bitmap</mediatype>
+    <mediatype>image/x-portable-graymap</mediatype>
+    <mediatype>image/x-portable-pixmap</mediatype>
+    <mediatype>image/x-icns</mediatype>
+    <mediatype>image/x-dds</mediatype>
     <mediatype>image/x-icon</mediatype>
     <mediatype>image/svg+xml</mediatype>
     <mediatype>image/vnd.adobe.photoshop</mediatype>
