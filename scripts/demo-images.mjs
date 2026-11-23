@@ -28,7 +28,8 @@ function chunk(type, data) {
   crc.writeUInt32BE(crc32(td));
   return Buffer.concat([len, td, crc]);
 }
-export function encodePng(w, h, rgb) {
+/** PNG RGB; `extra` são pedaços `[tipo, dados]` gravados antes do IDAT (eXIf, iTXt). */
+export function encodePng(w, h, rgb, extra = []) {
   const raw = Buffer.alloc((w * 3 + 1) * h);
   for (let y = 0; y < h; y++) {
     raw[y * (w * 3 + 1)] = 0;
@@ -41,9 +42,158 @@ export function encodePng(w, h, rgb) {
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", ihdr),
+    ...extra.map(([type, data]) => chunk(type, data)),
     chunk("IDAT", deflateSync(raw, { level: 9 })),
     chunk("IEND", Buffer.alloc(0)),
   ]);
+}
+
+// ---------- TIFF (little-endian): EXIF e TIFF de várias páginas ----------
+const ASCII = 2;
+const SHORT = 3;
+const LONG = 4;
+const RATIONAL = 5;
+const UNDEFINED = 7;
+const BYTE = 1;
+
+function tagBytes(type, values) {
+  if (type === ASCII) return Buffer.from(`${values}\0`, "utf8");
+  if (type === UNDEFINED) return Buffer.from(values, "latin1");
+  if (type === BYTE) return Buffer.from(values);
+  const size = type === SHORT ? 2 : type === LONG ? 4 : 8;
+  const b = Buffer.alloc(values.length * size);
+  values.forEach((v, i) => {
+    if (type === SHORT) b.writeUInt16LE(v, i * 2);
+    else if (type === LONG) b.writeUInt32LE(v, i * 4);
+    else {
+      b.writeUInt32LE(v[0], i * 8);
+      b.writeUInt32LE(v[1], i * 8 + 4);
+    }
+  });
+  return b;
+}
+
+/**
+ * Uma IFD que começa em `start`, com os valores longos logo depois dela. `entries`: `[tag, tipo,
+ * valores]` em ordem crescente de tag. O tamanho não depende de `start` nem dos valores LONG.
+ */
+function ifd(entries, start, next = 0) {
+  const head = Buffer.alloc(2 + entries.length * 12 + 4);
+  head.writeUInt16LE(entries.length, 0);
+  const data = [];
+  let dataAt = start + head.length;
+  entries.forEach(([tag, type, values], i) => {
+    const bytes = tagBytes(type, values);
+    const at = 2 + i * 12;
+    head.writeUInt16LE(tag, at);
+    head.writeUInt16LE(type, at + 2);
+    const count = type === ASCII || type === UNDEFINED || type === BYTE ? bytes.length : values.length;
+    head.writeUInt32LE(count, at + 4);
+    if (bytes.length <= 4) bytes.copy(head, at + 8);
+    else {
+      head.writeUInt32LE(dataAt, at + 8);
+      const padded = bytes.length % 2 ? Buffer.concat([bytes, Buffer.alloc(1)]) : bytes;
+      data.push(padded);
+      dataAt += padded.length;
+    }
+  });
+  head.writeUInt32LE(next, head.length - 4);
+  return Buffer.concat([head, ...data]);
+}
+
+const TIFF_HEADER = Buffer.from([0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00]);
+const dms = (deg, min, sec) => [
+  [deg, 1],
+  [min, 1],
+  [sec, 1],
+];
+
+/** EXIF fictício: câmera de exemplo, exposição e GPS (Rio de Janeiro). */
+export function demoExif() {
+  const exifIfd = [
+    [0x829a, RATIONAL, [[1, 250]]],
+    [0x829d, RATIONAL, [[8, 1]]],
+    [0x8827, SHORT, [100]],
+    [0x9000, UNDEFINED, "0232"],
+    [0x9003, ASCII, "2026:11:20 18:30:00"],
+    [0x920a, RATIONAL, [[35, 1]]],
+  ];
+  const gpsIfd = [
+    [0x0000, BYTE, [2, 3, 0, 0]],
+    [0x0001, ASCII, "S"],
+    [0x0002, RATIONAL, dms(22, 57, 7)],
+    [0x0003, ASCII, "W"],
+    [0x0004, RATIONAL, dms(43, 12, 38)],
+    [0x0005, BYTE, [0]],
+    [0x0006, RATIONAL, [[710, 1]]],
+  ];
+  const ifd0 = (exifAt, gpsAt) => [
+    [0x010f, ASCII, "Exemplo"],
+    [0x0110, ASCII, "Câmera de demonstração"],
+    [0x011a, RATIONAL, [[72, 1]]],
+    [0x011b, RATIONAL, [[72, 1]]],
+    [0x0128, SHORT, [2]],
+    [0x0131, ASCII, "demo-images.mjs"],
+    [0x0132, ASCII, "2026:11:20 18:30:00"],
+    [0x8769, LONG, [exifAt]],
+    [0x8825, LONG, [gpsAt]],
+  ];
+  const exifAt = 8 + ifd(ifd0(0, 0), 8).length;
+  const gpsAt = exifAt + ifd(exifIfd, exifAt).length;
+  return Buffer.concat([TIFF_HEADER, ifd(ifd0(exifAt, gpsAt), 8), ifd(exifIfd, exifAt), ifd(gpsIfd, gpsAt)]);
+}
+
+/** Pacote XMP com título e palavras-chave (dc:subject). */
+export function demoXmp(title, keywords) {
+  const li = keywords.map((k) => `<rdf:li>${k}</rdf:li>`).join("");
+  return (
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">' +
+    '<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">' +
+    `<dc:title><rdf:Alt><rdf:li xml:lang="x-default">${title}</rdf:li></rdf:Alt></dc:title>` +
+    `<dc:subject><rdf:Bag>${li}</rdf:Bag></dc:subject>` +
+    "</rdf:Description></rdf:RDF></x:xmpmeta>"
+  );
+}
+
+/** Pedaço iTXt do PNG com o XMP (sem compressão). */
+const xmpChunk = (xmp) => ["iTXt", Buffer.concat([Buffer.from("XML:com.adobe.xmp\0\0\0\0\0", "latin1"), Buffer.from(xmp, "utf8")])];
+
+/** TIFF RGB de várias páginas, uma faixa Deflate por página. `pages`: `[{ w, h, rgb }]`. */
+export function encodeTiff(pages) {
+  const strips = pages.map((p) => deflateSync(p.rgb, { level: 9 }));
+  const entries = (p, i, stripAt, stripLen) => [
+    [256, LONG, [p.w]],
+    [257, LONG, [p.h]],
+    [258, SHORT, [8, 8, 8]],
+    [259, SHORT, [8]],
+    [262, SHORT, [2]],
+    [273, LONG, [stripAt]],
+    [277, SHORT, [3]],
+    [278, LONG, [p.h]],
+    [279, LONG, [stripLen]],
+    [282, RATIONAL, [[72, 1]]],
+    [283, RATIONAL, [[72, 1]]],
+    [284, SHORT, [1]],
+    [296, SHORT, [2]],
+    [297, SHORT, [i, pages.length]],
+  ];
+  // Cada página: faixa (tamanho par) e depois a IFD; a 1ª IFD vem no cabeçalho.
+  const padded = strips.map((s) => (s.length % 2 ? Buffer.concat([s, Buffer.alloc(1)]) : s));
+  const stripAt = [];
+  const ifdAt = [];
+  let at = 8;
+  pages.forEach((p, i) => {
+    stripAt.push(at);
+    ifdAt.push(at + padded[i].length);
+    at = ifdAt[i] + ifd(entries(p, i, 0, 0), 0).length;
+  });
+  const header = Buffer.from(TIFF_HEADER);
+  header.writeUInt32LE(ifdAt[0], 4);
+  const body = pages.flatMap((p, i) => [
+    padded[i],
+    ifd(entries(p, i, stripAt[i], strips[i].length), ifdAt[i], ifdAt[i + 1] ?? 0),
+  ]);
+  return Buffer.concat([header, ...body]);
 }
 
 // ---------- desenho ----------
@@ -59,16 +209,16 @@ const hsv = (h, s, v) => {
   return [f(5), f(3), f(1)];
 };
 
-function render(fn) {
+function pixels(fn) {
   const px = Buffer.alloc(W * H * 3);
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) px.set(fn(x, y), (y * W + x) * 3);
-  return encodePng(W, H, px);
+  return px;
 }
 
 /** Pôr do sol: céu em gradiente, sol, duas cadeias de montanhas e reflexo no lago. */
 const porDoSol = () =>
-  render((x, y) => {
+  pixels((x, y) => {
     const horizon = H * 0.62;
     const ridge1 = horizon - 120 - 70 * Math.sin(x / 140) - 40 * Math.sin(x / 47 + 1);
     const ridge2 = horizon - 40 - 50 * Math.sin(x / 90 + 2) - 20 * Math.sin(x / 31);
@@ -87,7 +237,7 @@ const porDoSol = () =>
 
 /** Formas geométricas coloridas sobre fundo claro. */
 const formas = () =>
-  render((x, y) => {
+  pixels((x, y) => {
     const shapes = [
       () => Math.hypot(x - 380, y - 400) < 230 && [235, 80, 70],
       () => x > 700 && x < 1150 && y > 180 && y < 560 && [60, 130, 230],
@@ -109,14 +259,14 @@ const formas = () =>
 
 /** Padrão de ondas em arco-íris. */
 const padrao = () =>
-  render((x, y) => {
+  pixels((x, y) => {
     const v = Math.sin(x / 60) + Math.sin(y / 45) + Math.sin((x + y) / 90) + Math.sin(Math.hypot(x - 800, y - 530) / 40);
     return hsv(((v + 4) / 8 + x / W / 3) % 1, 0.65, 0.95);
   });
 
 /** "Cartão-postal": moldura branca, céu, mar, sol, ilha com palmeira e selo no canto. */
 const cartaoPostal = () =>
-  render((x, y) => {
+  pixels((x, y) => {
     const m = 50;
     if (x < m || y < m || x >= W - m || y >= H - m) return [250, 248, 240];
     const stamp = x > W - m - 230 && x < W - m - 40 && y > m + 30 && y < m + 260;
@@ -144,7 +294,7 @@ const cartaoPostal = () =>
 
 /** Objeto sobre fundo liso (para o Alfa Instantâneo). */
 const fundoLiso = () =>
-  render((x, y) => {
+  pixels((x, y) => {
     const [cx, cy] = [800, 530];
     const a = Math.atan2(y - cy, x - cx);
     const r = Math.hypot(x - cx, y - cy);
@@ -153,12 +303,20 @@ const fundoLiso = () =>
     return [70, 175, 90];
   });
 
-const IMAGES = {
-  "01-por-do-sol.png": porDoSol,
-  "02-formas.png": formas,
-  "03-padrao.png": padrao,
-  "04-cartao-postal.png": cartaoPostal,
-  "05-estrela-fundo-liso.png": fundoLiso,
+const png = (scene, extra) => () => encodePng(W, H, scene(), extra);
+/** Metadados fictícios do pôr do sol, para o Inspetor (EXIF, GPS, título e palavras-chave). */
+const sunsetMeta = () => [
+  ["eXIf", demoExif()],
+  xmpChunk(demoXmp("Pôr do sol sintético", ["pôr do sol", "montanhas", "lago", "exemplo"])),
+];
+
+export const IMAGES = {
+  "01-por-do-sol.png": () => encodePng(W, H, porDoSol(), sunsetMeta()),
+  "02-formas.png": png(formas),
+  "03-padrao.png": png(padrao),
+  "04-cartao-postal.png": png(cartaoPostal),
+  "05-estrela-fundo-liso.png": png(fundoLiso),
+  "06-tres-paginas.tif": () => encodeTiff([formas, cartaoPostal, fundoLiso].map((s) => ({ w: W, h: H, rgb: s() }))),
 };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
