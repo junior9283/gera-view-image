@@ -40,7 +40,7 @@ afterEach(() => off());
 
 describe("comandos do app", () => {
   it("itens de tarefas futuras ficam sem registro (desabilitados)", () => {
-    for (const id of ["file.save", "file.export", "file.print", "file.newFromClipboard", "file.openRecent", "edit.paste", "tools.annotate.arrow"] as const) {
+    for (const id of ["file.save", "file.export", "file.print", "file.newFromClipboard", "edit.paste", "tools.annotate.arrow"] as const) {
       expect(isRegistered(id)).toBe(false);
       expect(isEnabled(id)).toBe(false);
     }

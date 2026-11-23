@@ -44,7 +44,7 @@ describe("menus dos lotes de paridade", () => {
 
   it("Arquivo segue a ordem do Pré-Visualização", () => {
     expect(commandsOf(menu("file").items)).toEqual([
-      "file.newFromClipboard", "file.open", "file.openRecent",
+      "file.newFromClipboard", "file.open",
       "file.close", "file.closeAll", "file.closeWindow", "file.save", "file.duplicate", "file.saveAs", "file.rename",
       "file.moveTo", "file.moveToTrash", "file.tags", "file.lock", "file.showInFolder", "file.openWith",
       "file.revertLastSaved", "file.revertOriginal", "file.browseVersions",

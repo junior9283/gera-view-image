@@ -54,6 +54,7 @@ export const config: WebdriverIO.Config = {
       const file = path.join(dir, "Ação 1.jpg");
       copyFileSync(path.join(fixtures, "Ação com espaço", "Ação 1.jpg"), file);
       process.env.GVI_E2E_FILE = file;
+      process.env.GVI_E2E_BINARY = binary;
       (capabilities as { "tauri:options": { args: string[] } })["tauri:options"].args = [file];
     }
     driver = spawn(driverPath, ["--port", String(PORT), "--native-port", String(NATIVE_PORT)], {

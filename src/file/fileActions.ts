@@ -13,10 +13,7 @@ import { hasPages, leavesOut } from "../markup/pages";
 import { getItems, useMarkup } from "../markup/store";
 import type { CaptureMode, DocId, DocInfo, ExportOptions, RevertTarget } from "../ipc/types";
 import { useDocs } from "../store/docs";
-import { addRecent, getPrefs, setPrefs } from "../store/prefs";
-import { openHere } from "../tabs/open";
 import { activate, activeDoc, viewable } from "../viewer/actions";
-import { openIds, placeOpened } from "./openFiles";
 import { runBeforeSave } from "./beforeSave";
 import { exportFormatOf } from "./estimate";
 import { confirmLosses, TEXT_FORMATS } from "./loss";
@@ -151,14 +148,8 @@ export async function ignoreChange(id: DocId): Promise<void> {
   await ipc.ignoreDiskChange(id);
 }
 
-/** Arquivo do documento mudou de caminho (renomear/mover). */
-function relocated(info: DocInfo): void {
-  update(info);
-  addRecent(info.path);
-}
-
 export async function renameDoc(id: DocId, name: string): Promise<void> {
-  relocated(await ipc.renameDoc(id, name));
+  update(await ipc.renameDoc(id, name));
 }
 
 export async function moveActive(): Promise<void> {
@@ -166,7 +157,7 @@ export async function moveActive(): Promise<void> {
   if (!d?.path) return;
   const dir = await openDialog({ directory: true, multiple: false, defaultPath: dirname(d.path) });
   if (typeof dir !== "string") return;
-  relocated(await ipc.moveTo(d.id, dir));
+  update(await ipc.moveTo(d.id, dir));
 }
 
 async function addAndShow(info: DocInfo | null): Promise<void> {
@@ -215,14 +206,3 @@ export const openWith = async () => {
   const d = current();
   if (d?.path) await ipc.openWith(d.id);
 };
-
-/** Abre um recente. O que não abre sai da lista; o que não existe mais só gera um aviso. */
-export async function openRecent(path: string): Promise<void> {
-  const before = openIds();
-  const [info] = await openHere([path]);
-  if (!info) return;
-  if (info.error) setPrefs({ recent: getPrefs().recent.filter((p) => p !== path) });
-  if (info.error !== "not_found") return placeOpened([info], before);
-  await useDocs.getState().close(info.id);
-  notify(t("file.recent.missing", { name: basename(path) }));
-}

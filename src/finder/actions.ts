@@ -16,7 +16,6 @@ import { useMarkup } from "../markup/store";
 import { selectedDocs } from "../sidebar/selection";
 import { trashDocs } from "../sidebar/trash";
 import { useDocs } from "../store/docs";
-import { addRecent } from "../store/prefs";
 import { activeDoc } from "../viewer/actions";
 import { askDiscard, setLockedState } from "./store";
 
@@ -72,7 +71,6 @@ export async function saveAsActive(): Promise<void> {
   await runBeforeSave(d.id, page);
   const info = await ipc.saveAs(d.id, dest, opts, getPendingKeywords(d.id));
   update(info);
-  addRecent(info.path);
   markChanged(d.id, null);
   settleKeywords(d.id, format);
   notify(t("file.saved", { name: info.name }));

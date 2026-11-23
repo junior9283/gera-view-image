@@ -1,5 +1,5 @@
-// Liga o menu Arquivo ao registro de comandos, a faixa de alteração externa ao slot
-// `below-toolbar` e os abertos aos Recentes. Fechar a janela: `tabs/closing.ts`.
+// Liga o menu Arquivo ao registro de comandos e a faixa de alteração externa ao slot
+// `below-toolbar`. Fechar a janela: `tabs/closing.ts`.
 import { subscribe } from "../lib/events";
 import { registerDocState } from "../lib/docState";
 import { registerSlot } from "../lib/slots";
@@ -7,9 +7,7 @@ import { listenHere } from "../lib/window";
 import { flattenAnnotations } from "../markup/flatten";
 import { DOC_CHANGED_ON_DISK_EVENT, type DiskChanged } from "../ipc/types";
 import { registerCommand, type CommandId } from "../shortcuts/commands";
-import { OPEN_RECENT_EVENT } from "../shortcuts/events";
 import { useDocs } from "../store/docs";
-import { addRecent, getPrefs } from "../store/prefs";
 import { registerBeforeSave } from "./beforeSave";
 import { hasUnsaved } from "./dirty";
 import { registerOpenRequests } from "./instance";
@@ -30,7 +28,6 @@ type Entry = [CommandId, () => unknown, (() => boolean)?];
 
 const ENTRIES: Entry[] = [
   ["file.newFromClipboard", file.newFromClipboard],
-  ["file.openRecent", () => window.dispatchEvent(new Event(OPEN_RECENT_EVENT)), () => getPrefs().recent.length > 0],
   ["file.save", () => {
     const d = file.current();
     return d && file.saveDoc(d);
@@ -55,21 +52,6 @@ const ENTRIES: Entry[] = [
   ["file.captureScreen", file.capture("screen")],
 ];
 
-/** Documentos já vistos (para pôr nos Recentes só os recém-abertos). */
-const seen = new Set<number>();
-
-function trackRecents(): () => void {
-  const sync = () => {
-    for (const d of useDocs.getState().docs) {
-      if (seen.has(d.id)) continue;
-      seen.add(d.id);
-      if (d.path && !d.error) addRecent(d.path);
-    }
-  };
-  sync();
-  return useDocs.subscribe(sync);
-}
-
 /** Registra comandos, faixa e vigia; devolve a função que desfaz tudo. */
 export function registerFileCommands(): () => void {
   const offs = ENTRIES.map(([id, run, enabled]) => registerCommand(id, run, enabled));
@@ -77,7 +59,6 @@ export function registerFileCommands(): () => void {
   // Anotações da Marcação (Task 8) viram pixels (Op::Composite) antes de qualquer gravação.
   offs.push(registerBeforeSave(async (id, page) => void (await flattenAnnotations(id, page))));
   offs.push(registerSlot("below-toolbar", "disk-banner", DiskBanner));
-  offs.push(trackRecents());
   offs.push(registerOpenRequests());
   offs.push(registerScanner());
   offs.push(
@@ -93,7 +74,5 @@ export function registerFileCommands(): () => void {
       drop: (id) => file.markChanged(id, null),
     }),
   );
-  // Vindo de outra janela, já foi posto nos Recentes ao abrir.
-  offs.push(registerDocState("recent", { dump: () => true, load: (id) => seen.add(id) }));
   return () => offs.forEach((off) => off());
 }

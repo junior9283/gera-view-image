@@ -115,7 +115,7 @@
 .menu-item[aria-disabled="true"] { opacity: 0.45; }
 .menu-item[aria-disabled="true"]:focus { background: var(--chrome-border); color: inherit; }
 .menu-label { flex: 1; max-width: 380px; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
-/* Submenu longo (Abrir Recente) rola em vez de sair da janela; nenhum submenu tem outro dentro. */
+/* Submenu longo rola em vez de sair da janela; nenhum submenu tem outro dentro. */
 .menu-level-1 { max-height: calc(100vh - 110px); overflow-y: auto; }
 .menu-item[aria-checked="true"] .menu-label::before { content: "✓ "; }
 .menu-shortcut, .menu-arrow { opacity: 0.75; font-size: 12px; }

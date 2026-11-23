@@ -461,7 +461,6 @@
       "title": "File",
       "newFromClipboard": "New from Clipboard",
       "open": "Open…",
-      "openRecent": "Open Recent",
       "close": "Close",
       "save": "Save",
       "duplicate": "Duplicate",
@@ -491,8 +490,7 @@
       "share": "Share",
       "shareEmail": "Email…",
       "shareDevice": "KDE Connect…",
-      "importScanner": "Import from Scanner…",
-      "clearMenu": "Clear Menu"
+      "importScanner": "Import from Scanner…"
     },
     "edit": {
       "title": "Edit",
@@ -784,9 +782,6 @@
       "name": "New name",
       "ok": "Rename",
       "cancel": "Cancel"
-    },
-    "recent": {
-      "missing": "“{{name}}” was not found and was removed from the recent files."
     },
     "disk": {
       "changed": "“{{name}}” was changed outside the app.",

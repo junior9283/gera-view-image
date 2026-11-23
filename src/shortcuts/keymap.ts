@@ -7,7 +7,6 @@ export { registerCommand, type CommandId } from "./commands";
 export const KEYMAP: Record<CommandId, string> = {
   "file.newFromClipboard": "Ctrl+N",
   "file.open": "Ctrl+O",
-  "file.openRecent": "",
   "file.close": "Ctrl+W",
   "file.save": "Ctrl+S",
   "file.duplicate": "Ctrl+Shift+S",

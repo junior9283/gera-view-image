@@ -11,7 +11,6 @@ import { hasPages, shownPage } from "../markup/pages";
 import { useDocs } from "../store/docs";
 import { reportBatch, type BatchFailure } from "../sidebar/batch";
 import { batchTargets } from "../sidebar/selection";
-import { addRecent } from "../store/prefs";
 import { viewable } from "../viewer/actions";
 import {
   ALT_FORMATS, EXTENSIONS, defaultOptions, exportFormatOf, exportFormats, formatBytes, useEstimate, useHeicEncoder,
@@ -314,9 +313,8 @@ export function ExportDialog({ doc, mode, onClose }: { doc: DocInfo; mode: "expo
     if (!agreed && (await ipc.pathExists(dest))) return setOverwrite(dest);
     setBusy(true);
     try {
-      const info = await exportDoc(doc.id, dest, out, tags);
+      await exportDoc(doc.id, dest, out, tags);
       lastFolder = folder.trim();
-      if (info.path === dest) addRecent(dest);
       notify(t("file.exported", { name: name.trim() }));
       onClose();
     } catch (e) {

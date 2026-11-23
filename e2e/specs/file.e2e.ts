@@ -1,5 +1,6 @@
 import { browser, $, $$, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
@@ -24,13 +25,18 @@ const scale = async () => Number(await $('[data-testid="zoom-level"]').getAttrib
 
 async function menuItem(menu: number, labels: string[]) {
   await $$(".menubar-button")[menu].click();
-  // O menu monta seus itens depois do clique (itens dinâmicos): espera o item aparecer.
+  // O menu monta seus itens depois do clique (itens dinâmicos): espera o item aparecer, visível.
+  // O texto vem do textContent: com `overflow: hidden` no rótulo (reticências), o getText do
+  // WebKitWebDriver devolve "" (ver docs/testes/armadilhas.md).
   let found: { click(): Promise<unknown> } | undefined;
   await browser
     .waitUntil(
       async () => {
         for (const it of await $$(".menu-level-0 .menu-item")) {
-          if (labels.includes((await it.$(".menu-label").getText()).trim())) return (found = it), true;
+          const label = it.$(".menu-label");
+          if (labels.includes(String(await label.getProperty("textContent")).trim()) && (await label.isDisplayed())) {
+            return (found = it), true;
+          }
         }
         return false;
       },
@@ -77,11 +83,10 @@ describe("arquivo", () => {
   });
 
   it("Exportar para WebP cria o arquivo", async () => {
-    // Reabre o arquivo salvo pelos Recentes (passa pelo open_documents como o Abrir).
-    await menuItem(0, ["Abrir Recente", "Open Recent"]);
-    const recent = $(".menu-level-1 .menu-item");
-    await recent.waitForExist({ timeout: 5000 });
-    await recent.click();
+    // Reabre o arquivo salvo como pelo gerenciador de arquivos: a 2ª execução entrega o caminho à
+    // instância aberta (D-Bus) e sai; a janela o abre pelo open_documents, como o Abrir….
+    const second = spawnSync(process.env.GVI_E2E_BINARY!, [file], { timeout: 20000 });
+    expect(second.status).toBe(0);
     await browser.waitUntil(async () => (await scale()) > 0, { timeout: 10000 });
 
     await menuItem(0, ["Exportar…", "Export…"]);

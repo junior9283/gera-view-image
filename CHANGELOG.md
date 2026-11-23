@@ -7,7 +7,6 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Adicionado
 - Preferências em abas (Geral, Imagens, Assinaturas): "100% corresponde a" um pixel da tela ou ao tamanho impresso (pela resolução da imagem e a do monitor), abrir arquivos em abas, na mesma janela ou em janelas separadas, barra de abas, Texto ao Vivo, fundo atrás da transparência, ordenação, espaço para versões anteriores e a lista de assinaturas salvas (remover ou criar).
-- Arquivo › Abrir Recente virou submenu, com Limpar Menu; um arquivo que não existe mais avisa e sai da lista.
 - Itens de mostrar/ocultar dos menus trocam o rótulo conforme o estado (Mostrar/Ocultar Barra de Ferramentas, Marcação, Inspetor, Lupa, Cores, Fontes, Barra de Abas, Fundo da Imagem, Entrar/Sair da Tela Cheia), e a barra lateral e Ordenar Por mostram ✓ na opção atual. Os botões de alternância da barra de ferramentas ficam marcados quando ligados.
 - Personalizar Barra de Ferramentas: novos itens Seleção (retangular, elíptica, laço e laço inteligente), Remover Fundo, Cores e Fontes.
 - Acessibilidade: a imagem é anunciada com o nome do arquivo e o texto alternativo (ou a descrição); menus da barra de título e do Texto ao Vivo funcionam pelo teclado; diálogos e menus com nome para leitores de tela; animações respeitam "reduzir movimento" e o contraste alto do sistema.
@@ -46,6 +45,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Sair (Ctrl+Q) e reiniciar para atualizar perguntam pelas alterações de todas as janelas antes de fechar qualquer uma; um Cancelar mantém tudo como estava. Fechar Todas também fecha as outras janelas, cada uma perguntando pelas próprias alterações. Fechar a janela pergunta de novo se algo mudou enquanto as outras imagens eram salvas e confirma antes o texto em edição. Se uma janela não responde ou não terminou de abrir, Sair avisa e pergunta em vez de ficar preso; a janela que precisa responder vem para a frente; e fechar durante uma impressão, exportação ou gravação espera ou pergunta.
 - Uma instância só: abrir imagens pelo gerenciador de arquivos (ou por `gera-view-image arquivo`) com o app já aberto as entrega à janela usada por último, que as abre conforme Preferências › Abrir arquivos e vem para a frente; um arquivo já aberto traz a janela dele. Abrir o app de novo sem arquivos só traz a janela para a frente, como no Pré-Visualização. No Wayland, o sistema pode só destacar a janela em vez de trazê-la.
 - O consentimento da câmera da assinatura e o cancelamento do Texto ao Vivo e do Remover Fundo passam a valer só na janela em que foram pedidos. Preferências e assinaturas mudadas numa janela aparecem nas outras.
+
+### Removido
+- Arquivo › Abrir Recente: o app não guarda mais a lista de arquivos abertos, e a lista antiga é apagada das preferências.
 
 ### Corrigido
 - Editar › Apagar e Recortar agiam na imagem mesmo com uma anotação selecionada.
