@@ -8,17 +8,24 @@ import { answerConfirm, closeVersions, useFinderUi } from "./store";
 import { VersionsBrowser } from "./VersionsBrowser";
 import "../file/file.css";
 
-function ConfirmDiscard({ name, text, ok, details }: { name: string; text: string; ok: string; details: string[] }) {
+interface ConfirmProps { name: string; text: string; ok: string; details: string[]; aboveVeil: boolean }
+
+function ConfirmDiscard({ name, text, ok, details, aboveVeil }: ConfirmProps) {
   const { t } = useTranslation();
   const titleId = useId();
+  const bodyId = useId();
   const dialog = useRef<HTMLDivElement>(null);
   useModal(dialog, { onClose: () => answerConfirm(false) });
   return (
-    <div className="file-backdrop" role="presentation">
-      <div ref={dialog} className="file-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
+    // `tabs-question`: a mesma camada das perguntas da janela, acima do véu (`tabs.css`).
+    <div className={aboveVeil ? "file-backdrop tabs-question" : "file-backdrop"} role="presentation">
+      <div
+        ref={dialog} className="file-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId}
+        aria-describedby={details.length > 0 ? bodyId : undefined}
+      >
         <h3 id={titleId}>{t(text, { name })}</h3>
         {details.length > 0 && (
-          <ul className="file-hint">
+          <ul id={bodyId} className="file-hint">
             {details.map((d) => (
               <li key={d}>{d}</li>
             ))}
@@ -41,7 +48,7 @@ export function FinderHost() {
   return (
     <>
       {doc && <VersionsBrowser key={doc.id} doc={doc} onClose={closeVersions} />}
-      {confirm && <ConfirmDiscard key={confirm.id} name={confirm.name} text={confirm.text} ok={confirm.ok} details={confirm.details} />}
+      {confirm && <ConfirmDiscard key={confirm.id} {...confirm} />}
     </>
   );
 }

@@ -1,6 +1,7 @@
 // Estado da interface do Lote 5: popover do título, navegador de versões e confirmação do Lixo.
 import { create } from "zustand";
 import type { DocId } from "../ipc/types";
+import { useTabs } from "../tabs/store";
 
 /** `text` e `ok` são chaves de i18n (`text` recebe `{ name }`); `details`, itens já traduzidos. */
 interface Confirm {
@@ -9,6 +10,8 @@ interface Confirm {
   text: string;
   ok: string;
   details: string[];
+  /** Perguntado com a janela sob o véu (ex.: perdas do Salvar ao fechar): fica acima dele. */
+  aboveVeil: boolean;
   resolve: (ok: boolean) => void;
 }
 
@@ -36,11 +39,16 @@ export const closeVersions = () => useFinderUi.setState({ versions: null });
 export const setLockedState = (id: DocId, locked: boolean) =>
   useFinderUi.setState((s) => ({ locked: { ...s.locked, [id]: locked } }));
 
-/** Pergunta (diálogo do `FinderHost`) se pode descartar as alterações (ou os `details`); `true` = pode. */
+/**
+ * Pergunta (diálogo do `FinderHost`) se pode descartar as alterações (ou os `details`); `true` = pode.
+ * Feita com a janela sob o véu, é a operação em curso que pergunta: o diálogo fica acima do véu. Uma
+ * confirmação aberta antes continua embaixo de um véu posto depois.
+ */
 export function askDiscard(id: DocId, name: string, text: string, ok: string, details: string[] = []): Promise<boolean> {
   return new Promise((resolve) => {
     useFinderUi.getState().confirm?.resolve(false);
-    useFinderUi.setState({ confirm: { id, name, text, ok, details, resolve } });
+    const aboveVeil = useTabs.getState().veil !== null;
+    useFinderUi.setState({ confirm: { id, name, text, ok, details, aboveVeil, resolve } });
   });
 }
 

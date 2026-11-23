@@ -4,6 +4,13 @@ import type { DocInfo } from "../ipc/types";
 import { confirmAndSave, confirmClose, resetUnsavedForTests, setSaveHandler } from "./unsaved";
 import { UnsavedDialog } from "./UnsavedDialog";
 import { registerBeforeSave, runBeforeSave } from "./beforeSave";
+import { askDiscard, resetFinderUiForTests } from "../finder/store";
+import { FinderHost } from "../finder/FinderHost";
+import { putVeil, resetTabsForTests } from "../tabs/store";
+import { TabsOverlays } from "../tabs/AllTabs";
+import { saveAll } from "./unsaved";
+import fileCss from "./file.css?raw";
+import tabsCss from "../tabs/tabs.css?raw";
 
 const info = (id: number, extra: Partial<DocInfo> = {}): DocInfo => ({
   id, path: `/pasta/${id}.png`, name: `foto ${id}.png`, format: "png", width: 10, height: 10, frames: 1,
@@ -68,6 +75,71 @@ describe("confirmAndSave", () => {
     act(() => void confirmAndSave([info(6, { dirty: true })]).then((r) => (ok = r)));
     await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Salvar" })));
     expect(ok).toBe(false);
+  });
+});
+
+/** `z-index` da regra cujo seletor é exatamente `selector` (nos CSS do app). */
+function zOf(selector: string): number {
+  for (const css of [fileCss, tabsCss]) {
+    for (const m of css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      const sels = m[1].split(",").map((x) => x.trim());
+      const z = /z-index:\s*(\d+)/.exec(m[2]);
+      if (z && sels.includes(selector)) return Number(z[1]);
+    }
+  }
+  return 0;
+}
+/** `z-index` efetivo da camada do diálogo de confirmação. */
+const confirmZ = (el: HTMLElement) => {
+  const backdrop = el.closest(".file-backdrop") as HTMLElement;
+  const raised = [...backdrop.classList].filter((c) => c !== "file-backdrop").map((c) => zOf(`.file-backdrop.${c}`));
+  return Math.max(zOf(".file-backdrop"), ...raised);
+};
+
+describe("pergunta feita durante o véu (Salvar ao fechar)", () => {
+  beforeEach(() => {
+    resetTabsForTests();
+    resetFinderUiForTests();
+  });
+
+  it("o aviso de perdas do Salvar fica acima do véu e atende ao mouse e ao teclado", async () => {
+    render(
+      <>
+        <FinderHost />
+        <TabsOverlays />
+      </>,
+    );
+    // Como o `saveDoc` de um AVIF com XMP: lê os metadados e pergunta as perdas antes de gravar.
+    let read = () => {};
+    setSaveHandler(async (d) => {
+      await new Promise<void>((r) => (read = r));
+      return askDiscard(d.id, d.name, "file.loss.title", "file.loss.ok", ["XMP"]);
+    });
+    let ok: boolean | undefined;
+    act(() => void saveAll([info(8, { dirty: true, name: "ação.avif" })]).then((r) => (ok = r)));
+    expect(document.querySelector(".tabs-veil")).toBeTruthy();
+    await act(async () => read());
+    const dlg = await screen.findByRole("alertdialog", { description: "XMP" });
+    expect(confirmZ(dlg)).toBeGreaterThan(zOf(".tabs-veil"));
+    expect(dlg.contains(document.activeElement)).toBe(true);
+    await act(async () => fireEvent.keyDown(document.activeElement!, { key: "Escape" }));
+    expect(ok).toBe(false);
+    expect(document.querySelector(".tabs-veil")).toBeNull();
+  });
+
+  it("uma confirmação aberta antes do véu continua embaixo dele", async () => {
+    render(
+      <>
+        <FinderHost />
+        <TabsOverlays />
+      </>,
+    );
+    act(() => void askDiscard(1, "ação.png", "finder.trash.confirmUnsaved", "finder.trash.ok"));
+    const dlg = await screen.findByRole("alertdialog");
+    let release = () => {};
+    act(() => void (release = putVeil("moving")));
+    expect(confirmZ(dlg)).toBeLessThan(zOf(".tabs-veil"));
+    act(() => release());
   });
 });
 
