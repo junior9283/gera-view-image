@@ -1,12 +1,12 @@
 // Lote 8 (Visualizar extras): Mostrar Lupa, Mostrar Fundo da Imagem, Voltar/Avançar e Fechar Todas.
 // Importado uma vez no `main.tsx`; os registros valem pela vida do app. Guia: docs/arquitetura/extensao.md.
 import * as ipc from "../ipc/commands";
+import { hasPages } from "../lib/pages";
 import { registerSlot } from "../lib/slots";
 import { registerCommand, runCommand } from "../shortcuts/commands";
 import { isTyping } from "../shortcuts/keymap";
 import { useDocs } from "../store/docs";
 import { getPrefs, setPrefs } from "../store/prefs";
-import { hasPages } from "../lib/pages";
 import { useUi } from "../store/ui";
 import { activeDoc, closeDocs, nextPage, prevPage, viewable } from "./actions";
 import { back, canBack, canForward, forward, installHistory } from "./history";

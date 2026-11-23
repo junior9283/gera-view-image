@@ -47,9 +47,12 @@ function paintInto(cov: Uint8Array, m: Mask, w: number, h: number, value: 0 | 1)
     m.type === "polygon"
       ? { type: "polygon", data: m.data.map(([px, py]) => [px - x0, py - y0]) }
       : { type: m.type, data: { ...m.data, x: m.data.x - x0, y: m.data.y - y0 } };
-  const rw = x1 - x0;
-  const part = rasterize(local, rw, y1 - y0);
-  for (let i = 0; i < part.length; i++) if (part[i]) cov[(y0 + Math.floor(i / rw)) * w + x0 + (i % rw)] = value;
+  const [rw, rh] = [x1 - x0, y1 - y0];
+  const part = rasterize(local, rw, rh);
+  for (let y = 0; y < rh; y++) {
+    const [src, dst] = [y * rw, (y0 + y) * w + x0];
+    for (let x = 0; x < rw; x++) if (part[src + x]) cov[dst + x] = value;
+  }
 }
 
 type Bitmap = Extract<Mask, { type: "bitmap" }>;
