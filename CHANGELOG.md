@@ -5,6 +5,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+## [0.5.0] - 2026-11-23
+
 ### Adicionado
 - Preferências em abas (Geral, Imagens, Assinaturas): "100% corresponde a" um pixel da tela ou ao tamanho impresso (pela resolução da imagem e a do monitor), abrir arquivos em abas, na mesma janela ou em janelas separadas, barra de abas, Texto ao Vivo, fundo atrás da transparência, ordenação, espaço para versões anteriores e a lista de assinaturas salvas (remover ou criar).
 - Itens de mostrar/ocultar dos menus trocam o rótulo conforme o estado (Mostrar/Ocultar Barra de Ferramentas, Marcação, Inspetor, Lupa, Cores, Fontes, Barra de Abas, Fundo da Imagem, Entrar/Sair da Tela Cheia), e a barra lateral e Ordenar Por mostram ✓ na opção atual. Os botões de alternância da barra de ferramentas ficam marcados quando ligados.
