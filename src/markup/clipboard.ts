@@ -3,14 +3,13 @@
 // só devolve as anotações enquanto esse desenho ainda estiver lá: a última cópia é que vale.
 import * as ipc from "../ipc/commands";
 import type { DocId } from "../ipc/types";
-import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
 import { activeDoc, viewable } from "../viewer/actions";
 import { commit } from "./actions";
 import { itemsPng } from "./flatten";
 import { bounds, boxOf, clamp, deserialize, newId, normBox, serialize, translate, type Annotation, type Box } from "./model";
-import { onCurrentPage, pageItems, shownSize } from "./pages";
+import { docOf, onCurrentPage, pageItems, shownSize } from "./pages";
 import { annotationsFocused, getItems, getSelected, useMarkup } from "./store";
 
 /** Deslocamento da cópia, em px de tela. */
@@ -42,7 +41,7 @@ export async function copyAnnotations(id: DocId): Promise<Annotation[]> {
 export async function cutAnnotations(id: DocId): Promise<void> {
   const cut = new Set(selectedItems(id).map((a) => a.id));
   await copyAnnotations(id);
-  if (!cut.size || !useDocs.getState().docs.some((d) => d.id === id)) return;
+  if (!cut.size || !docOf(id)) return;
   commit(id, getItems(id).filter((a) => !cut.has(a.id)));
 }
 
