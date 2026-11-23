@@ -6,6 +6,7 @@ use crate::{
         file::{RevertTarget, SaveOutcome},
         model::{DocId, DocInfo},
         store::DocStore,
+        windows::WindowRegistry,
     },
     error::{AppError, AppResult},
     image::encode::ExportOptions,
@@ -18,7 +19,7 @@ use std::{
     sync::mpsc,
     time::Duration,
 };
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
@@ -162,6 +163,37 @@ pub struct DiskChanged {
     pub removed: bool,
 }
 
+/// Avisos de alteração no disco: cada mudança é avisada uma vez à janela que tem o documento. Se ele
+/// muda de janela, a nova também é avisada (o aviso pode ter cruzado com a mudança).
+#[derive(Default)]
+struct Reported(HashMap<DocId, (bool, Option<String>)>);
+
+impl Reported {
+    /// A quem avisar agora. Sem ninguém com o documento (ainda abrindo, ou mudando de janela), fica
+    /// pendente.
+    fn due(&mut self, id: DocId, removed: bool, holder: Option<String>) -> Option<String> {
+        let told = (removed, holder.clone());
+        if self.0.get(&id) == Some(&told) {
+            return None;
+        }
+        self.0.insert(id, told);
+        holder
+    }
+
+    /// Há uma mudança conhecida deste documento (avisada ou pendente)?
+    fn knows(&self, id: DocId) -> bool {
+        self.0.contains_key(&id)
+    }
+
+    fn forget(&mut self, id: DocId) {
+        self.0.remove(&id);
+    }
+
+    fn keep_only(&mut self, docs: &[(DocId, String)]) {
+        self.0.retain(|id, _| docs.iter().any(|(d, _)| d == id));
+    }
+}
+
 /// Observa as pastas dos documentos abertos (notify) e avisa a interface quando um arquivo
 /// muda ou some por fora. Rajadas são agrupadas (300 ms); cada mudança é avisada uma vez.
 pub fn start_watch(app: AppHandle, store: DocStore) {
@@ -179,7 +211,7 @@ pub fn start_watch(app: AppHandle, store: DocStore) {
             return;
         };
         let mut dirs: HashSet<PathBuf> = HashSet::new();
-        let mut reported: HashMap<DocId, bool> = HashMap::new();
+        let mut reported = Reported::default();
         loop {
             let mut touched: HashSet<PathBuf> = HashSet::new();
             if let Ok(p) = rx.recv_timeout(Duration::from_secs(1)) {
@@ -201,24 +233,46 @@ pub fn start_watch(app: AppHandle, store: DocStore) {
                 let _ = watcher.watch(d, RecursiveMode::NonRecursive);
             }
             dirs = want;
-            reported.retain(|id, _| docs.iter().any(|(d, _)| d == id));
+            reported.keep_only(&docs);
             for (id, path) in docs {
-                if !touched.contains(Path::new(&path)) && !reported.contains_key(&id) {
+                if !touched.contains(Path::new(&path)) && !reported.knows(id) {
                     continue;
                 }
                 match store.disk_change(id) {
-                    Ok(Some(removed)) if reported.get(&id) != Some(&removed) => {
-                        // Só a janela dona fica sabendo (sem dono ainda, tenta de novo depois).
-                        if super::window::emit_to_owner(&app, id, CHANGED_EVENT, DiskChanged { id, removed }) {
-                            reported.insert(id, removed);
+                    Ok(Some(removed)) => {
+                        let holder = app.state::<WindowRegistry>().holder(id);
+                        if let Some(label) = reported.due(id, removed, holder) {
+                            let _ = app.emit_to(label, CHANGED_EVENT, DiskChanged { id, removed });
                         }
                     }
-                    Ok(None) => {
-                        reported.remove(&id);
-                    }
-                    _ => {}
+                    Ok(None) => reported.forget(id),
+                    Err(_) => {}
                 }
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mudanca_no_disco_nao_se_perde_com_o_documento_mudando_de_janela() {
+        let id = DocId(1);
+        let mut r = Reported::default();
+        assert_eq!(r.due(id, false, None), None, "ninguém com ele ainda");
+        assert!(r.knows(id), "fica pendente, sem precisar mudar de novo");
+        assert_eq!(r.due(id, false, Some("main".into())).as_deref(), Some("main"));
+        assert_eq!(r.due(id, false, Some("main".into())), None, "uma vez só");
+        assert_eq!(r.due(id, true, Some("main".into())).as_deref(), Some("main"), "agora sumiu");
+        // Movido: a janela nova também é avisada, só depois de o receber.
+        assert_eq!(r.due(id, true, None), None);
+        assert_eq!(r.due(id, true, Some("doc-1".into())).as_deref(), Some("doc-1"));
+        r.forget(id);
+        assert!(!r.knows(id));
+        r.due(id, false, Some("main".into()));
+        r.keep_only(&[(DocId(2), String::new())]);
+        assert!(!r.knows(id), "documento fechado");
+    }
 }

@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { track } from "./inflight";
 import type {
   AppEntry, CaptureMode, ColorAdjust, ColorProfile, DetectedCode, DocId, DocInfo, DragSource, ExportOptions, FileStat,
-  FileVersion, Histogram, Incoming, Mask, Metadata, MetadataEdits, Op, PrintOptions, PrintPreview, Rect, RevertTarget, SaveOutcome, TaggedExport, TextLine,
+  FileVersion, Histogram, Incoming, Mask, Metadata, MetadataEdits, Op, PrintOptions, PrintPreview, QuitOutcome, Rect, RevertTarget, SaveOutcome, TaggedExport, TextLine,
   ViewBuffer, WindowEntry,
 } from "./types";
 // Lote 6
@@ -37,6 +37,10 @@ export const folderImages = (path: string) => invoke<string[]>("folder_images", 
 export const renderView = async (id: DocId, frame: number, maxW: number, maxH: number, region: Rect | null = null) =>
   decodeViewBuffer(await invoke<ArrayBuffer>("render_view", { id, frame, maxW, maxH, region }));
 
+/** `renderView` do visor e da lupa: com a prova de cor do documento. */
+export const renderScreen = async (id: DocId, frame: number, maxW: number, maxH: number, region: Rect | null = null) =>
+  decodeViewBuffer(await invoke<ArrayBuffer>("render_view", { id, frame, maxW, maxH, region, proof: true }));
+
 export const thumbnail = async (id: DocId, frame: number, size: number) =>
   decodeViewBuffer(await invoke<ArrayBuffer>("thumbnail", { id, frame, size }));
 
@@ -67,9 +71,9 @@ export const snapLasso = (id: DocId, points: [number, number][], frame = 0) =>
 export const copyRegion = (id: DocId, mask: Mask | null, frame = 0) =>
   invoke<void>("copy_region", { id, mask, ...onFrame(frame) });
 
-/** Prévia de um ajuste de cor em resolução reduzida; não altera o documento. */
-export const previewAdjust = async (id: DocId, adjust: ColorAdjust, maxW: number, maxH: number, frame = 0) =>
-  decodeViewBuffer(await invoke<ArrayBuffer>("preview_adjust", { id, adjust, maxW, maxH, ...onFrame(frame) }));
+/** Prévia de um ajuste de cor no trecho `region` da página `frame`; não altera o documento. */
+export const previewAdjust = async (id: DocId, adjust: ColorAdjust, maxW: number, maxH: number, frame = 0, region: Rect | null = null) =>
+  decodeViewBuffer(await invoke<ArrayBuffer>("preview_adjust", { id, adjust, maxW, maxH, region, ...onFrame(frame) }));
 
 export const histogram = (id: DocId, frame = 0) => invoke<Histogram>("histogram", { id, ...onFrame(frame) });
 
@@ -102,6 +106,9 @@ export const duplicate = (id: DocId, name: string) => invoke<DocInfo>("duplicate
 /** DPI atual (do arquivo ou do último Ajustar Tamanho da página); `null` se o arquivo não informa. */
 export const documentDpi = (id: DocId, frame = 0) => invoke<number | null>("document_dpi", { id, ...onFrame(frame) });
 
+/** Pixels CSS por polegada do monitor da janela; `null` se o sistema não informa o tamanho. */
+export const screenPpi = () => invoke<number | null>("screen_ppi");
+
 export const pathExists = (path: string) => invoke<boolean>("path_exists", { path });
 
 export const ignoreDiskChange = (id: DocId) => invoke<void>("ignore_disk_change", { id });
@@ -112,6 +119,11 @@ export const reveal = (id: DocId) => invoke<void>("reveal", { id });
 
 /** Arraste nativo para fora da janela; resolve quando ele termina. */
 export const startDrag = (items: DragSource[]) => invoke<void>("start_drag", { items });
+
+/** Copia como arquivos (e, com um só, também a imagem da página `frame`). */
+export const copyFiles = (items: DragSource[], frame = 0) => invoke<void>("copy_files", { items, ...onFrame(frame) });
+/** Arquivos na área de transferência. */
+export const clipboardFiles = () => invoke<string[]>("clipboard_files");
 
 
 export const newFromClipboard = (name: string) => invoke<DocInfo>("new_from_clipboard", { name });
@@ -128,6 +140,13 @@ export const listProfiles = () => invoke<ColorProfile[]>("list_profiles");
 export const assignProfile = (id: DocId, profile: string) => invoke<DocInfo>("assign_profile", { id, profile });
 /** Perfil atual (o atribuído, ou o embutido com `id` vazio); `null` = sRGB presumido. */
 export const documentProfile = (id: DocId) => invoke<ColorProfile | null>("document_profile", { id });
+
+/** Perfis da Prova de Cor: os de `listProfiles` e também os CMYK e cinza instalados. */
+export const listProofProfiles = () => invoke<ColorProfile[]>("list_proof_profiles");
+
+/** Troca o perfil de prova (`null` = nenhum; caminho de um .icc ou id de `ColorProfile`). Só a exibição. */
+export const setProofProfile = (id: DocId, profile: string | null) =>
+  invoke<ColorProfile | null>("set_proof_profile", { id, profile });
 export const setColorManagement = (enabled: boolean) => invoke<void>("set_color_management", { enabled });
 
 // Lote 2: PNG da área de transferência, para colar como camada
@@ -137,6 +156,11 @@ export const imageFilePng = async (path: string) => new Uint8Array(await invoke<
 /** Copiar com as anotações (`png` no tamanho da imagem) compostas por cima; `mask` nula = imagem inteira. */
 export const copyImage = (id: DocId, mask: Mask | null, png: Uint8Array | number[], frame = 0) =>
   invoke<void>("copy_image", { id, mask, png: Array.from(png), ...onFrame(frame) });
+
+/** Copia anotações: `data` (JSON) fica no núcleo, para qualquer janela colar, e `png` vai para o sistema. */
+export const copyAnnotations = (data: string, png: Uint8Array) => invoke<void>("copy_annotations", { data, png: Array.from(png) });
+/** As anotações copiadas, se a cópia delas ainda for a última do sistema. */
+export const pastedAnnotations = () => invoke<string | null>("pasted_annotations");
 
 // Lote 3: Texto ao Vivo e fala
 export const recognizeText = (id: DocId, frame: number) => invoke<TextLine[]>("recognize_text", { id, frame });
@@ -214,17 +238,23 @@ export const bringAllToFront = () => invoke<void>("bring_all_to_front");
 /** Pede às outras janelas que mandem seus documentos para esta. */
 export const mergeWindows = () => invoke<void>("merge_windows");
 export const setWindowTitle = (title: string) => invoke<void>("set_window_title", { title });
-/** Foca a janela dos arquivos já abertos em outra; devolve os caminhos que faltam abrir. */
-export const focusOpenPaths = (paths: string[]) => invoke<string[]>("focus_open_paths", { paths });
-/** Começa a fechar esta janela; falso = há documentos chegando (retire-os e pergunte de novo). */
-export const sealWindow = () => invoke<boolean>("seal_window");
+/** Os caminhos que não estão abertos em outra janela; `focus` traz para a frente a janela dos outros. */
+export const focusOpenPaths = (paths: string[], focus: boolean) => invoke<string[]>("focus_open_paths", { paths, focus });
+/**
+ * Começa a fechar esta janela; falso = há documentos chegando (retire-os e pergunte de novo). `quit` é a
+ * rodada da saída: se ela for cancelada, o selo cai.
+ */
+export const sealWindow = (quit: number | null) => invoke<boolean>("seal_window", { quit });
 export const unsealWindow = () => invoke<void>("unseal_window");
 /** Fecha esta janela (só depois de selada). */
 export const closeWindow = () => invoke<void>("close_window");
 export const closeOtherWindows = () => invoke<void>("close_other_windows");
-/** Pergunta a cada janela; verdadeiro = todas concordaram em fechar. */
-export const confirmQuit = () => invoke<boolean>("confirm_quit");
-export const answerClose = (ok: boolean) => invoke<void>("answer_close", { ok });
+/** Pergunta a cada janela; `skip` = as que não respondem e o usuário decidiu não esperar. */
+export const confirmQuit = (skip: string[]) => invoke<QuitOutcome>("confirm_quit", { skip });
+export const answerClose = (round: number, ok: boolean) => invoke<void>("answer_close", { round, ok });
+export const pong = (n: number) => invoke<void>("pong", { n });
+/** Juntar Todas as Janelas: esta não pode ir agora. */
+export const declineMerge = (to: string) => invoke<void>("decline_merge", { to });
 export const cancelQuit = () => invoke<void>("cancel_quit");
 export const quitApp = () => invoke<void>("quit_app");
 /** `null` = o usuário cancelou. */

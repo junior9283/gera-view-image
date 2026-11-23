@@ -648,3 +648,26 @@ fn base_da_previa_de_ajuste_fica_em_cache_e_invalida_pela_chave() {
     assert_ne!(*e, *d);
     assert!(store.preview_base(DocId(9999), 0, 120, 120).is_err());
 }
+
+/// Prévia de Ajustar Cor no visor: só a região visível da página mostrada.
+#[test]
+fn previa_de_ajuste_da_regiao_e_da_pagina() {
+    let store = DocStore::new();
+    let mut d = decoded(pattern(300, 200));
+    d.frames.push(RgbaImage::from_pixel(300, 200, Rgba([9, 8, 7, 255])));
+    let id = store.insert_decoded("/tmp/previa-regiao.tif", d).id;
+    let r = Rect { x: 40, y: 30, w: 100, h: 80 };
+    let a = store.preview_region(id, 0, 50, 50, Some(r)).unwrap();
+    assert_eq!(*a, store.render_view(id, 0, 50, 50, Some(r)).unwrap());
+    assert!(Arc::ptr_eq(&a, &store.preview_region(id, 0, 50, 50, Some(r)).unwrap()));
+    // Outra região e outra página são outras entradas.
+    let r2 = Rect { x: 41, ..r };
+    assert_eq!(*store.preview_region(id, 0, 50, 50, Some(r2)).unwrap(), store.render_view(id, 0, 50, 50, Some(r2)).unwrap());
+    let p = store.preview_region(id, 1, 50, 50, Some(r)).unwrap();
+    assert_eq!(*p, store.render_view(id, 1, 50, 50, Some(r)).unwrap());
+    assert_ne!(*p, *a);
+    assert_eq!(&p[8..12], [9, 8, 7, 255]);
+    // Região fora da imagem é cortada, sem pânico.
+    let out = Rect { x: u32::MAX, y: u32::MAX, w: u32::MAX, h: u32::MAX };
+    assert!(store.preview_region(id, 0, 50, 50, Some(out)).is_ok());
+}

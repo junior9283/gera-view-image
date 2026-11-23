@@ -1,4 +1,5 @@
 //! Decodificação de todos os formatos de leitura para RGBA8, com a orientação EXIF aplicada.
+use super::{cicp, hdr, icns, jxl, raster::Rgba16Image};
 use crate::{
     doc::model::SourceFormat,
     error::{AppError, AppResult},
@@ -87,7 +88,7 @@ pub const MAX_DECODE_BYTES: usize = 2 << 30;
 pub const MAX_PAGES: usize = 10_000;
 
 /// Recusa dimensões cujo RGBA8 (somado a `already` bytes de páginas anteriores) passe do teto.
-fn check_budget(w: u32, h: u32, already: usize) -> AppResult<usize> {
+pub(super) fn check_budget(w: u32, h: u32, already: usize) -> AppResult<usize> {
     check_budget_max(w, h, already, MAX_DECODE_BYTES)
 }
 
@@ -112,11 +113,22 @@ fn check_budget_max(w: u32, h: u32, already: usize, max: usize) -> AppResult<usi
 /// Limitada a `MAX_DECODE_BYTES`: acima disso a decodificação falha antes de alocar.
 pub fn estimate_bytes(path: &Path, bytes: &[u8]) -> usize {
     let by_file = bytes.len().saturating_mul(8);
-    let est = if detect_format(path, bytes) == Some(SourceFormat::Raw) {
+    let format = detect_format(path, bytes);
+    // Memória de trabalho por pixel, a mesma que cada decodificador confere.
+    let per_pixel = match format {
+        // Luz linear: os pixels passam por f32 antes do RGBA8.
+        Some(SourceFormat::Exr | SourceFormat::Hdr) => 20,
+        Some(SourceFormat::Jxl) => jxl::WORK_BYTES_PER_PIXEL,
+        // PQ/HLG: RGBA16 de trabalho (e, no HEIF, o plano de 16 bits) antes do RGBA8.
+        Some(SourceFormat::Png) if matches!(cicp::png_color(bytes), Some(cicp::Color::Hdr(..))) => 12,
+        Some(SourceFormat::Heic | SourceFormat::Avif) if cicp::isobmff_is_hdr(bytes) => 20,
+        _ => 4,
+    };
+    let est = if format == Some(SourceFormat::Raw) {
         raw_sensor_pixels(bytes).map_or(by_file, |px| px.saturating_mul(12).max(by_file))
     } else {
         imagesize::blob_size(bytes)
-            .map(|s| s.width.saturating_mul(s.height).saturating_mul(4))
+            .map(|s| s.width.saturating_mul(s.height).saturating_mul(per_pixel))
             .unwrap_or(by_file)
     };
     est.min(MAX_DECODE_BYTES)
@@ -167,7 +179,15 @@ fn ext_format(ext: &str) -> Option<SourceFormat> {
         "webp" => Webp,
         "heic" | "heif" | "hif" => Heic,
         "avif" => Avif,
-        "jp2" => Jp2,
+        "jp2" | "jpx" | "jpf" => Jp2,
+        "j2k" | "j2c" | "jpc" => J2c,
+        "jxl" => Jxl,
+        "exr" => Exr,
+        "hdr" | "pic" => Hdr,
+        "pnm" | "pbm" | "pgm" | "ppm" | "pam" => Pnm,
+        "icns" => Icns,
+        "dds" => Dds,
+        "ff" => Farbfeld,
         "ico" => Ico,
         "svg" => Svg,
         "psd" | "psb" => Psd,
@@ -223,6 +243,24 @@ pub fn detect_format(path: &Path, head: &[u8]) -> Option<SourceFormat> {
         Some(Psd)
     } else if starts(b"\0\0\0\x0cjP  \r\n\x87\n") {
         Some(Jp2)
+    } else if starts(&J2K_CODESTREAM) {
+        Some(J2c)
+    } else if starts(&[0xFF, 0x0A]) || starts(b"\0\0\0\x0cJXL \r\n\x87\n") {
+        Some(Jxl)
+    } else if starts(&[0x76, 0x2F, 0x31, 0x01]) {
+        Some(Exr)
+    } else if starts(b"#?RADIANCE") || starts(b"#?RGBE") {
+        Some(Hdr)
+    } else if starts(b"icns") {
+        Some(Icns)
+    } else if starts(b"DDS ") {
+        Some(Dds)
+    } else if starts(b"farbfeld") {
+        Some(Farbfeld)
+    } else if let [b'P', b'1'..=b'7', sep, ..] = head
+        && (sep.is_ascii_whitespace() || *sep == b'#')
+    {
+        Some(Pnm)
     } else {
         None
     };
@@ -233,6 +271,9 @@ pub fn detect_format(path: &Path, head: &[u8]) -> Option<SourceFormat> {
         _ => None,
     })
 }
+
+/// SOC e SIZ de um codestream JPEG 2000 sem contêiner.
+const J2K_CODESTREAM: [u8; 4] = [0xFF, 0x4F, 0xFF, 0x51];
 
 fn looks_like_svg(head: &[u8]) -> bool {
     let txt = String::from_utf8_lossy(&head[..head.len().min(4096)]);
@@ -271,7 +312,14 @@ fn decode_format(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
     use SourceFormat::*;
     let mut d = match format {
         Jpeg => decode_image_crate(bytes, ImageFormat::Jpeg, format),
-        Png => decode_image_crate(bytes, ImageFormat::Png, format),
+        Png => decode_png(bytes),
+        Pnm => decode_image_crate(bytes, ImageFormat::Pnm, format),
+        Dds => decode_image_crate(bytes, ImageFormat::Dds, format),
+        Farbfeld => decode_image_crate(bytes, ImageFormat::Farbfeld, format),
+        Exr => hdr::decode_exr(bytes),
+        Hdr => hdr::decode_radiance(bytes),
+        Icns => icns::decode(bytes),
+        Jxl => jxl::decode(bytes),
         Bmp => decode_image_crate(bytes, ImageFormat::Bmp, format),
         Ico => decode_image_crate(bytes, ImageFormat::Ico, format),
         Tga => decode_image_crate(bytes, ImageFormat::Tga, format),
@@ -288,7 +336,7 @@ fn decode_format(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
         Svg => decode_svg(bytes),
         Psd => decode_psd(bytes),
         Raw => decode_raw(bytes),
-        Jp2 => decode_jp2(bytes),
+        Jp2 | J2c => decode_jp2(bytes, format),
     }?;
     if d.dpi.is_none() {
         d.dpi = match format {
@@ -313,6 +361,42 @@ fn limits() -> Limits {
 }
 
 fn decode_image_crate(bytes: &[u8], fmt: ImageFormat, format: SourceFormat) -> AppResult<Decoded> {
+    let (img, icc, exif) = read_image(bytes, fmt)?;
+    Ok(Decoded {
+        icc,
+        exif,
+        ..Decoded::single(into_rgba(img), format)
+    })
+}
+
+/// PNG com a cor que o arquivo declara (ver `cicp::png_color`).
+fn decode_png(bytes: &[u8]) -> AppResult<Decoded> {
+    let (img, embedded, exif) = read_image(bytes, ImageFormat::Png)?;
+    let color = cicp::png_color(bytes);
+    let rgba = match &color {
+        Some(cicp::Color::Hdr(transfer, _)) => {
+            // RGBA16 de trabalho mais o RGBA8 final.
+            hdr::check_pixels(img.width() as usize, img.height() as usize, 12)?;
+            sdr8(img.into_rgba16(), *transfer)
+        }
+        _ => into_rgba(img),
+    };
+    Ok(Decoded {
+        icc: color.map_or(embedded, cicp::Color::icc),
+        exif,
+        ..Decoded::single(rgba, SourceFormat::Png)
+    })
+}
+
+fn sdr8(mut img: Rgba16Image, transfer: hdr::Transfer) -> RgbaImage {
+    hdr::to_sdr(&mut img, transfer);
+    DynamicImage::ImageRgba16(img).into_rgba8()
+}
+
+/// Imagem orientada, perfil ICC e EXIF.
+type Raw = (DynamicImage, Option<Vec<u8>>, Option<Vec<u8>>);
+
+fn read_image(bytes: &[u8], fmt: ImageFormat) -> AppResult<Raw> {
     let mut reader = ImageReader::with_format(Cursor::new(bytes), fmt);
     reader.limits(limits());
     let mut dec = reader.into_decoder()?;
@@ -323,11 +407,7 @@ fn decode_image_crate(bytes: &[u8], fmt: ImageFormat, format: SourceFormat) -> A
     check_budget(w, h, 0)?;
     let mut img = DynamicImage::from_decoder(dec)?;
     img.apply_orientation(orientation);
-    Ok(Decoded {
-        icc,
-        exif,
-        ..Decoded::single(into_rgba(img), format)
-    })
+    Ok((img, icc, exif))
 }
 
 /// Como `into_rgba8`, mas RGB8 é expandido no mesmo buffer: sem RGB e RGBA vivos juntos.
@@ -484,7 +564,7 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
     })
 }
 
-fn short() -> AppError {
+pub(super) fn short() -> AppError {
     AppError::Corrupt("dados de pixel incompletos".into())
 }
 
@@ -535,9 +615,30 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
     let ctx = HeifContext::read_from_bytes(bytes).map_err(map)?;
     let handle = ctx.primary_image_handle().map_err(map)?;
     check_budget(handle.width(), handle.height(), 0)?;
+    // O ICC embutido vence o nclx. Valores que a libheif-rs não conhece viram reservados.
+    let embedded = handle.color_profile_raw().map(|p| p.data);
+    let color = match embedded {
+        Some(_) => None,
+        None => handle.color_profile_nclx().and_then(|c| {
+            cicp::from_code_points(c.color_primaries() as u8, c.transfer_characteristics() as u8)
+        }),
+    };
+    // PQ e HLG têm 10 bits ou mais: em 8 as sombras ficariam em degraus.
+    let transfer = match &color {
+        Some(cicp::Color::Hdr(t, _)) => Some(*t),
+        _ => None,
+    };
+    if transfer.is_some() {
+        // Plano de 16 bits, RGBA16 de trabalho e o RGBA8 final.
+        hdr::check_pixels(handle.width() as usize, handle.height() as usize, 20)?;
+    }
+    let chroma = match transfer {
+        Some(_) => RgbChroma::HdrRgbaLe,
+        None => RgbChroma::Rgba,
+    };
     // O libheif já aplica as transformações do contêiner (irot/imir): não há EXIF a aplicar.
     let img = lib
-        .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgba), None)
+        .decode(&handle, ColorSpace::Rgb(chroma), None)
         .map_err(|e| match map(e) {
             // Sem libde265 a libheif não tem decodificador HEVC: mensagem própria na interface.
             AppError::Unsupported(m) if format == SourceFormat::Heic && !hevc => {
@@ -549,16 +650,31 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
     check_budget(w, h, 0)?;
     let planes = img.planes();
     let plane = planes.interleaved.ok_or_else(short)?;
-    let mut out = Vec::with_capacity(w as usize * h as usize * 4);
-    for y in 0..h as usize {
+    let bytes_px = if transfer.is_some() { 8 } else { 4 };
+    let row = |y: usize| {
         let start = y * plane.stride;
-        out.extend_from_slice(
-            plane
-                .data
-                .get(start..start + w as usize * 4)
-                .ok_or_else(short)?,
-        );
-    }
+        plane.data.get(start..start + w as usize * bytes_px).ok_or_else(short)
+    };
+    let rgba = match transfer {
+        None => {
+            let mut out = Vec::with_capacity(w as usize * h as usize * 4);
+            for y in 0..h as usize {
+                out.extend_from_slice(row(y)?);
+            }
+            RgbaImage::from_raw(w, h, out)
+        }
+        Some(t) => {
+            let max = (1u32 << plane.bits_per_pixel.clamp(1, 16)) - 1;
+            let mut out = Vec::with_capacity(w as usize * h as usize * 4);
+            for y in 0..h as usize {
+                out.extend(row(y)?.as_chunks::<2>().0.iter().map(|b| {
+                    let v = u32::from(u16::from_le_bytes(*b)).min(max);
+                    ((v * 65_535 + max / 2) / max) as u16
+                }));
+            }
+            Rgba16Image::from_raw(w, h, out).map(|i| sdr8(i, t))
+        }
+    };
     let mut ids: Vec<ItemId> = vec![0; 1];
     let exif = (handle.metadata_block_ids(&mut ids, b"Exif") > 0)
         .then(|| handle.metadata(ids[0]).ok())
@@ -569,9 +685,9 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
             m.get(4 + off..).map(<[u8]>::to_vec)
         });
     Ok(Decoded {
-        icc: handle.color_profile_raw().map(|p| p.data),
+        icc: embedded.or(color.and_then(cicp::Color::icc)),
         exif,
-        ..Decoded::single(RgbaImage::from_raw(w, h, out).ok_or_else(short)?, format)
+        ..Decoded::single(rgba.ok_or_else(short)?, format)
     })
 }
 
@@ -579,7 +695,7 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
 /// mais o RGBA8 final. 4/5 do teto para o decodificador deixa o pico perto de `MAX_DECODE_BYTES`.
 const JP2_DECODER_BYTES: u64 = MAX_DECODE_BYTES as u64 / 5 * 4;
 
-fn decode_jp2(bytes: &[u8]) -> AppResult<Decoded> {
+fn decode_jp2(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
     use openjp2::{
         DecodeLimits, DecodeParameters, Decoder, Error as E, Image, J2KFormat, Stream,
     };
@@ -588,7 +704,11 @@ fn decode_jp2(bytes: &[u8]) -> AppResult<Decoded> {
         other => AppError::Corrupt(other.to_string()),
     };
     // Recusa pelo cabeçalho, antes de alocar os planos.
-    let header = Decoder::new(J2KFormat::JP2)
+    let kind = match format {
+        SourceFormat::J2c => J2KFormat::J2K,
+        _ => J2KFormat::JP2,
+    };
+    let header = Decoder::new(kind)
         .and_then(|mut d| d.read_header(&mut Stream::from_bytes(bytes.to_vec())))
         .map_err(map)?;
     check_budget(header.width(), header.height(), 0)?;
@@ -599,7 +719,7 @@ fn decode_jp2(bytes: &[u8]) -> AppResult<Decoded> {
     let icc = Some(img.into_core_image().icc_profile_buf).filter(|p| !p.is_empty());
     Ok(Decoded {
         icc,
-        ..Decoded::single(rgba, SourceFormat::Jp2)
+        ..Decoded::single(rgba, format)
     })
 }
 

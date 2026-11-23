@@ -1,15 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { renderView } from "../ipc/commands";
+import { renderScreen } from "../ipc/commands";
 import type { DocInfo, Rect } from "../ipc/types";
 import { pageSize } from "../lib/pages";
 import { useDocs } from "../store/docs";
-import { usePrefs, type Prefs } from "../store/prefs";
+import { getPrefs, usePrefs, type Prefs } from "../store/prefs";
 import { useUi } from "../store/ui";
 import { panBy, syncView, toggleFitActual, zoomBy } from "./actions";
 import { DocError } from "./DocError";
-import { bufferToCanvas, checkerPattern, dpr, useAnimatedFrame } from "./paint";
-import { visibleRegion, type Size, type ViewState } from "./zoom";
+import { useImageAlt } from "./imageAlt";
+import { bufferToCanvas, dpr, paintBuffer, useAnimatedFrame } from "./paint";
+import { useZoomUnit } from "./unit";
+import { contains, visibleRegion, type Size, type ViewState } from "./zoom";
 import { ByteLru } from "../lib/byteLru";
 import { Slot, type OverlayProps } from "../lib/slots";
 import { useSelection } from "../store/selection";
@@ -68,8 +70,6 @@ function needFor(view: ViewState, img: Size, size: Size): Need {
   };
 }
 
-const contains = (a: Rect, b: Rect) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
-
 const satisfies = (b: Buf, doc: DocInfo, frame: number, need: Need) =>
   b.id === doc.id &&
   b.rev === doc.rev &&
@@ -99,8 +99,11 @@ export function Viewport() {
   const page = useUi((s) => s.page);
   const background = usePrefs((p) => (p.background === "custom" ? p.customBg : BACKGROUNDS[p.background]));
   const showBg = usePrefs((p) => p.showImageBackground);
+  const dragPans = usePrefs((p) => p.dragPans);
   const animFrame = useAnimatedFrame(doc, page === null);
   const pixelRatio = usePixelRatio();
+  const alt = useImageAlt(doc);
+  const unit = useZoomUnit(doc?.id, doc?.rev, pixelRatio);
   const frame = page ?? animFrame;
   /** Tamanho da página mostrada (o da imagem, fora de um documento de várias páginas). */
   const img = useMemo(() => (doc ? pageSize(doc, page) : null), [doc, page]);
@@ -117,17 +120,8 @@ export function Viewport() {
   const paint = useRef(() => {
     const cv = canvas.current;
     const { doc, img: size, view, viewSize, frame, showBg } = cur.current;
-    const ctx = cv?.getContext("2d");
-    if (!cv || !ctx) return;
-    const k = dpr();
-    const w = Math.round(viewSize.w * k);
-    const h = Math.round(viewSize.h * k);
-    if (cv.width !== w || cv.height !== h) {
-      cv.width = w;
-      cv.height = h;
-    }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    if (!cv) return;
+    paintBuffer(cv, viewSize, null, false);
     if (!doc || !size || doc.error || !view) return;
     const b = [buffers.current.get(frame), shown.current].find((x) => x?.id === doc.id);
     if (!b) return;
@@ -138,15 +132,9 @@ export function Viewport() {
     } else if (b.region.w === b.img.w && b.region.h === b.img.h) {
       dest = img; // dimensões mudaram (ex.: girar): o buffer antigo inteiro ocupa a imagem nova até chegar o certo
     } else return;
-    ctx.setTransform(k, 0, 0, k, 0, 0);
-    // Visualizar › Mostrar Fundo da Imagem (Lote 8): xadrez atrás da transparência.
-    if (showBg) {
-      ctx.fillStyle = checkerPattern(ctx, 8) ?? "#fff";
-      ctx.fillRect(dest.x, dest.y, dest.w, dest.h);
-    }
-    // Ampliação forte: pixels nítidos; o resto suavizado.
-    ctx.imageSmoothingEnabled = (dest.w * k) / b.canvas.width < 2;
-    ctx.drawImage(b.canvas, dest.x, dest.y, dest.w, dest.h);
+    paintBuffer(cv, viewSize, { canvas: b.canvas, dest }, showBg);
+    // O que está na tela: a prévia de Ajustar Cor espera por isto depois do OK.
+    cv.dataset.shown = `${b.id}:${b.rev}`;
     shown.current = b;
   });
 
@@ -169,13 +157,12 @@ export function Viewport() {
     paint.current();
   });
 
-  // A escala da tela mudou (outro monitor, zoom do sistema): refaz a view e o buffer.
-  useEffect(() => syncView(false), [pixelRatio]);
+  // A escala da tela (outro monitor, zoom do sistema) ou o que 100% significa mudou: refaz a view e o buffer.
+  useEffect(() => syncView(false), [pixelRatio, unit]);
 
-  // Indicador de zoom: aparece a cada mudança de escala e some sozinho. Mostra px físicos por px
-  // da imagem (100 % = Tamanho Real).
+  // Indicador de zoom: aparece a cada mudança de escala e some sozinho. 100 % = Tamanho Real.
   const badge = useRef<HTMLDivElement>(null);
-  const scale = view ? +(view.scale * pixelRatio).toFixed(4) : null;
+  const scale = view ? +(view.scale * unit).toFixed(4) : null;
   useEffect(() => {
     const el = badge.current;
     if (!el || scale === null) return;
@@ -194,7 +181,7 @@ export function Viewport() {
     const timer = setTimeout(async () => {
       const my = ++seq.current;
       try {
-        const v = await renderView(id, frame, need.outW, need.outH, need.region);
+        const v = await renderScreen(id, frame, need.outW, need.outH, need.region);
         const now = cur.current.doc;
         if (now?.id !== id || now.rev !== rev) return;
         const old = buffers.current.get(frame);
@@ -214,9 +201,9 @@ export function Viewport() {
     return () => clearTimeout(timer);
   }, [doc, img, frame, view, viewSize, pixelRatio]);
 
-  // Roda, pinça e arraste (listeners nativos: a roda precisa de passive: false). O botão esquerdo só
-  // faz pan na ferramenta "mover" (nenhuma ferramenta de seleção) ou com Espaço pressionado; com uma
-  // ferramenta de seleção, o ponteiro é da camada de seleção. O botão do meio sempre faz pan.
+  // Roda, pinça e arraste (listeners nativos: a roda precisa de passive: false). O botão esquerdo faz
+  // pan com Espaço pressionado ou com a preferência "arrastar move a imagem" e nenhuma ferramenta de
+  // seleção; fora disso, o arraste é da camada de seleção. O botão do meio sempre faz pan.
   useEffect(() => {
     const el = box.current!;
     let drag: { x: number; y: number; id: number } | null = null;
@@ -251,7 +238,7 @@ export function Viewport() {
       }
     };
     const onDown = (e: PointerEvent) => {
-      if (e.button !== 1 && (e.button !== 0 || selecting())) return;
+      if (e.button !== 1 && (e.button !== 0 || selecting() || (!space && !getPrefs().dragPans))) return;
       drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
       el.classList.add("dragging");
       try {
@@ -297,8 +284,8 @@ export function Viewport() {
 
 
   return (
-    <div ref={box} className="viewport" data-testid="viewport" aria-label={t("viewer.label")} style={{ background }}>
-      <canvas ref={canvas} className="viewport-canvas" />
+    <div ref={box} className={`viewport${dragPans ? "" : " drag-selects"}`} data-testid="viewport" role="region" aria-label={t("viewer.label")} style={{ background }}>
+      <canvas ref={canvas} className="viewport-canvas" role={alt ? "img" : undefined} aria-label={alt} aria-hidden={!alt} />
       {overlay && (
         <div className="viewport-overlay">
           <Slot name="viewport-overlay" props={overlay} />

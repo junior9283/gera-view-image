@@ -21,9 +21,10 @@ import { useSelection } from "../store/selection";
 import { resetUiForTests, useUi } from "../store/ui";
 import { copySubject, removeBackground } from "../subject/actions";
 import { actualSize, fitToWindow, syncView } from "../viewer/actions";
+import { duplicateAnnotations, pasteAnnotations } from "./clipboard";
 import { flattenAnnotations } from "./flatten";
 import { pushMarkup, resetHistoryForTests } from "./history";
-import { DEFAULT_STYLE, type Annotation } from "./model";
+import { DEFAULT_STYLE, serialize, type Annotation } from "./model";
 import "./register";
 import { getItems, resetMarkupForTests, useMarkup } from "./store";
 
@@ -108,6 +109,25 @@ describe("tamanho da página exibida", () => {
     expect(getItems(5)).toEqual([]);
   });
 
+  it("colar numa página menor que a primeira centra a anotação dentro dela", async () => {
+    // Cabe na primeira página (40x30), mas fica fora da terceira (10x12).
+    const copied = { ...rect("c"), geom: { x: 35, y: 20, w: 3, h: 4 } } as Annotation;
+    const reply = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (cmd, args) => (cmd === "pasted_annotations" ? serialize({ items: [copied] }) : reply(cmd, args)));
+    useUi.setState({ page: 2 });
+    expect(await pasteAnnotations()).toBe(true);
+    const [pasted] = getItems(5);
+    expect(pasted).toMatchObject({ page: 2, geom: { x: 3.5, y: 4, w: 3, h: 4 } });
+    // Na página maior (60x80), o que cabe nela fica onde estava, sem ir para o centro.
+    resetMarkupForTests();
+    useUi.setState({ page: 1 });
+    useMarkup.getState().setItems(5, [{ ...rect("d", 1), geom: { x: 45, y: 50, w: 3, h: 4 } } as Annotation]);
+    useMarkup.getState().select(5, ["d"]);
+    duplicateAnnotations(5);
+    const dup = getItems(5)[1];
+    expect(dup.page).toBe(1);
+    expect((dup.geom as { x: number }).x).toBeGreaterThan(45);
+  });
 });
 
 describe("cada edição vale só para a página exibida", () => {

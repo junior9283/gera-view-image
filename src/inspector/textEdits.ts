@@ -35,6 +35,9 @@ export function currentText(id: DocId, field: TextField): string {
   return edits.get(id)?.[field] ?? originals.get(id)?.[field] ?? "";
 }
 
+/** Os textos do arquivo já foram lidos? */
+export const hasTexts = (id: DocId) => originals.has(id);
+
 /** Edita um campo; voltar ao valor do arquivo desfaz a pendência. */
 export function setText(id: DocId, field: TextField, value: string) {
   const next: Edits = { ...edits.get(id) };

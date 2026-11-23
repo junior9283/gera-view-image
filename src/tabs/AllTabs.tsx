@@ -1,6 +1,6 @@
 // Mostrar Todas as Abas: miniaturas de todos os documentos da janela; escolher uma ativa a aba.
 // E o véu que bloqueia a janela enquanto documentos mudam de janela ou ela fecha.
-import { useEffect, useRef, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../chrome/notify";
 import { cancelQuit } from "../ipc/commands";
@@ -9,8 +9,9 @@ import { bucket } from "../sidebar/ContactSheet";
 import { Thumb } from "../sidebar/Thumb";
 import { useDocs } from "../store/docs";
 import { activate, closeDocs } from "../viewer/actions";
-import { showOverview, useTabs } from "./store";
+import { answerQuestion, showOverview, useTabs, type Question, type Veil as VeilKind } from "./store";
 import { CloseTab } from "./CloseTab";
+import "../file/file.css";
 import "./tabs.css";
 
 const THUMB_PX = 160;
@@ -73,7 +74,7 @@ function Overview() {
   );
 }
 
-function Veil({ kind }: { kind: "moving" | "closing" | "quitting" }) {
+function Veil({ kind }: { kind: VeilKind }) {
   const { t } = useTranslation();
   const root = useRef<HTMLDivElement>(null);
   // Outra janela pode estar perguntando, talvez escondida atrás desta.
@@ -95,14 +96,37 @@ function Veil({ kind }: { kind: "moving" | "closing" | "quitting" }) {
   );
 }
 
+/** Pergunta de sim ou não; Cancelar é o padrão. */
+function AskDialog({ title, body, ok, cancel }: Question) {
+  const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
+  const first = useRef<HTMLButtonElement>(null);
+  useModal(dialog, { initialFocus: first, onClose: () => answerQuestion(false) });
+  return (
+    <div className="file-backdrop tabs-question" role="presentation">
+      <div ref={dialog} className="file-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
+        <h3 id={titleId}>{title}</h3>
+        <p>{body}</p>
+        <div className="file-actions">
+          <button type="button" onClick={() => answerQuestion(true)}>{ok}</button>
+          <span className="file-spacer" />
+          <button type="button" ref={first} className="file-primary" onClick={() => answerQuestion(false)}>{cancel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Camadas de janela inteira das abas. */
 export function TabsOverlays() {
   const overview = useTabs((s) => s.overview);
   const veil = useTabs((s) => s.veil);
+  const question = useTabs((s) => s.question);
   return (
     <>
       {overview && <Overview />}
-      {veil && <Veil kind={veil} />}
+      {veil && <Veil key={veil} kind={veil} />}
+      {question && <AskDialog {...question} />}
     </>
   );
 }

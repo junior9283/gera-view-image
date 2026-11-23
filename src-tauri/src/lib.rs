@@ -42,6 +42,8 @@ pub fn run() {
         .manage(startup)
         .manage(doc::windows::WindowRegistry::default())
         .manage(commands::window::Quitting::default())
+        .manage(commands::paste::AnnotationClipboard::default())
+        .manage(commands::window::Pongs::default())
         .on_window_event(commands::window::on_event)
         .invoke_handler(commands::window::guard(tauri::generate_handler![
             commands::docs::open_documents,
@@ -77,16 +79,24 @@ pub fn run() {
             commands::capture::capture_screen,
             commands::theme::window_theme,
             commands::theme::compositing_available,
+            commands::theme::screen_ppi,
             commands::drag::start_drag,
+            commands::clipfiles::copy_files,
+            commands::clipfiles::clipboard_files,
             // Lotes de paridade: stubs do Lote 0 (`AppError::Unsupported` até o lote implementar).
             commands::color::display_profile,
             commands::color::list_profiles,
             commands::color::assign_profile,
             commands::color::set_color_management,
             commands::color::document_profile,
+            commands::color::list_proof_profiles,
+            commands::color::proof_profile,
+            commands::color::set_proof_profile,
             commands::paste::clipboard_image,
             commands::paste::image_file_png,
             commands::paste::copy_image,
+            commands::paste::copy_annotations,
+            commands::paste::pasted_annotations,
             commands::ocr::recognize_text,
             commands::ocr::detect_codes,
             commands::ocr::speak,
@@ -141,6 +151,8 @@ pub fn run() {
             commands::window::close_other_windows,
             commands::window::confirm_quit,
             commands::window::answer_close,
+            commands::window::pong,
+            commands::window::decline_merge,
             commands::window::cancel_quit,
             commands::window::quit_app
         ]))

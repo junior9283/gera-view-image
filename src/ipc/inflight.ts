@@ -8,7 +8,7 @@ import type { DocId } from "./types";
  */
 const READ_ONLY = new Set([
   "render_view", "thumbnail", "metadata", "histogram", "auto_levels", "preview_adjust", "instant_alpha", "snap_lasso",
-  "estimate_size", "document_dpi", "document_profile", "recognize_text", "detect_codes",
+  "estimate_size", "document_dpi", "document_profile", "list_proof_profiles", "recognize_text", "detect_codes",
   "print_preview", "file_tags", "file_locked", "file_stats", "list_versions", "version_preview", "open_with_apps",
 ]);
 
@@ -35,22 +35,26 @@ export function track<T>(command: string, args: unknown, result: Promise<T>): Pr
   return result;
 }
 
-const busy = (ids: DocId[]) => ids.some((id) => running.has(id));
 const tick = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/**
- * Espera não haver comando em andamento nesses documentos, dando tempo às continuações (que podem
- * começar outro). `false` = não terminou em `timeoutMs`.
- */
-export async function whenIdle(ids: DocId[], timeoutMs: number): Promise<boolean> {
-  const end = Date.now() + timeoutMs;
+/** Espera `busy` sossegar, dando tempo às continuações (que podem começar outro comando). */
+async function settled(busy: () => boolean, stop: () => boolean): Promise<boolean> {
   for (;;) {
     await tick(0);
-    if (!busy(ids)) {
+    if (!busy()) {
       await tick(0);
-      if (!busy(ids)) return true;
+      if (!busy()) return true;
     }
-    if (Date.now() >= end) return false;
+    if (stop()) return false;
     await tick(30);
   }
 }
+
+/** Espera não haver comando em andamento nesses documentos. `false` = não terminou em `timeoutMs`. */
+export function whenIdle(ids: DocId[], timeoutMs: number): Promise<boolean> {
+  const end = Date.now() + timeoutMs;
+  return settled(() => ids.some((id) => running.has(id)), () => Date.now() >= end);
+}
+
+/** O mesmo, em todos os documentos desta janela; `stop` desiste. */
+export const whenAllIdle = (stop: () => boolean): Promise<boolean> => settled(() => running.size > 0, stop);

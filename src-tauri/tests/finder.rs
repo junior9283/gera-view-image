@@ -135,9 +135,41 @@ fn salvar_como_passa_a_ser_o_arquivo_novo() {
     assert_eq!(info.name, "b.tiff");
     assert!(!info.dirty && info.writable);
     assert!(dest.exists() && p.exists());
-    // Formato que o Salvar não regrava: recusa.
-    let gif = ExportOptions { format: ExportFormat::Exr, ..opts };
-    assert!(matches!(store.save_as(id, &s(&dir.join("c.exr")), &gif, None), Err(AppError::Unsupported(_))));
+    // Formatos que só o Exportar grava: o documento não pode continuar ligado a eles.
+    for (format, ext) in [
+        (ExportFormat::Pdf, "pdf"),
+        (ExportFormat::Gif, "gif"),
+        (ExportFormat::Ico, "ico"),
+        (ExportFormat::Tga, "tga"),
+        (ExportFormat::Psd, "psd"),
+    ] {
+        let o = ExportOptions { format, ..opts.clone() };
+        let dest = dir.join(format!("c.{ext}"));
+        assert!(matches!(store.save_as(id, &s(&dest), &o, None), Err(AppError::Unsupported(_))), "{ext}");
+        assert!(!dest.exists());
+    }
+}
+
+/// O EXR e o JP2 entram no Salvar Como; o EXR reabre como EXR, que o Salvar não regrava (a
+/// leitura comprime o alcance).
+#[test]
+fn salvar_como_em_jp2_e_exr() {
+    ambiente();
+    let dir = tmp("finder-salvar-como-exr");
+    let store = DocStore::new();
+    for (format, ext, regrava) in [(ExportFormat::Jp2, "jp2", true), (ExportFormat::Exr, "exr", false)] {
+        let p = imagem(&dir, &format!("Ação {ext}.png"), 20);
+        let id = abre(&store, &p);
+        let dest = dir.join(format!("Saída.{ext}"));
+        let info = store.save_as(id, &s(&dest), &ExportOptions::new(format), None).unwrap();
+        assert_eq!((info.path, info.dirty, info.writable), (s(&dest), false, regrava), "{ext}");
+        store.apply_op(id, Op::FlipH).unwrap();
+        let out = store.save(id, None).unwrap();
+        assert_eq!(matches!(out, SaveOutcome::Saved(_)), regrava, "{ext}");
+        let reaberto = DocStore::new();
+        let outro = abre(&reaberto, &dest);
+        assert_eq!(reaberto.render_full(outro, 0).unwrap().get_pixel(0, 0).0, [20, 0, 0, 255]);
+    }
 }
 
 #[test]

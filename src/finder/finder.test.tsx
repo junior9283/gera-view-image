@@ -16,6 +16,7 @@ const ipc = vi.hoisted(() => ({
   versionPreview: vi.fn(async () => ({ width: 1, height: 1, data: new Uint8ClampedArray(4) })),
   thumbnail: vi.fn(async () => ({ width: 1, height: 1, data: new Uint8ClampedArray(4) })),
   setVersionsLimit: vi.fn(async () => {}),
+  heicEncoderAvailable: vi.fn(async () => true),
 }));
 vi.mock("../ipc/commands", () => ipc);
 const dialog = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn<(...a: unknown[]) => Promise<string | null>>() }));
@@ -23,6 +24,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 
 import { getToasts, resetToastsForTests } from "../chrome/notify";
 import { registerBeforeSave } from "../file/beforeSave";
+import { resetHeicProbeForTests } from "../file/estimate";
 import { addKeyword, getPendingKeywords, resetKeywordsForTests } from "../inspector/keywords";
 import { Slot } from "../lib/slots";
 import { isEnabled } from "../shortcuts/commands";
@@ -45,15 +47,18 @@ beforeEach(() => {
   resetKeywordsForTests();
   resetToastsForTests();
   resetFinderUiForTests();
+  resetHeicProbeForTests();
   useDocs.setState({ docs: [doc], activeId: 1 });
 });
 afterEach(cleanup);
 
 describe("auxiliares", () => {
-  it("Salvar Como aceita só extensões que o Salvar regrava", () => {
+  it("Salvar Como aceita os formatos a que o documento pode continuar ligado", () => {
     expect(saveAsFormat("/a/b.JPG")).toBe("jpeg");
     expect(saveAsFormat("/a/b.tif")).toBe("tiff");
-    expect(saveAsFormat("/a/b.exr")).toBeNull();
+    for (const f of ["heic", "jp2", "avif", "webp", "exr"] as const) expect(saveAsFormat(`/a/Ação.${f}`), f).toBe(f);
+    expect(saveAsFormat("/a/b.heic", false), "sem codificador").toBeNull();
+    for (const e of ["pdf", "gif", "ico", "tga", "psd", "jxl"]) expect(saveAsFormat(`/a/b.${e}`), e).toBeNull();
     expect(saveAsFormat("/a.d/sem-extensao")).toBeNull();
   });
 
@@ -98,8 +103,25 @@ describe("Salvar Como", () => {
     expect(getPendingKeywords(1)).toBeNull();
   });
 
+  it("HEIC só com codificador; o OpenEXR aberto não sugere o próprio formato", async () => {
+    dialog.save.mockResolvedValue(null);
+    const offered = () => (dialog.save.mock.lastCall![0] as { defaultPath: string; filters: { extensions: string[] }[] });
+    useDocs.setState({ docs: [{ ...doc, path: "/f/a.heic", name: "a.heic", format: "heic" }], activeId: 1 });
+    await saveAsActive();
+    expect(offered().filters[0].extensions).toEqual(expect.arrayContaining(["heic", "jp2", "exr"]));
+    expect(offered().defaultPath).toBe("/f/a.heic");
+    resetHeicProbeForTests();
+    ipc.heicEncoderAvailable.mockResolvedValueOnce(false);
+    await saveAsActive();
+    expect(offered().filters[0].extensions).not.toContain("heic");
+    expect(offered().defaultPath).toBe("/f/a.png");
+    useDocs.setState({ docs: [{ ...doc, path: "/f/a.exr", name: "a.exr", format: "exr" }], activeId: 1 });
+    await saveAsActive();
+    expect(offered().defaultPath).toBe("/f/a.png");
+  });
+
   it("extensão que não dá para regravar: avisa e não grava", async () => {
-    dialog.save.mockResolvedValue("/outra/x.exr");
+    dialog.save.mockResolvedValue("/outra/x.pdf");
     await saveAsActive();
     expect(ipc.saveAs).not.toHaveBeenCalled();
     expect(toasts().some((t) => t.includes(".avif"))).toBe(true);

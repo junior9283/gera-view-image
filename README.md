@@ -35,14 +35,15 @@ páginas. Arquivo corrompido mostra o erro só nele; os demais continuam navegá
 ![Folha de contatos](docs/screenshots/03-folha-de-contatos.png)
 
 ### Visualizar
-Tamanho Real (Ctrl+0), Ajustar à Janela (Ctrl+9), zoom com Ctrl+roda e pinça do touchpad, arrastar para
-mover, Tela Cheia (F11) e Apresentação (Ctrl+Shift+F). O fundo da área de imagem é configurável, com xadrez
+Tamanho Real (Ctrl+0), Ajustar à Janela (Ctrl+9), zoom com Ctrl+roda e pinça do touchpad, Espaço+arrastar
+ou botão do meio para mover (arrastar seleciona, ou move se marcado nas Preferências), Tela Cheia (F11) e Apresentação (Ctrl+Shift+F). O fundo da área de imagem é configurável, com xadrez
 para transparência. Imagens enormes abrem por uma prévia reduzida e são detalhadas sob demanda.
 
 ### Marcação
 A barra de Marcação (Ctrl+Shift+M) tem esboço com reconhecimento de forma, desenho livre, linha, seta,
 retângulo, oval, balão de fala, estrela, polígono, **Lupa**, **Realce**, texto com estilo e **Assinatura**
-(desenhada ou importada, salva para reutilizar). As anotações continuam editáveis até Salvar ou Exportar,
+(desenhada ou importada, salva para reutilizar). Duplo clique numa forma ou balão escreve dentro dele; anotações
+se copiam, colam e duplicam (Ctrl+D) entre imagens, e as setas as movem. As anotações continuam editáveis até Salvar ou Exportar,
 quando são achatadas na imagem.
 
 ![Barra de marcação com anotações](docs/screenshots/04-marcacao.png)
@@ -57,7 +58,9 @@ resolução (ppp), proporção travada, reamostragem e tamanho resultante em tem
 | ![Ajustar Cor](docs/screenshots/05-ajustar-cor.png) | ![Ajustar Tamanho](docs/screenshots/06-ajustar-tamanho.png) |
 
 ### Seleção e Alfa Instantâneo
-Seleção retangular, elíptica, laço e laço inteligente; copiar, recortar, apagar e inverter a seleção.
+Seleção retangular, elíptica, laço e laço inteligente (menu Ferramentas ou só arrastar na imagem); copiar,
+recortar, apagar e inverter a seleção. Shift soma e Alt subtrai; sem seleção anterior, Shift força quadrado
+ou círculo. Arrastar dentro da seleção ou as setas a movem.
 O **Alfa Instantâneo** torna uma cor transparente: arraste sobre ela, e a distância do arrasto controla a
 tolerância.
 
@@ -99,12 +102,13 @@ Itens de funções ainda em desenvolvimento aparecem desabilitados nos menus, e 
 | Arquivo | Fechar Todas | `Ctrl+Alt+W` |
 | Arquivo | Fechar Janela | `Ctrl+Shift+W` |
 | Arquivo | Salvar Como | `Ctrl+Shift+Alt+S` |
-| Arquivo | Mover para o Lixo | `Ctrl+Backspace` |
+| Arquivo | Mover para o Lixo | `Ctrl+Backspace` ou `Ctrl+Del` |
 | Editar | Desfazer | `Ctrl+Z` |
 | Editar | Refazer | `Ctrl+Shift+Z` |
 | Editar | Recortar | `Ctrl+X` |
 | Editar | Copiar | `Ctrl+C` |
 | Editar | Colar | `Ctrl+V` |
+| Editar | Duplicar Anotação | `Ctrl+D` |
 | Editar | Apagar | `Del` ou `Backspace` |
 | Editar | Selecionar Tudo | `Ctrl+A` |
 | Editar | Desmarcar Tudo | `Esc` |
@@ -123,7 +127,7 @@ Itens de funções ainda em desenvolvimento aparecem desabilitados nos menus, e 
 | Visualizar | Ampliar Seleção | `Ctrl+*` |
 | Visualizar | Mostrar Barra de Marcação | `Ctrl+Shift+M` |
 | Visualizar | Apresentação | `Ctrl+Shift+F` |
-| Visualizar | Tela Cheia | `F11` ou `Ctrl+Meta+F` |
+| Visualizar | Entrar em Tela Cheia | `F11` ou `Ctrl+Meta+F` |
 | Visualizar | Ocultar Barra de Ferramentas | `Ctrl+Shift+T` |
 | Visualizar | Mostrar Todas as Abas | `Ctrl+\|` |
 | Ir | Anterior | `←` ou `PageUp` ou `↑` |
@@ -151,9 +155,17 @@ Itens de funções ainda em desenvolvimento aparecem desabilitados nos menus, e 
 
 | | Formatos |
 |---|---|
-| **Abrir** | JPEG, PNG, GIF (animado), BMP, TIFF (várias páginas), WebP, HEIC/HEIF, AVIF, JPEG 2000, ICO, SVG, PSD (achatado), TGA e RAW (DNG, CR2/CR3, NEF, ARW, ORF, RW2) como prévia revelada |
+| **Abrir** | JPEG, PNG, GIF (animado), BMP, TIFF (várias páginas), WebP, HEIC/HEIF, AVIF, JPEG 2000 (inclusive .j2k/.jpx), JPEG XL (primeiro quadro), OpenEXR, Radiance HDR, PNM (PBM, PGM, PPM, PAM), ICO, ICNS (maior ícone), SVG, PSD (achatado), TGA, DDS, Farbfeld e RAW (DNG, CR2/CR3, NEF, ARW, ORF, RW2) como prévia revelada |
 | **Salvar no próprio arquivo** | JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000 e BMP |
-| **Exportar** | JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000, OpenEXR e BMP |
+| **Salvar Como** | os de cima e OpenEXR |
+| **Exportar** | JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000, OpenEXR, BMP e PDF (com Alt: GIF, ICO, TGA e PSD) |
+
+O formato é reconhecido pelo conteúdo, não pela extensão. OpenEXR, Radiance e imagens PQ/HLG são mostrados em
+SDR: até 75 % do branco nada muda; acima, o brilho é comprimido até o ponto mais claro da imagem, sem girar o
+matiz (não há HDR na tela). Imagens sem perfil ICC usam a cor que declaram: nclx do HEIC/AVIF e, no PNG,
+`cICP`, `sRGB`, `gAMA` e `cHRM`, na ordem da especificação. QOI não abre (exigiria outra dependência).
+**Visualizar › Prova de Cor com Perfil** mostra como a imagem sairia em outro perfil (inclusive CMYK), sem
+alterar o arquivo.
 
 **Abrir HEIC precisa da `libde265`**: no Fedora ela vem do [RPM Fusion](https://rpmfusion.org/)
 (`sudo dnf install libde265`); no Ubuntu/Debian, do pacote `libde265-0`. Sem ela o app abre normalmente e

@@ -7,6 +7,11 @@ o conteúdo é original deste repositório (MIT).
 O gerador só cria o que falta. Para regenerar tudo, apague esta pasta e rode
 `cargo test --test make_fixtures`. O `core.rs` chama o mesmo gerador antes dos testes.
 
+As amostras de `tests/formatos.rs` (JPEG XL, codestream JPEG 2000, DDS e AVIF de 10 bits) ficam
+embutidas no teste, em hexadecimal: são gradientes sintéticos de 4 a 16 pixels gravados localmente
+com ImageMagick (libjxl, OpenJPEG) e ffmpeg (libaom). EXR, HDR, PNM, ICNS e Farbfeld são montados
+no próprio teste.
+
 | Arquivo | Tamanho | Como é gerado |
 |---|---|---|
 | `rgb.jpg` | 40×20, EXIF `Orientation=6` | `image` (JpegEncoder) + segmento APP1 Exif montado à mão |

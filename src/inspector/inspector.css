@@ -7,8 +7,8 @@
   display: flex;
   flex-direction: column;
   border-radius: 10px;
-  background: rgb(43 43 43 / 0.96);
-  color: #eee;
+  background: var(--chrome-panel);
+  color: var(--chrome-fg);
   font: 13px/1.4 system-ui, sans-serif;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
   z-index: 900;
@@ -43,7 +43,7 @@
   cursor: pointer;
 }
 .inspector-tabs button[aria-selected="true"] {
-  background: rgb(255 255 255 / 0.16);
+  background: var(--chrome-selected);
 }
 .inspector-body {
   overflow: auto;
@@ -59,7 +59,7 @@
   padding: 2px 0;
 }
 .inspector-fields dt {
-  color: #aaa;
+  color: var(--chrome-muted);
   flex: none;
 }
 .inspector-fields dd {
@@ -69,7 +69,7 @@
 }
 .inspector-empty,
 .inspector-hint {
-  color: #aaa;
+  color: var(--chrome-muted);
   margin: 4px 0;
 }
 .inspector-action {
@@ -92,7 +92,7 @@
   gap: 4px;
   padding: 1px 4px 1px 8px;
   border-radius: 10px;
-  background: rgb(255 255 255 / 0.14);
+  background: var(--chrome-hover);
 }
 .inspector-add {
   display: flex;
@@ -135,5 +135,5 @@
 }
 .inspector-form span,
 .inspector-unit span {
-  color: #aaa;
+  color: var(--chrome-muted);
 }

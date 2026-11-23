@@ -50,16 +50,21 @@ fn builtin(id: &str) -> Option<Icc> {
 }
 
 /// Perfis vêm de arquivos não confiáveis: um pânico da `moxcms` vira `None`.
-fn guard<T>(f: impl FnOnce() -> T) -> Option<T> {
+pub(super) fn guard<T>(f: impl FnOnce() -> T) -> Option<T> {
     catch_unwind(AssertUnwindSafe(f)).ok()
 }
 
-/// Perfil RGB legível pela `moxcms` (CMYK e cinza não descrevem os pixels RGBA do documento).
-fn parse_rgb(bytes: &[u8]) -> Option<Icc> {
+/// Perfil de qualquer espaço, legível pela `moxcms`.
+pub(super) fn parse(bytes: &[u8]) -> Option<Icc> {
     if bytes.len() as u64 > MAX_ICC_BYTES {
         return None;
     }
-    guard(|| Icc::new_from_slice(bytes).ok())?.filter(|p| p.color_space == DataColorSpace::Rgb)
+    guard(|| Icc::new_from_slice(bytes).ok())?
+}
+
+/// Só RGB (CMYK e cinza não descrevem os pixels RGBA do documento).
+pub(super) fn parse_rgb(bytes: &[u8]) -> Option<Icc> {
+    parse(bytes).filter(|p| p.color_space == DataColorSpace::Rgb)
 }
 
 pub fn is_rgb_profile(bytes: &[u8]) -> bool {
@@ -94,7 +99,7 @@ pub fn profile_bytes(id: &str) -> AppResult<Arc<Vec<u8>>> {
     if let Some(b) = known_profile(id) {
         return Ok(b);
     }
-    let bytes = read_profile(Path::new(id), &profile_dirs())?;
+    let bytes = read_profile(Path::new(id), &profile_dirs(), is_rgb_profile)?;
     if !convertible(&bytes, srgb_icc()) {
         return Err(bad_profile(Path::new(id)));
     }
@@ -125,35 +130,44 @@ fn has_icc_extension(p: &Path) -> bool {
         .is_some_and(|x| x.eq_ignore_ascii_case("icc") || x.eq_ignore_ascii_case("icm"))
 }
 
-/// Lê um perfil RGB de dentro de `dirs` (já sem links simbólicos). Só arquivo regular e até
-/// `MAX_ICC_BYTES`: FIFO não trava (`O_NONBLOCK`) e dispositivo é recusado pelo `fstat`.
-/// Todo erro é igual, para não dizer à interface o que existe fora das pastas.
-fn read_profile(path: &Path, dirs: &[PathBuf]) -> AppResult<Vec<u8>> {
-    let read = || -> Option<Vec<u8>> {
-        if !path.is_absolute() {
-            return None;
-        }
-        let real = path.canonicalize().ok()?;
-        let inside = dirs
-            .iter()
-            .filter_map(|d| d.canonicalize().ok())
-            .any(|d| real.starts_with(d));
-        if !inside || !has_icc_extension(&real) {
-            return None;
-        }
-        let f = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
-            .open(&real)
-            .ok()?;
-        if !f.metadata().ok()?.is_file() {
-            return None;
-        }
-        let mut bytes = Vec::new();
-        f.take(MAX_ICC_BYTES + 1).read_to_end(&mut bytes).ok()?;
-        is_rgb_profile(&bytes).then_some(bytes)
+/// Que perfis servem (ver [`is_rgb_profile`]).
+pub(super) type Accept = fn(&[u8]) -> bool;
+
+/// Lê um perfil de dentro de `dirs` (já sem links simbólicos). Todo erro é igual, para não dizer
+/// à interface o que existe fora das pastas.
+fn read_profile(path: &Path, dirs: &[PathBuf], accept: Accept) -> AppResult<Vec<u8>> {
+    let inside = |real: &Path| {
+        dirs.iter().filter_map(|d| d.canonicalize().ok()).any(|d| real.starts_with(d))
     };
-    read().ok_or_else(|| bad_profile(path))
+    read_icc(path, inside, accept).ok_or_else(|| bad_profile(path))
+}
+
+/// Lê um perfil que o usuário escolheu, de qualquer pasta, com os mesmos cuidados.
+pub(super) fn read_chosen(path: &Path, accept: Accept) -> AppResult<Vec<u8>> {
+    read_icc(path, |_| true, accept).ok_or_else(|| bad_profile(path))
+}
+
+/// Só arquivo regular, .icc/.icm e até `MAX_ICC_BYTES`: FIFO não trava (`O_NONBLOCK`) e
+/// dispositivo é recusado pelo `fstat`.
+fn read_icc(path: &Path, inside: impl Fn(&Path) -> bool, accept: Accept) -> Option<Vec<u8>> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let real = path.canonicalize().ok()?;
+    if !inside(&real) || !has_icc_extension(&real) {
+        return None;
+    }
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
+        .open(&real)
+        .ok()?;
+    if !f.metadata().ok()?.is_file() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    f.take(MAX_ICC_BYTES + 1).read_to_end(&mut bytes).ok()?;
+    accept(&bytes).then_some(bytes)
 }
 
 /// Bytes ICC do sRGB (o perfil presumido de imagens sem perfil).
@@ -169,7 +183,7 @@ pub fn describe(bytes: &[u8]) -> Option<String> {
 
 // ---------- Transforms ----------
 
-fn digest(bytes: &[u8]) -> u64 {
+pub(super) fn digest(bytes: &[u8]) -> u64 {
     let mut h = DefaultHasher::new();
     bytes.hash(&mut h);
     h.finish()
@@ -369,6 +383,12 @@ fn display() -> Display {
     DISPLAY.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
+/// Perfil de exibição em uso; `None` = correspondência de cor desligada.
+pub(super) fn screen_icc() -> Option<Arc<Vec<u8>>> {
+    let d = display();
+    (!d.disabled).then(|| d.target.unwrap_or_else(|| Arc::new(srgb_icc().to_vec())))
+}
+
 /// Converte RGBA8 do perfil da imagem (`None` = sRGB) para o de exibição, no próprio buffer.
 /// Perfil ilegível: os pixels ficam como estão.
 pub fn to_display(px: &mut [u8], doc: Option<&[u8]>) {
@@ -430,7 +450,7 @@ fn colord_display_icc() -> zbus::Result<Option<Vec<u8>>> {
         };
         let p = Proxy::new(&conn, DEST, first, "org.freedesktop.ColorManager.Profile")?;
         let file: String = p.get_property("Filename").unwrap_or_default();
-        if let Ok(bytes) = read_profile(Path::new(&file), &profile_dirs()) {
+        if let Ok(bytes) = read_profile(Path::new(&file), &profile_dirs(), is_rgb_profile) {
             return Ok(Some(bytes));
         }
     }
@@ -442,10 +462,15 @@ fn colord_display_icc() -> zbus::Result<Option<Vec<u8>>> {
 /// Perfis RGB instalados (ver `profile_dirs`): `(caminho, nome)`, sem repetir nome, em ordem
 /// alfabética.
 pub fn system_profiles() -> Vec<(String, String)> {
-    profiles_in(&profile_dirs())
+    system_profiles_where(is_rgb_profile)
 }
 
-fn profiles_in(dirs: &[PathBuf]) -> Vec<(String, String)> {
+/// Como [`system_profiles`], com os perfis que `accept` aprovar.
+pub(super) fn system_profiles_where(accept: Accept) -> Vec<(String, String)> {
+    profiles_in(&profile_dirs(), accept)
+}
+
+fn profiles_in(dirs: &[PathBuf], accept: Accept) -> Vec<(String, String)> {
     let mut found = Vec::new();
     for d in dirs {
         collect_icc(d, 3, &mut found);
@@ -454,7 +479,7 @@ fn profiles_in(dirs: &[PathBuf]) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = found
         .into_iter()
         .filter_map(|p| {
-            let bytes = read_profile(&p, dirs).ok()?;
+            let bytes = read_profile(&p, dirs, accept).ok()?;
             let name = describe(&bytes).unwrap_or_else(|| {
                 p.file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned())
             });
@@ -608,6 +633,7 @@ mod tests {
         // SAFETY: caminho válido terminado em NUL.
         assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
 
+        let read_profile = |p: &Path, d: &[PathBuf]| super::read_profile(p, d, is_rgb_profile);
         assert_eq!(read_profile(&bom, &dirs).unwrap(), **p3);
         let sobe = dir.0.join("..").join(fora.0.file_name().unwrap()).join("p3.icc");
         let sem_ext = put(dir.0.join("p3.txt"));
@@ -619,7 +645,7 @@ mod tests {
             assert!(profile_bytes(p).is_err(), "{p}");
         }
         assert!(profile_bytes(bom.to_str().unwrap()).is_err(), "fora das pastas do sistema");
-        let nomes = profiles_in(&dirs);
+        let nomes = profiles_in(&dirs, is_rgb_profile);
         assert_eq!(nomes.len(), 1, "{nomes:?}");
         assert_eq!(nomes[0].0, bom.to_str().unwrap());
     }

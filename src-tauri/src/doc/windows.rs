@@ -24,6 +24,15 @@ pub struct Handoff {
     pub state: String,
 }
 
+/// Por que a janela está selada.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Seal {
+    /// Ela mesma está fechando.
+    Close,
+    /// Concordou em sair, nesta rodada; cai se a saída for cancelada.
+    Quit(u64),
+}
+
 #[derive(Default)]
 struct Entry {
     label: String,
@@ -32,7 +41,7 @@ struct Entry {
     /// A interface já ligou os ouvintes e retirou a caixa pelo menos uma vez.
     ready: bool,
     /// Fechando (tudo já perguntado): não dá nem recebe documentos.
-    sealed: bool,
+    sealed: Option<Seal>,
     inbox: Vec<Handoff>,
 }
 
@@ -128,6 +137,25 @@ impl WindowRegistry {
         self.lock().get(label).is_ok_and(|w| !w.inbox.is_empty())
     }
 
+    /// Há outra janela que possa receber documentos?
+    pub fn has_open_besides(&self, label: &str) -> bool {
+        self.lock().windows.iter().any(|w| w.label != label && w.sealed.is_none())
+    }
+
+    /// Janelas que ainda não abriram e têm documentos a caminho.
+    pub fn opening(&self) -> Vec<String> {
+        let s = self.lock();
+        s.windows.iter().filter(|w| !w.ready && !w.inbox.is_empty()).map(|w| w.label.clone()).collect()
+    }
+
+    /// A janela que já tem o documento na interface: a dona, se abriu e o retirou da caixa.
+    pub fn holder(&self, id: DocId) -> Option<String> {
+        let s = self.lock();
+        let label = s.owners.get(&id)?;
+        let w = s.windows.iter().find(|w| w.label == *label)?;
+        (w.ready && !w.inbox.iter().any(|h| h.ids.contains(&id))).then(|| label.clone())
+    }
+
     pub fn owns(&self, label: &str, id: DocId) -> bool {
         self.lock().owners.get(&id).is_some_and(|l| l == label)
     }
@@ -174,7 +202,7 @@ impl WindowRegistry {
         if ids.is_empty() || from == to {
             return refused("nada a mover");
         }
-        if s.get(from)?.sealed || s.get(to)?.sealed {
+        if s.get(from)?.sealed.is_some() || s.get(to)?.sealed.is_some() {
             return refused("janela fechando");
         }
         if ids.iter().any(|id| s.owners.get(id).is_none_or(|l| l != from)) {
@@ -196,21 +224,38 @@ impl WindowRegistry {
     }
 
     /// Começa a fechar a janela. `false` = há documentos chegando (retire-os e pergunte de novo).
-    pub fn seal(&self, label: &str) -> AppResult<bool> {
+    pub fn seal(&self, label: &str, seal: Seal) -> AppResult<bool> {
         let mut s = self.lock();
         let w = s.get(label)?;
-        w.sealed = w.inbox.is_empty();
-        Ok(w.sealed)
+        w.sealed = w.inbox.is_empty().then(|| stronger(w.sealed, seal));
+        Ok(w.sealed.is_some())
+    }
+
+    /// Sela a janela que não responde: o usuário decidiu sair sem esperar por ela.
+    pub fn force_seal(&self, label: &str, round: u64) -> AppResult<()> {
+        let mut s = self.lock();
+        let w = s.get(label)?;
+        w.sealed = Some(stronger(w.sealed, Seal::Quit(round)));
+        Ok(())
     }
 
     pub fn unseal(&self, label: &str) {
         if let Ok(w) = self.lock().get(label) {
-            w.sealed = false;
+            w.sealed = None;
+        }
+    }
+
+    /// A saída da rodada foi cancelada: solta quem só concordou com ela (ou com uma anterior).
+    pub fn unseal_quit(&self, label: &str, round: u64) {
+        if let Ok(w) = self.lock().get(label)
+            && matches!(w.sealed, Some(Seal::Quit(r)) if r <= round)
+        {
+            w.sealed = None;
         }
     }
 
     pub fn is_sealed(&self, label: &str) -> bool {
-        self.lock().get(label).is_ok_and(|w| w.sealed)
+        self.lock().get(label).is_ok_and(|w| w.sealed.is_some())
     }
 
     /// Janela destruída. As entregas não retiradas voltam para quem as mandou (ou para outra janela
@@ -223,7 +268,7 @@ impl WindowRegistry {
         let gone = s.windows.remove(at);
         let mut out = Removed::default();
         for h in gone.inbox {
-            let open = || s.windows.iter().filter(|w| !w.sealed);
+            let open = || s.windows.iter().filter(|w| w.sealed.is_none());
             let to = open().find(|w| w.label == h.from).or_else(|| open().next());
             if let Some(to) = to.map(|w| w.label.clone())
                 && s.give(&to, h).is_ok()
@@ -243,6 +288,15 @@ impl WindowRegistry {
         for owner in s.owners.values_mut().filter(|l| *l == label) {
             *owner = from.to_string();
         }
+    }
+}
+
+/// Quem está fechando continua fechando, e vale a rodada mais nova da saída.
+fn stronger(old: Option<Seal>, new: Seal) -> Seal {
+    match (old, new) {
+        (Some(Seal::Close), _) => Seal::Close,
+        (Some(Seal::Quit(a)), Seal::Quit(b)) => Seal::Quit(a.max(b)),
+        (_, new) => new,
     }
 }
 
@@ -334,14 +388,14 @@ mod tests {
     #[test]
     fn janela_fechando_nao_da_nem_recebe() {
         let (r, w) = two();
-        assert!(r.seal(&w).unwrap());
+        assert!(r.seal(&w, Seal::Close).unwrap());
         assert!(r.transfer(MAIN_WINDOW, &w, vec![A], String::new()).is_err());
         r.unseal(&w);
         assert!(r.transfer(MAIN_WINDOW, &w, vec![A], String::new()).is_ok());
         // Com entrega na caixa, não fecha sem perguntar de novo.
-        assert!(!r.seal(&w).unwrap());
+        assert!(!r.seal(&w, Seal::Close).unwrap());
         assert!(!r.is_sealed(&w));
-        r.seal(MAIN_WINDOW).unwrap();
+        r.seal(MAIN_WINDOW, Seal::Close).unwrap();
         assert!(r.transfer(MAIN_WINDOW, &w, vec![B], String::new()).is_err());
     }
 
@@ -373,7 +427,7 @@ mod tests {
         let (r, w) = two();
         let third = r.create();
         r.transfer(MAIN_WINDOW, &w, vec![A], "estado".into()).unwrap();
-        r.seal(MAIN_WINDOW).unwrap();
+        r.seal(MAIN_WINDOW, Seal::Close).unwrap();
         assert_eq!(r.remove(&w).returned_to, [third]);
     }
 
@@ -387,6 +441,68 @@ mod tests {
         assert_eq!(r.labels(), ["main"]);
         assert_eq!(r.owned(MAIN_WINDOW), [A, B]);
         assert!(r.take(MAIN_WINDOW).unwrap().is_empty(), "a origem nunca largou o estado");
+    }
+
+    #[test]
+    fn cancelar_a_saida_nao_solta_quem_esta_fechando_nem_rodada_mais_nova() {
+        let (r, w) = two();
+        r.seal(&w, Seal::Close).unwrap();
+        r.seal(&w, Seal::Quit(1)).unwrap();
+        r.unseal_quit(&w, 9);
+        assert!(r.is_sealed(&w), "fechando por si");
+        r.unseal(&w);
+        r.seal(&w, Seal::Quit(2)).unwrap();
+        r.unseal_quit(&w, 1);
+        assert!(r.is_sealed(&w), "rodada antiga");
+        r.seal(&w, Seal::Quit(1)).unwrap();
+        r.unseal_quit(&w, 1);
+        assert!(r.is_sealed(&w), "um selo antigo não rebaixa o novo");
+        r.unseal_quit(&w, 2);
+        assert!(!r.is_sealed(&w));
+        r.seal(&w, Seal::Quit(3)).unwrap();
+        r.seal(&w, Seal::Close).unwrap();
+        r.unseal_quit(&w, 3);
+        assert!(r.is_sealed(&w), "passou a fechar por si");
+    }
+
+    #[test]
+    fn janela_que_nao_responde_e_selada_mesmo_com_entrega_e_volta_se_cancelar() {
+        let (r, w) = two();
+        r.transfer(MAIN_WINDOW, &w, vec![A], String::new()).unwrap();
+        r.force_seal(&w, 4).unwrap();
+        assert!(r.is_sealed(&w));
+        r.unseal_quit(&w, 4);
+        assert!(!r.is_sealed(&w));
+        assert!(r.force_seal("doc-99", 1).is_err());
+    }
+
+    #[test]
+    fn so_tem_o_documento_quem_ja_o_retirou() {
+        let r = WindowRegistry::default();
+        assert_eq!(r.holder(A), None, "sem dono");
+        r.claim(MAIN_WINDOW, &[A, B]).unwrap();
+        assert_eq!(r.holder(A), None, "a janela ainda não abriu");
+        r.take(MAIN_WINDOW).unwrap();
+        assert_eq!(r.holder(A).as_deref(), Some(MAIN_WINDOW));
+        let w = r.create();
+        r.transfer(MAIN_WINDOW, &w, vec![A], String::new()).unwrap();
+        assert_eq!((r.holder(A), r.holder(B).as_deref()), (None, Some(MAIN_WINDOW)), "na caixa");
+        assert_eq!(r.opening(), std::slice::from_ref(&w));
+        r.take(&w).unwrap();
+        assert_eq!(r.holder(A), Some(w.clone()));
+        assert!(r.opening().is_empty());
+        // Já aberta, com outra entrega a caminho.
+        r.transfer(MAIN_WINDOW, &w, vec![B], String::new()).unwrap();
+        assert_eq!((r.holder(A), r.holder(B)), (Some(w), None));
+    }
+
+    #[test]
+    fn outra_janela_aberta_e_a_que_pode_receber() {
+        let (r, w) = two();
+        assert!(r.has_open_besides(&w));
+        r.seal(MAIN_WINDOW, Seal::Quit(1)).unwrap();
+        assert!(!r.has_open_besides(&w), "selada não recebe");
+        assert!(r.has_open_besides(MAIN_WINDOW));
     }
 
     #[test]

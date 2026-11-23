@@ -17,7 +17,7 @@ export const COMMAND_IDS = [
   "file.closeAll", "file.closeWindow", "file.saveAs", "file.moveToTrash", "file.tags", "file.lock",
   "file.browseVersions", "file.exportPdf", "file.shareEmail", "file.shareDevice", "file.importScanner",
   // Editar
-  "edit.undo", "edit.redo", "edit.cut", "edit.copy", "edit.paste", "edit.delete", "edit.selectAll",
+  "edit.undo", "edit.redo", "edit.cut", "edit.copy", "edit.paste", "edit.duplicate", "edit.delete", "edit.selectAll",
   "edit.deselect", "edit.invertSelection", "edit.preferences",
   "edit.find", "edit.findNext", "edit.findPrev", "edit.startSpeaking", "edit.stopSpeaking",
   // Visualizar
@@ -25,11 +25,13 @@ export const COMMAND_IDS = [
   "view.zoomOut", "view.zoomToSelection", "view.markupBar", "view.slideshow", "view.fullscreen",
   "view.sortByName", "view.sortByDate", "view.sortByKind", "view.sortBySize", "view.toolbar",
   "view.customizeToolbar", "view.imageBackground", "view.tabBar", "view.allTabs",
+  "view.softProofNone", "view.softProofChoose",
   // Ir
   "go.prev", "go.next", "go.first", "go.last", "go.back", "go.forward",
   // Ferramentas
   "tools.rotateLeft", "tools.rotateRight", "tools.flipH", "tools.flipV", "tools.crop", "tools.adjustColor",
-  "tools.resize", "tools.instantAlpha", "tools.inspector",
+  "tools.resize", "tools.selectRect", "tools.selectEllipse", "tools.selectLasso", "tools.selectSmartLasso",
+  "tools.instantAlpha", "tools.inspector",
   ...ANNOTATE_KINDS.map((k) => `tools.annotate.${k}` as const),
   "tools.assignProfile", "tools.removeBackground", "tools.copySubject", "tools.magnifier", "tools.showColors",
   "tools.showFonts", "tools.markupInspector", "tools.imageDescription", "tools.liveText", "tools.copyAllText",

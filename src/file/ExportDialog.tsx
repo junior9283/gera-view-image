@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "../lib/dialogs";
 import { notify, notifyError } from "../chrome/notify";
 import { TagsInput } from "../finder/TagsInput";
 import * as ipc from "../ipc/commands";

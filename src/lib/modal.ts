@@ -10,7 +10,7 @@ const FOCUSABLE = [
 
 /** Controles focáveis de `root`, na ordem do documento. */
 export const focusables = (root: HTMLElement): HTMLElement[] =>
-  [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.closest("[hidden],[inert]"));
+  [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getAttribute("tabindex") !== "-1" && !el.closest("[hidden],[inert]"));
 
 /** Modais abertos (o último é o de cima: só ele trata Tab e Esc). */
 const stack: RefObject<HTMLElement | null>[] = [];

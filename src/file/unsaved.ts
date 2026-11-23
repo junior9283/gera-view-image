@@ -1,4 +1,5 @@
 import type { DocInfo } from "../ipc/types";
+import { putVeil } from "../tabs/store";
 import { hasUnsaved } from "./dirty";
 
 export type CloseChoice = "save" | "discard" | "cancel";
@@ -56,17 +57,26 @@ export function setSaveHandler(fn: SaveHandler): void {
   saveHandler = fn;
 }
 
+/** Salva os sujos, com a janela bloqueada: o que fosse editado durante a gravação se perderia ao fechar. */
+export async function saveAll(docs: DocInfo[]): Promise<boolean> {
+  const release = putVeil("saving");
+  try {
+    for (const d of docs.filter(hasUnsaved)) {
+      if (!(await saveHandler(d))) return false;
+    }
+    return true;
+  } finally {
+    release();
+  }
+}
+
 /**
  * `confirmClose` + salvar: `true` se pode fechar (descartou, ou todos os sujos foram salvos).
  * Um que precisa de Exportar (ou falha) mantém tudo aberto.
  */
 export async function confirmAndSave(docs: DocInfo[]): Promise<boolean> {
   const choice = await confirmClose(docs);
-  if (choice !== "save") return choice === "discard";
-  for (const d of docs.filter(hasUnsaved)) {
-    if (!(await saveHandler(d))) return false;
-  }
-  return true;
+  return choice === "save" ? saveAll(docs) : choice === "discard";
 }
 
 /** Só para testes. */

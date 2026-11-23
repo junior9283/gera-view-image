@@ -46,7 +46,3 @@ export function withAnnotationOpacity(a: Annotation, pct: number): Annotation {
       : { ...a.style, stroke: withOpacity(a.style.stroke, pct), fill: a.style.fill && withOpacity(a.style.fill, pct) };
   return { ...a, style };
 }
-
-/** O texto de uma anotação de texto trocado; as outras ficam iguais. */
-export const withText = (a: Annotation, text: string): Annotation =>
-  a.kind === "text" ? { ...a, geom: { ...a.geom, text } } : a;

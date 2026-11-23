@@ -104,6 +104,7 @@ describe("Mostrar Lupa", () => {
     fireEvent.pointerMove(window, { clientX: 300, clientY: 200 });
     await wait();
     const call = lensCalls().pop()!;
+    expect(call[1].proof).toBe(true);
     expect(call).toBeTruthy();
     const { region, maxW } = call[1];
     // Ponto sob o ponteiro: (1500, 1000) px da imagem; a lente cobre LENS_SIZE / (0,2 × zoom) px.

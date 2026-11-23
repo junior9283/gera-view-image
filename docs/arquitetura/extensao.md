@@ -94,6 +94,16 @@ registerSlot("viewport-overlay", "magnifier", Magnifier);
   `src/sidebar/selection.ts`) devolve os ids em que uma ação em lote age. Girar/Espelhar, Ajustar Cor e
   Ajustar Tamanho passam por `applyToTargets` (`src/sidebar/batch.ts`): cada imagem recebe a própria
   `apply_op`, uma falha não interrompe as outras e `reportBatch` dá um só aviso.
+  `useThumbs` (`src/sidebar/useThumbs.ts`) reúne o comportamento das miniaturas da barra lateral e da
+  folha de contatos (seleção, teclado, menu, arraste, soltar numa posição); a geometria está em
+  `order.ts`. Lixo e Compartilhar usam `selectedDocs()`, que ignora a seleção com as miniaturas
+  escondidas. Copiar/colar como arquivos: `files.ts` e `commands/clipfiles.rs` (GTK, sem crate nova).
+  `registerDropHover` (`viewer/fileDrop.ts`) avisa onde os arquivos arrastados estão.
+- **Ajustar Cor ao vivo.** O painel grava o ajuste em `src/adjust/preview.ts`; `AdjustPreviewLayer`
+  (slot `viewport-overlay`, abaixo das outras camadas) pede `preview_adjust` da região visível, um
+  pedido ao vivo por vez (até 1 MP) e um nítido parado (até 8 MP, teto também no Rust), e esconde o
+  canvas do visor enquanto o cobre. Depois do OK, a prévia fica até `data-shown` ("id:rev") do canvas
+  do visor passar da revisão em que o ajuste foi aplicado.
 - **Lote 8.** `file.closeAll` (Ctrl+Alt+W) fecha todos os documentos e passa pelo diálogo de não
   salvo (`confirmAndSave`). Mostrar Lupa usa a tecla `` ` ``. No ABNT2 ela é tecla morta, e o lote
   pode acrescentar um alias em `ALIASES`.
@@ -132,14 +142,21 @@ Cada janela é um WebView próprio, com a sua loja `useDocs`. No Rust há um `Do
   recusarem o documento, para nada se perder.
 - **Comando demorado que só lê** entra em `READ_ONLY` (`src/ipc/inflight.ts`); os demais são
   esperados antes de o documento mudar de janela.
-- **Abrir arquivos a pedido do usuário** passa por `openHere` (`src/tabs/open.ts`).
+- **Abrir arquivos a pedido do usuário** passa por `openHere` (`src/tabs/open.ts`); navegar usa
+  `notElsewhere`, que pula os abertos em outra janela sem mexer no foco.
+- **Seletor de arquivos do sistema** vem de `src/lib/dialogs.ts`, não direto do plugin: com um aberto,
+  nenhum documento muda de janela.
+- **Véu** vem de `putVeil(tipo)` (`src/tabs/store.ts`), que devolve a função que tira só o véu posto.
 - **Cancelamento** (OCR, segmentação) e **consentimento** (câmera) são por rótulo de janela.
 
 Mover um documento é atômico: `new_window`/`move_documents` trocam a posse e deixam a entrega (com o
 estado, opaco) na caixa do destino; `take_documents` a retira. Se o destino for destruído antes, a
 entrega volta para uma janela viva. Fechar tem duas fases: a janela pergunta, sela-se
 (`seal_window`; selada, não dá nem recebe documentos) e só então `close_window` a destrói. Sair
-(`confirm_quit`) sela todas, uma a uma, e qualquer Cancelar desfaz os selos.
+(`confirm_quit`) sela todas, uma a uma, e qualquer Cancelar desfaz os selos. Cada saída é uma rodada
+numerada: respostas e cancelamentos de uma rodada não valem para outra, e cancelar não solta uma
+janela que está fechando por si (`Seal::Close`). Antes de perguntar, um ping (`ping-window`/`pong`)
+acha as que não respondem; sair sem elas é escolha explícita (`skip`).
 
 ## Testes do Lote 0
 

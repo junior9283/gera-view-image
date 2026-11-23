@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useModal } from "../lib/modal";
@@ -39,6 +39,7 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
   const [failed, setFailed] = useState(false);
   const [installed, setInstalled] = useState(false);
   const dialog = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   // Esc não interrompe uma instalação em andamento.
   useModal(dialog, { onClose: () => !busy && onClose() });
 
@@ -61,8 +62,8 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
 
   return (
     <div className="update-backdrop" role="presentation">
-      <div ref={dialog} className="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
-        <h3 id="update-title">
+      <div ref={dialog} className="update-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <h3 id={titleId}>
           {t("update.title")}: v{info.version}
         </h3>
         <Notes text={info.notes} />
@@ -127,11 +128,12 @@ export function UpdateHost() {
 function UpToDateDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const dialog = useRef<HTMLDivElement>(null);
+  const textId = useId();
   useModal(dialog, { onClose });
   return (
     <div className="update-backdrop" role="presentation">
-      <div ref={dialog} className="update-dialog" role="dialog" aria-modal="true">
-        <p>{t("update.upToDate")}</p>
+      <div ref={dialog} className="update-dialog" role="dialog" aria-modal="true" aria-labelledby={textId}>
+        <p id={textId}>{t("update.upToDate")}</p>
         <div className="update-actions">
           <button onClick={onClose}>{t("update.close")}</button>
         </div>

@@ -274,8 +274,8 @@ impl DocStore {
         trash(&self.file_path(id)?, true)
     }
 
-    /// Salvar Como…: grava em `dest` e o documento passa a ser esse arquivo (só formatos que o
-    /// Salvar regrava, sem redimensionar).
+    /// Salvar Como…: grava em `dest` e o documento passa a ser esse arquivo (formatos que o
+    /// Salvar regrava e o OpenEXR, sem redimensionar; PDF, GIF, ICO, TGA e PSD só no Exportar).
     pub fn save_as(
         &self,
         id: DocId,
@@ -284,9 +284,9 @@ impl DocStore {
         keywords: Option<Vec<String>>,
     ) -> AppResult<DocInfo> {
         let format = opts.format.source_format();
-        if opts.resize.is_some() || ExportFormat::for_save(format).is_none() {
+        if opts.resize.is_some() || (ExportFormat::for_save(format).is_none() && format != crate::doc::model::SourceFormat::Exr) {
             return Err(AppError::Unsupported(
-                "Salvar Como grava só JPEG, PNG, TIFF, WebP, AVIF ou BMP".into(),
+                "Salvar Como grava só JPEG, PNG, TIFF, HEIC, WebP, AVIF, JPEG 2000, OpenEXR ou BMP".into(),
             ));
         }
         self.wait_ready(id)?;

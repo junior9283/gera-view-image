@@ -6,14 +6,16 @@ import type { DocId, DocInfo, Metadata, MetaSectionId } from "../ipc/types";
 import { useShownPage } from "../markup/pages";
 import { useDocs } from "../store/docs";
 import { useAnnotations, getAnnotationSource } from "./annotations";
+import { fieldLabel, fieldValue } from "./exifLabels";
 import { formatBytes, formatCoord, formatDate, mapUrl } from "./format";
 import { addKeyword, removeKeyword, seedKeywords, useKeywords } from "./keywords";
 import { seedTexts } from "./textEdits";
 import { CropTab } from "./tabs/CropTab";
 import { DescriptionTab } from "./tabs/DescriptionTab";
-import { OPEN_INSPECTOR_TAB_EVENT, TOGGLE_INSPECTOR_EVENT } from "./toggle";
+import { OPEN_INSPECTOR_TAB_EVENT, setInspectorOpen, TOGGLE_INSPECTOR_EVENT } from "./toggle";
 import "./inspector.css";
 import { useWindowEvent } from "../lib/events";
+import { onTabKeys } from "../lib/tablist";
 
 type Tab =
   | "general" | "exif" | "maker" | "lens" | "iptc" | "gps" | "description" | "crop" | "keywords" | "annotations"
@@ -47,6 +49,10 @@ export function InspectorHost() {
     setTab((e as CustomEvent<Tab>).detail);
     setOpen(true);
   });
+  useEffect(() => {
+    setInspectorOpen(open);
+    return () => setInspectorOpen(false);
+  }, [open]);
   return open ? <Inspector tab={tab} onTab={setTab} onClose={() => setOpen(false)} /> : null;
 }
 
@@ -91,14 +97,14 @@ function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) 
           ×
         </button>
       </header>
-      <div className="inspector-tabs" role="tablist">
+      <div className="inspector-tabs" role="tablist" aria-label={t("inspector.title")} onKeyDown={onTabKeys}>
         {tabs.map((k) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => onTab(k)}>
+          <button key={k} id={`inspector-tab-${k}`} role="tab" aria-selected={tab === k} aria-controls="inspector-panel" tabIndex={tab === k ? 0 : -1} onClick={() => onTab(k)}>
             {k === "maker" && load.state === "ok" ? load.meta.maker?.name : t(`inspector.tab.${k}`)}
           </button>
         ))}
       </div>
-      <div className="inspector-body" role="tabpanel">
+      <div id="inspector-panel" className="inspector-body" role="tabpanel" aria-labelledby={`inspector-tab-${tab}`} tabIndex={-1}>
         {!doc || failed ? (
           <p className="inspector-empty">{t("inspector.empty")}</p>
         ) : tab === "annotations" ? (
@@ -145,14 +151,14 @@ function TabContent({ tab, doc, meta }: { tab: Tab; doc: DocInfo; meta: Metadata
 }
 
 function Fields({ rows }: { rows: [string, string][] }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   if (rows.length === 0) return <p className="inspector-empty">{t("inspector.empty")}</p>;
   return (
     <dl className="inspector-fields">
       {rows.map(([k, v], i) => (
         <div key={`${k}-${i}`}>
-          <dt>{k}</dt>
-          <dd>{v}</dd>
+          <dt>{fieldLabel(k, i18n.language)}</dt>
+          <dd>{fieldValue(k, v, i18n.language)}</dd>
         </div>
       ))}
     </dl>
@@ -236,13 +242,16 @@ function AnnotationsTab({ id }: { id: DocId }) {
   if (items.length === 0) return <p className="inspector-empty">{t("inspector.noAnnotations")}</p>;
   return (
     <ul className="inspector-list">
-      {items.map((a) => (
-        <li key={a.id}>
-          <button onClick={() => getAnnotationSource()?.select(id, a.id)}>
-            <small>{a.kind}</small> {a.label}
-          </button>
-        </li>
-      ))}
+      {items.map((a) => {
+        const kind = t(`markup.kind.${a.kind}`, { defaultValue: a.kind });
+        return (
+          <li key={a.id}>
+            <button onClick={() => getAnnotationSource()?.select(id, a.id)}>
+              {kind !== a.label && <small>{kind}</small>} {a.label}
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }

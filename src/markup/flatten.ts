@@ -2,13 +2,13 @@
 // Imprimir, Exportar como PDF e Duplicar usam só os PNGs (`annotationLayers`) numa cópia, sem tocar
 // no original.
 import * as ipc from "../ipc/commands";
-import type { DocId, Op } from "../ipc/types";
+import type { DocId, DocInfo, Op } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { bufferToCanvas } from "../viewer/paint";
 import { pushOp } from "./history";
-import type { Annotation } from "./model";
-import { docOf, hasPages, onPage, pageSize } from "./pages";
-import { flattenScale, flattenToPng, type Source } from "./render";
+import { bounds, boxOf, type Annotation } from "./model";
+import { docOf, hasPages, onPage, pageSize, shownPage } from "./pages";
+import { flattenScale, flattenToPng, renderPng, type Source } from "./render";
 import { getItems, useMarkup } from "./store";
 
 /** Pixels do documento para a Lupa, no máximo `max` px no lado maior. */
@@ -16,6 +16,26 @@ export async function loadSource(id: DocId, w: number, h: number, max: number, f
   const k = Math.min(1, max / Math.max(w, h));
   const v = await ipc.renderView(id, frame, Math.round(w * k), Math.round(h * k));
   return { image: bufferToCanvas(v), w: v.width, h: v.height };
+}
+
+/** Pixels da página `page` para a Lupa: não precisa de mais resolução que o canvas de achatamento. */
+function sourceFor(doc: DocInfo, items: Annotation[], page: number): Promise<Source> | null {
+  if (!items.some((a) => a.kind === "loupe")) return null;
+  const { w, h } = pageSize(doc, page);
+  return loadSource(doc.id, w, h, Math.max(w, h) * flattenScale(w, h), page);
+}
+
+/** PNG só destas anotações da página mostrada (Copiar), com folga para o traço, as pontas e a sombra. */
+export async function itemsPng(id: DocId, items: Annotation[]): Promise<Uint8Array> {
+  const doc = docOf(id)!;
+  const page = shownPage(id);
+  const { w, h } = pageSize(doc, page);
+  const box = boxOf(items.flatMap((a) => {
+    const b = bounds(a);
+    const pad = Math.max(8, a.style.width * 3.5);
+    return [[b.x - pad, b.y - pad], [b.x + b.w + pad, b.y + b.h + pad]] as [number, number][];
+  }));
+  return renderPng(items, box, w, h, await sourceFor(doc, items, page));
 }
 
 /** Anotações achatadas em PNG: a operação e as anotações que ela consome. */
@@ -29,11 +49,8 @@ export async function annotationLayer(id: DocId, page: number): Promise<Layer | 
   const doc = docOf(id);
   const items = onPage(getItems(id), doc, page);
   if (!doc || !items.length) return null;
-  // A lupa não precisa de mais resolução que o próprio canvas de achatamento.
   const { w, h } = pageSize(doc, page);
-  const max = Math.max(w, h) * flattenScale(w, h);
-  const source = items.some((a) => a.kind === "loupe") ? await loadSource(id, w, h, max, page) : null;
-  const png = await flattenToPng(items, w, h, source);
+  const png = await flattenToPng(items, w, h, await sourceFor(doc, items, page));
   return { op: { type: "composite", data: hasPages(doc) ? { png, frame: page } : { png } }, items };
 }
 

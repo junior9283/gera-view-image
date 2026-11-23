@@ -1,12 +1,15 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import * as ipc from "../ipc/commands";
 import type { AppEntry } from "../ipc/types";
+import { useMarkup } from "../markup/store";
+import type { SelectionTool } from "../select/tools";
 import { useWindowEvent } from "../lib/events";
 import { runCommand, type CommandId } from "../shortcuts/commands";
+import { commandState, subscribeCommandState } from "../shortcuts/commandState";
 import { useEnabled } from "../shortcuts/useEnabled";
+import { useSelection } from "../store/selection";
 import { usePrefs, type Prefs } from "../store/prefs";
-import { ShareIcon } from "./icons";
 import { MenuList, type ListItem } from "./MenuBar";
 import { notifyError } from "./notify";
 import { hasDeviceShare, sharedDoc } from "./share";
@@ -27,11 +30,12 @@ function Face({ mode, icon, text }: { mode: Mode; icon: ReactNode; text: string 
 function ToolButton({ def, mode, text }: { def: ToolbarButtonDef; mode: Mode; text: string }) {
   const { t } = useTranslation();
   const on = useEnabled(def.command);
+  const pressed = useSyncExternalStore(subscribeCommandState, () => commandState(def.command).on);
   const label = t(def.hint);
   // Girar: Alt+clique gira à direita (como no Preview).
   const run = (alt: boolean) => runCommand(def.command === "tools.rotateLeft" && alt ? "tools.rotateRight" : def.command);
   return (
-    <button type="button" className="tool-button" aria-label={label} title={label} disabled={!on} onClick={(e) => run(e.altKey)}>
+    <button type="button" className="tool-button" aria-label={label} title={label} aria-pressed={pressed} disabled={!on} onClick={(e) => run(e.altKey)}>
       <Face mode={mode} icon={<def.Icon />} text={text} />
     </button>
   );
@@ -54,12 +58,21 @@ function shareItems(apps: AppEntry[] | null, openApp: (a: AppEntry) => void): Li
   ];
 }
 
-function ShareButton({ mode, text }: { mode: Mode; text: string }) {
+interface MenuButtonProps {
+  item: ToolbarItemDef;
+  mode: Mode;
+  items: ListItem[];
+  /** Chamado ao abrir (carregar o que o menu mostra). */
+  onOpen?: () => void;
+}
+
+/** Botão que abre um menu abaixo dele. */
+function MenuButton({ item, mode, items, onOpen }: MenuButtonProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [apps, setApps] = useState<AppEntry[] | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const { hint, Icon } = item.buttons[0];
 
   useWindowEvent("mousedown", (e) => {
     if (open && !box.current?.contains(e.target as Node)) setOpen(false);
@@ -71,16 +84,8 @@ function ShareButton({ mode, text }: { mode: Mode; text: string }) {
   };
 
   const toggle = () => {
-    if (open) return setOpen(false);
-    setOpen(true);
-    setApps(null);
-    const d = sharedDoc();
-    if (d) ipc.openWithApps(d.id).then(setApps, () => setApps([]));
-  };
-
-  const openApp = (a: AppEntry) => {
-    const d = sharedDoc();
-    if (d) ipc.openWithApp(d.id, a.id).catch(notifyError);
+    if (!open) onOpen?.();
+    setOpen(!open);
   };
 
   return (
@@ -89,18 +94,18 @@ function ShareButton({ mode, text }: { mode: Mode; text: string }) {
         ref={button}
         type="button"
         className="tool-button"
-        aria-label={t("toolbar.share")}
-        title={t("toolbar.share")}
+        aria-label={t(hint)}
+        title={t(hint)}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={toggle}
       >
-        <Face mode={mode} icon={<ShareIcon />} text={text} />
+        <Face mode={mode} icon={<Icon />} text={t(item.label)} />
       </button>
       {open && (
         <MenuList
-          label={t("toolbar.share")}
-          items={shareItems(apps, openApp)}
+          label={t(hint)}
+          items={items}
           level={0}
           autoFocus
           onRun={(id: CommandId) => {
@@ -116,11 +121,44 @@ function ShareButton({ mode, text }: { mode: Mode; text: string }) {
   );
 }
 
-/** Um item da barra: botão, grupo (Zoom) ou o menu Compartilhar. */
+function ShareButton({ item, mode }: { item: ToolbarItemDef; mode: Mode }) {
+  const [apps, setApps] = useState<AppEntry[] | null>(null);
+  const load = () => {
+    setApps(null);
+    const d = sharedDoc();
+    if (d) ipc.openWithApps(d.id).then(setApps, () => setApps([]));
+  };
+  const openApp = (a: AppEntry) => {
+    const d = sharedDoc();
+    if (d) ipc.openWithApp(d.id, a.id).catch(notifyError);
+  };
+  return <MenuButton item={item} mode={mode} items={shareItems(apps, openApp)} onOpen={load} />;
+}
+
+const SELECTION_TOOLS: SelectionTool[] = ["rect", "ellipse", "lasso", "smartLasso"];
+
+/** Ferramentas de seleção da imagem; escolher a que está ligada desliga. */
+function SelectionButton({ item, mode }: { item: ToolbarItemDef; mode: Mode }) {
+  const { t } = useTranslation();
+  const active = useSelection((s) => s.selectionTool);
+  const hasDoc = useEnabled("view.actualSize");
+  const pick = (tool: SelectionTool) => {
+    // A camada de Marcação larga o ponteiro.
+    useMarkup.getState().setTool("select");
+    useSelection.getState().setSelectionTool(tool === active ? null : tool);
+  };
+  const items = SELECTION_TOOLS.map((tool) => ({
+    text: t(`markup.selectTool.${tool}`), checked: tool === active, disabled: !hasDoc, run: () => pick(tool),
+  }));
+  return <MenuButton item={item} mode={mode} items={items} />;
+}
+
+/** Um item da barra: botão, grupo (Zoom) ou o menu (Compartilhar, Seleção). */
 function ToolbarEntry({ item, mode }: { item: ToolbarItemDef; mode: Mode }) {
   const { t } = useTranslation();
   const text = t(item.label);
-  if (item.share) return <ShareButton mode={mode} text={text} />;
+  if (item.menu === "share") return <ShareButton item={item} mode={mode} />;
+  if (item.menu === "selection") return <SelectionButton item={item} mode={mode} />;
   if (item.buttons.length === 1) return <ToolButton def={item.buttons[0]} mode={mode} text={text} />;
   return (
     <div className="tool-group" role="group" aria-label={text}>

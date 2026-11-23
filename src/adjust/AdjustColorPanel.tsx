@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import * as ipc from "../ipc/commands";
 import { NEUTRAL_ADJUST, type ColorAdjust, type DocId, type Histogram, type Levels } from "../ipc/types";
@@ -6,15 +6,10 @@ import { useShownPage } from "../markup/pages";
 import { useDocs } from "../store/docs";
 import { applyToTargets } from "../sidebar/batch";
 import { batchTargets, withActive } from "../sidebar/selection";
-import { bufferToCanvas } from "../viewer/paint";
+import { isNeutral, type SliderKey } from "./neutral";
+import { endPreview, freezePreview, showPreview, useAdjustPreview } from "./preview";
 import "./adjust.css";
 
-/** Intervalo mínimo entre chamadas de `preview_adjust`. */
-export const PREVIEW_THROTTLE_MS = 50;
-const PREVIEW_W = 480;
-const PREVIEW_H = 320;
-
-type SliderKey = Exclude<keyof ColorAdjust, "levels">;
 const SLIDERS: { key: SliderKey; min: number; max: number; step: number }[] = [
   { key: "exposure", min: -3, max: 3, step: 0.01 },
   { key: "contrast", min: -1, max: 1, step: 0.01 },
@@ -26,13 +21,6 @@ const SLIDERS: { key: SliderKey; min: number; max: number; step: number }[] = [
   { key: "sepia", min: 0, max: 1, step: 0.01 },
   { key: "sharpness", min: 0, max: 1, step: 0.01 },
 ];
-
-const NEUTRAL_KEYS = Object.keys(NEUTRAL_ADJUST).filter((k) => k !== "levels") as SliderKey[];
-const isNeutral = (a: ColorAdjust) =>
-  NEUTRAL_KEYS.every((k) => a[k] === NEUTRAL_ADJUST[k]) &&
-  a.levels.black === NEUTRAL_ADJUST.levels.black &&
-  a.levels.gamma === NEUTRAL_ADJUST.levels.gamma &&
-  a.levels.white === NEUTRAL_ADJUST.levels.white;
 
 function drawHistogram(canvas: HTMLCanvasElement, h: Histogram) {
   const ctx = canvas.getContext("2d");
@@ -60,8 +48,8 @@ interface Props {
 }
 
 /**
- * Janela flutuante de Ajustar Cor. A prévia mostra a imagem ajustada num canvas do próprio painel
- * (`preview_adjust`, com *throttle*); o documento só muda com `apply_op(Adjust)` ao clicar em OK.
+ * Janela flutuante de Ajustar Cor. A prévia aparece ao vivo na própria imagem (`AdjustPreviewLayer`);
+ * o documento só muda com `apply_op(Adjust)` ao clicar em OK.
  */
 export function AdjustColorPanel({ docId, onClose }: Props) {
   const { t } = useTranslation();
@@ -72,30 +60,11 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
   const [hist, setHist] = useState<Histogram | null>(null);
   const [error, setError] = useState<string | null>(null);
   const histRef = useRef<HTMLCanvasElement>(null);
-  const previewRef = useRef<HTMLCanvasElement>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const lastRun = useRef(0);
-  const seq = useRef(0);
+  const previewFailed = useAdjustPreview((s) => s.failed);
 
-  const runPreview = useCallback(
-    (a: ColorAdjust) => {
-      lastRun.current = Date.now();
-      const mine = ++seq.current;
-      ipc
-        .previewAdjust(docId, a, PREVIEW_W, PREVIEW_H, page)
-        .then((v) => mine === seq.current && previewRef.current && bufferToCanvas(v, previewRef.current))
-        .catch(() => mine === seq.current && setError(t("adjust.previewFailed")));
-    },
-    [docId, page, t],
-  );
-
-  // Throttle com borda final: dispara já se passou o intervalo; senão agenda o último valor.
-  useEffect(() => {
-    clearTimeout(timer.current);
-    const wait = Math.max(0, lastRun.current + PREVIEW_THROTTLE_MS - Date.now());
-    timer.current = setTimeout(() => runPreview(adj), wait);
-    return () => clearTimeout(timer.current);
-  }, [adj, runPreview]);
+  useEffect(() => showPreview(docId, adj), [docId, adj]);
+  // Fechar, cancelar ou mudar de documento: a imagem volta ao que era.
+  useEffect(() => () => endPreview(docId), [docId]);
 
   useEffect(() => {
     let alive = true;
@@ -116,6 +85,7 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
   const setSlider = (key: SliderKey, value: number) => setAdj((a) => ({ ...a, [key]: value }));
   const setLevels = (patch: Partial<Levels>) => setAdj((a) => ({ ...a, levels: { ...a.levels, ...patch } }));
   const levels = adj.levels;
+  const message = error ?? (previewFailed ? t("adjust.previewFailed") : null);
 
   const auto = () =>
     ipc
@@ -126,9 +96,11 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
   const ok = async () => {
     if (isNeutral(adj)) return onClose();
     // Com várias miniaturas selecionadas, o mesmo ajuste vai para todas (cada uma com o próprio desfazer).
+    freezePreview(docId);
     const failedAll = await applyToTargets(targets, () => ({ type: "adjust", data: adj })).then((r) => r.done === 0, () => true);
-    if (failedAll) setError(t("adjust.applyFailed"));
-    else onClose();
+    if (!failedAll) return onClose();
+    setError(t("adjust.applyFailed"));
+    showPreview(docId, adj);
   };
 
   return (
@@ -145,8 +117,6 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
       }}
     >
       <h3 id={titleId}>{t("adjust.title")}</h3>
-
-      <canvas ref={previewRef} className="adjust-preview" aria-label={t("adjust.preview")} />
 
       <div className="adjust-hist">
         <canvas ref={histRef} width={256} height={64} aria-label={t("adjust.histogram")} />
@@ -179,7 +149,7 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
       ))}
 
       {targets.length > 1 && <p className="adjust-size">{t("adjust.batchHint", { count: targets.length })}</p>}
-      {error && <p role="alert" className="adjust-error">{error}</p>}
+      {message && <p role="alert" className="adjust-error">{message}</p>}
 
       <div className="adjust-actions">
         <button type="button" onClick={auto}>{t("adjust.auto")}</button>

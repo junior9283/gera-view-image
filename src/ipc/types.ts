@@ -4,7 +4,9 @@ export type DocId = number;
 
 export type SourceFormat =
   | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "webp" | "heic"
-  | "avif" | "ico" | "svg" | "psd" | "tga" | "raw" | "jp2";
+  | "avif" | "ico" | "svg" | "psd" | "tga" | "raw" | "jp2"
+  // Só leitura (L3).
+  | "exr" | "hdr" | "pnm" | "icns" | "j2c" | "jxl" | "dds" | "farbfeld";
 
 export type ErrorCode =
   | "not_found"
@@ -280,3 +282,12 @@ export const QUIT_CANCELLED_EVENT = "quit-cancelled";
 export const CLOSE_WINDOW_EVENT = "close-window";
 export const ACTIVATE_DOCUMENT_EVENT = "activate-document";
 export const WINDOWS_CHANGED_EVENT = "windows-changed";
+export const PING_WINDOW_EVENT = "ping-window";
+export const MERGE_DECLINED_EVENT = "merge-declined";
+
+/** Resposta de `confirm_quit`. `opening` e `unresponsive` vêm antes de perguntar a qualquer janela. */
+export type QuitOutcome =
+  | { kind: "agreed" }
+  | { kind: "cancelled" }
+  | { kind: "opening"; title: string }
+  | { kind: "unresponsive"; label: string; title: string };

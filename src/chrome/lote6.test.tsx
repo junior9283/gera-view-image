@@ -17,6 +17,8 @@ import { Slot } from "../lib/slots";
 import { isEnabled, registerCommand, runCommand } from "../shortcuts/commands";
 import { useDocs } from "../store/docs";
 import { getPrefs, resetPrefsForTests, setPrefs } from "../store/prefs";
+import { useThumbSelection } from "../sidebar/selection";
+import { resetUiForTests, useUi } from "../store/ui";
 import { getToasts, resetToastsForTests } from "./notify";
 import { MenuBar } from "./MenuBar";
 import { resetShareForTests } from "./share";
@@ -119,6 +121,42 @@ describe("KDE Connect", () => {
     useDocs.setState({ docs: [{ ...info, path: "" }], activeId: 7 });
     expect(isEnabled("file.shareEmail")).toBe(false);
     expect(isEnabled("file.shareDevice")).toBe(false);
+  });
+});
+
+describe("compartilhar a seleção da barra lateral", () => {
+  const docs = [7, 8, 9].map((id) => ({ ...info, id, name: `${id}.png`, path: id === 9 ? "" : `/x/${id}.png` }));
+  beforeEach(() => {
+    useDocs.setState({ docs, activeId: 8 });
+    useUi.setState({ sidebar: "thumbs", slideshow: false });
+    useThumbSelection.setState({ picked: [7, 8], anchor: 7 });
+  });
+  afterEach(() => {
+    resetUiForTests();
+    useThumbSelection.setState({ picked: [], anchor: null });
+  });
+
+  it("e-mail e KDE Connect levam todas as selecionadas", async () => {
+    runCommand("file.shareEmail");
+    expect(ipc.shareEmail).toHaveBeenCalledWith([7, 8]);
+    resetShareForTests(true);
+    ipc.shareDevices.mockResolvedValue([{ id: "p7", name: "Pixel 7" }]);
+    runCommand("file.shareDevice");
+    await waitFor(() => expect(ipc.shareDevice).toHaveBeenCalledWith([7, 8], "p7"));
+  });
+
+  it("as sem arquivo em disco ficam de fora, com aviso", () => {
+    useThumbSelection.setState({ picked: [7, 8, 9], anchor: 7 });
+    runCommand("file.shareEmail");
+    expect(ipc.shareEmail).toHaveBeenCalledWith([7, 8]);
+    expect(getToasts().map((t) => t.text)).toEqual(["Sem arquivo em disco, não enviadas: 9.png."]);
+  });
+
+  it("habilita se alguma selecionada tem arquivo, mesmo que a ativa não tenha", () => {
+    useDocs.setState({ activeId: 9 });
+    expect(isEnabled("file.shareEmail")).toBe(false);
+    useThumbSelection.setState({ picked: [7, 9], anchor: 7 });
+    expect(isEnabled("file.shareEmail")).toBe(true);
   });
 });
 

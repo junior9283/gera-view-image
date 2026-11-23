@@ -3,9 +3,8 @@ import { useTranslation } from "react-i18next";
 import { notifyError } from "../chrome/notify";
 import { useModal } from "../lib/modal";
 import { useDocs } from "../store/docs";
-import { usePrefs, setPrefs } from "../store/prefs";
 import { ExportDialog, ExportSelectedDialog } from "./ExportDialog";
-import { closeFileDialog, openRecent, renameDoc, useFileUi } from "./fileActions";
+import { closeFileDialog, renameDoc, useFileUi } from "./fileActions";
 import { registerFileCommands } from "./register";
 import { UnsavedDialog } from "./UnsavedDialog";
 import "./file.css";
@@ -52,48 +51,6 @@ function RenameDialog({ id, name, onClose }: { id: number; name: string; onClose
   );
 }
 
-/** Abrir Recentes: lista simples (a barra de menus da Task 6 não tem submenus dinâmicos). */
-function RecentDialog({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation();
-  const titleId = useId();
-  const dialog = useRef<HTMLDivElement>(null);
-  useModal(dialog, { onClose });
-  const recent = usePrefs((p) => p.recent);
-  return (
-    <div className="file-backdrop" role="presentation">
-      <div
-        ref={dialog} className="file-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}
-      >
-        <h3 id={titleId}>{t("file.recent.title")}</h3>
-        {recent.length ? (
-          <ul className="file-list">
-            {recent.map((p) => (
-              <li key={p}>
-                <button
-                  type="button" title={p}
-                  onClick={() => {
-                    onClose();
-                    void openRecent(p).catch(notifyError);
-                  }}
-                >
-                  {p.slice(p.lastIndexOf("/") + 1)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="file-hint">{t("file.recent.empty")}</p>
-        )}
-        <div className="file-actions">
-          <button type="button" disabled={!recent.length} onClick={() => setPrefs({ recent: [] })}>{t("file.recent.clear")}</button>
-          <span className="file-spacer" />
-          <button type="button" autoFocus onClick={onClose}>{t("file.recent.close")}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** Diálogos do menu Arquivo e o registro dos comandos (montado uma vez no `App`). */
 export function FileHost() {
   useEffect(registerFileCommands, []);
@@ -108,8 +65,6 @@ export function FileHost() {
     content = <RenameDialog key={doc.id} id={doc.id} name={doc.name} onClose={closeFileDialog} />;
   } else if (dialog?.kind === "exportSelected") {
     content = <ExportSelectedDialog onClose={closeFileDialog} />;
-  } else if (dialog?.kind === "recent") {
-    content = <RecentDialog onClose={closeFileDialog} />;
   }
   return (
     <>

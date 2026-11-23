@@ -13,12 +13,17 @@ use ::image::{
     ExtendedColorType, ImageEncoder, RgbaImage,
     codecs::png::{CompressionType, FilterType, PngEncoder},
 };
-use std::{borrow::Cow, path::Path};
+use sha2::{Digest, Sha256};
+use std::{
+    borrow::Cow,
+    path::Path,
+    sync::{Mutex, PoisonError},
+};
 use tauri::{AppHandle, State, image::Image, ipc::Response};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 /// PNG rápido (a camada colada vira `data:` URL na interface).
-fn png_bytes(img: &RgbaImage) -> AppResult<Vec<u8>> {
+pub(super) fn png_bytes(img: &RgbaImage) -> AppResult<Vec<u8>> {
     let mut out = Vec::new();
     PngEncoder::new_with_quality(&mut out, CompressionType::Fast, FilterType::Adaptive)
         .write_image(img.as_raw(), img.width(), img.height(), ExtendedColorType::Rgba8)
@@ -101,6 +106,92 @@ pub async fn copy_image(
         .map_err(|e| AppError::Io(e.to_string()))
 }
 
+/// Teto do JSON das anotações copiadas (assinaturas e camadas coladas vão em PNG base64).
+const MAX_ANNOTATIONS: usize = 64 << 20;
+
+/// Anotações copiadas, para qualquer janela colar. Só valem enquanto o desenho delas ainda for o que
+/// está na área de transferência do sistema: copiar outra coisa, em qualquer app, as substitui.
+#[derive(Default)]
+pub struct AnnotationClipboard(Mutex<Option<Copied>>);
+
+struct Copied {
+    data: String,
+    digest: [u8; 32],
+}
+
+fn digest(w: u32, h: u32, rgba: &[u8]) -> [u8; 32] {
+    Sha256::new()
+        .chain_update(w.to_le_bytes())
+        .chain_update(h.to_le_bytes())
+        .chain_update(rgba)
+        .finalize()
+        .into()
+}
+
+impl AnnotationClipboard {
+    fn set(&self, data: String, digest: [u8; 32]) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(Copied { data, digest });
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner).is_none()
+    }
+
+    /// As anotações, se `current` (o resumo da imagem do sistema agora) é o desenho delas; senão
+    /// esquece as antigas.
+    fn matching(&self, current: Option<[u8; 32]>) -> Option<String> {
+        let mut slot = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if slot.as_ref().map(|c| c.digest) != current {
+            *slot = None;
+        }
+        slot.as_ref().map(|c| c.data.clone())
+    }
+}
+
+fn check_annotations(data: &str) -> AppResult<()> {
+    if data.len() > MAX_ANNOTATIONS {
+        return Err(AppError::Unsupported("anotações grandes demais para copiar".into()));
+    }
+    Ok(())
+}
+
+/// Copia anotações: `data` (JSON) fica aqui e `png`, o desenho, vai para a área de transferência.
+#[tauri::command]
+pub async fn copy_annotations(
+    app: AppHandle,
+    copied: State<'_, AnnotationClipboard>,
+    data: String,
+    png: Vec<u8>,
+) -> AppResult<()> {
+    check_annotations(&data)?;
+    let img = blocking(move || {
+        ::image::load_from_memory_with_format(&png, ::image::ImageFormat::Png)
+            .map(|i| i.into_rgba8())
+            .map_err(AppError::from)
+    })
+    .await?;
+    let (w, h) = img.dimensions();
+    let digest = digest(w, h, img.as_raw());
+    app.clipboard()
+        .write_image(&Image::new_owned(img.into_raw(), w, h))
+        .map_err(|e| AppError::Io(e.to_string()))?;
+    copied.set(data, digest);
+    Ok(())
+}
+
+/// As anotações copiadas, ou `None` se a última cópia do sistema já é outra coisa.
+#[tauri::command]
+pub async fn pasted_annotations(
+    app: AppHandle,
+    copied: State<'_, AnnotationClipboard>,
+) -> AppResult<Option<String>> {
+    if copied.is_empty() {
+        return Ok(None);
+    }
+    let current = app.clipboard().read_image().ok();
+    Ok(copied.matching(current.map(|i| digest(i.width(), i.height(), i.rgba()))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +206,38 @@ mod tests {
         ::image::load_from_memory_with_format(b, ::image::ImageFormat::Png)
             .unwrap()
             .into_rgba8()
+    }
+
+    #[test]
+    fn anotacoes_copiadas_valem_ate_a_proxima_copia() {
+        let clip = AnnotationClipboard::default();
+        let sum = |c: [u8; 4], w: u32, h: u32| digest(w, h, solid(w, h, c).as_raw());
+        assert!(clip.is_empty());
+        assert_eq!(clip.matching(Some(sum([0; 4], 2, 2))), None);
+
+        clip.set("ação".into(), sum([1, 2, 3, 4], 2, 3));
+        let seen = Some(sum([1, 2, 3, 4], 2, 3));
+        assert_eq!(clip.matching(seen).as_deref(), Some("ação"));
+        assert_eq!(clip.matching(seen).as_deref(), Some("ação")); // cola quantas vezes quiser
+
+        // Os mesmos bytes noutro formato não são a mesma imagem; e a antiga não volta.
+        assert_eq!(clip.matching(Some(sum([1, 2, 3, 4], 3, 2))), None);
+        assert!(clip.is_empty());
+        assert_eq!(clip.matching(seen), None);
+
+        // Sem imagem no sistema (copiaram um texto): também não valem mais.
+        clip.set("x".into(), sum([9; 4], 1, 1));
+        assert_eq!(clip.matching(None), None);
+        assert!(clip.is_empty());
+    }
+
+    #[test]
+    fn anotacoes_grandes_demais_sao_recusadas() {
+        assert!(check_annotations(&"a".repeat(MAX_ANNOTATIONS)).is_ok());
+        assert_eq!(
+            check_annotations(&"a".repeat(MAX_ANNOTATIONS + 1)).unwrap_err().code(),
+            "unsupported"
+        );
     }
 
     #[test]

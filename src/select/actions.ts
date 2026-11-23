@@ -2,10 +2,12 @@
 import * as ipc from "../ipc/commands";
 import { annotationsPng } from "../markup/flatten";
 import { shownPage, shownSize } from "../markup/pages";
+import { useMarkup } from "../markup/store";
 import type { DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { invertMask, maskBounds } from "./lasso";
+import type { SelectionTool } from "./tools";
 
 const activeDoc = (): DocInfo | undefined => {
   const { docs, activeId } = useDocs.getState();
@@ -28,8 +30,20 @@ export function invertSelection() {
   setSelection(invertMask(selection, w, h));
 }
 
+/** Escolhe a ferramenta de seleção da imagem; a Marcação larga o ponteiro. */
+export function chooseSelectionTool(tool: SelectionTool) {
+  useMarkup.getState().setTool("select");
+  sel().setSelectionTool(tool);
+}
+
+/** Ferramentas › Seleção…: liga a ferramenta; escolher a que já está ligada sai dela (como o Esc). */
+export function toggleSelectionTool(tool: SelectionTool) {
+  if (sel().selectionTool === tool) sel().setSelectionTool(null);
+  else chooseSelectionTool(tool);
+}
+
 /** Ativa o Alfa Instantâneo (clicar e arrastar na imagem). */
-export const startInstantAlpha = () => sel().setSelectionTool("instantAlpha");
+export const startInstantAlpha = () => toggleSelectionTool("instantAlpha");
 
 /** Recortar (Ctrl+K): corta no retângulo da seleção; numa seleção não retangular, antes torna
  *  transparente o que está fora da máscara. */

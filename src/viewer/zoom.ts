@@ -14,8 +14,8 @@ export interface Point {
  * Estado da visualização em px CSS: a origem da imagem fica em (panX, panY) e 1 px da imagem
  * ocupa `scale` px na tela. `fit` e `actual` se mantêm ao redimensionar; `free` é zoom manual.
  *
- * O zoom mostrado ao usuário é `scale * k`, com `k` = `devicePixelRatio` (px físicos por px CSS):
- * 100 % (Tamanho Real) é 1 px da imagem por px físico. Degraus e limites valem no zoom mostrado.
+ * O zoom mostrado ao usuário é `scale * k`, com `k` = `zoomUnit()` (o `devicePixelRatio`, ou a razão
+ * entre as resoluções do documento e da tela): 100 % é o Tamanho Real escolhido nas Preferências. Degraus e limites valem no zoom mostrado.
  */
 export interface ViewState {
   scale: number;
@@ -83,6 +83,9 @@ export function visibleRegion(state: ViewState, img: Size, view: Size): Rect {
   const y1 = Math.min(img.h, Math.ceil((view.h - state.panY) / state.scale));
   return { x, y, w: Math.max(0, x1 - x), h: Math.max(0, y1 - y) };
 }
+
+/** `a` cobre `b`. */
+export const contains = (a: Rect, b: Rect) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
 
 /** Enquadra o retângulo `r` (px da imagem) centralizado na view, dentro dos limites de escala. */
 export function rectState(r: Rect, view: Size, k = 1): ViewState {

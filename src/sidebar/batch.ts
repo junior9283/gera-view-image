@@ -67,14 +67,18 @@ export async function runBatch(ids: DocId[], work: (id: DocId) => Promise<unknow
 
 const MAX_NAMES = 3;
 
+/** Os primeiros nomes e quantos mais há. */
+export function nameList(names: string[]): string {
+  const more = names.length - MAX_NAMES;
+  return names.slice(0, MAX_NAMES).join(", ") + (more > 0 ? ` +${more}` : "");
+}
+
 /** Um aviso só: nada para uma imagem que deu certo; com falhas, quantas e quais (os primeiros nomes). */
-export function reportBatch(r: BatchResult): void {
+export function reportBatch(r: BatchResult, doneKey = "sidebar.batch.done"): void {
   if (r.failed.length) {
-    const names = r.failed.slice(0, MAX_NAMES).map((f) => f.name);
-    const more = r.failed.length - names.length;
-    notify(t("sidebar.batch.failed", { done: r.done, total: r.total, names: names.join(", ") + (more > 0 ? ` +${more}` : "") }));
+    notify(t("sidebar.batch.failed", { done: r.done, total: r.total, names: nameList(r.failed.map((f) => f.name)) }));
   } else if (r.total > 1) {
-    notify(t("sidebar.batch.done", { count: r.done }));
+    notify(t(doneKey, { count: r.done }));
   }
 }
 

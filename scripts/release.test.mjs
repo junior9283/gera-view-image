@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { release, tagArgs } from "./release.mjs";
+import { METAINFO, release, tagArgs } from "./release.mjs";
 
 function fixture(version = "0.1.0", unreleased = "### Adicionado\n- coisa\n") {
   const root = mkdtempSync(join(tmpdir(), "rel-"));
@@ -101,4 +101,26 @@ test("prerelease é menor que a versão final", () => {
 
 test("a tag de release é anotada (a leve não sobe com --follow-tags)", () => {
   assert.deepEqual(tagArgs("0.2.0"), ["tag", "-a", "v0.2.0", "-m", "v0.2.0"]);
+});
+
+test("acrescenta o release no metainfo, se houver", () => {
+  const root = fixture();
+  const path = join(root, METAINFO);
+  mkdirSync(join(root, "src-tauri/linux"));
+  writeFileSync(path, '<component>\n  <releases>\n    <release version="0.1.0" date="2026-01-01"/>\n  </releases>\n</component>\n');
+  run(root, "0.2.0");
+  assert.equal(
+    readFileSync(path, "utf8"),
+    '<component>\n  <releases>\n    <release version="0.2.0" date="2026-11-20"/>\n    <release version="0.1.0" date="2026-01-01"/>\n  </releases>\n</component>\n',
+  );
+});
+
+test("release na mesma versão não repete o release no metainfo", () => {
+  const root = fixture();
+  const path = join(root, METAINFO);
+  mkdirSync(join(root, "src-tauri/linux"));
+  const xml = '<releases>\n    <release version="0.1.0" date="2026-01-01"/>\n</releases>\n';
+  writeFileSync(path, xml);
+  run(root, "0.1.0");
+  assert.equal(readFileSync(path, "utf8"), xml);
 });

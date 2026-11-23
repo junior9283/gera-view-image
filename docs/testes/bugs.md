@@ -2,6 +2,13 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Apagar e Recortar do menu agiam na imagem com anotação selecionada (rodada 3)
+- **Sintoma:** com uma anotação selecionada e uma seleção na imagem, Editar › Apagar ou Recortar apagava pixels da imagem; sem seleção, ficavam desabilitados.
+- **Causa:** os comandos de edição só conheciam a seleção da imagem; só a tecla Delete, tratada na camada de Marcação, chegava às anotações.
+- **Correção:** `onFocus` (`src/shortcuts/appCommands.ts`) leva Copiar, Recortar, Apagar, Duplicar e Selecionar Tudo às anotações quando há anotação selecionada com a barra visível (`annotationsFocused`); o Recortar só apaga depois de a cópia dar certo.
+- **Teste:** "recortar copia e apaga só as copiadas; Apagar do menu apaga a anotação, não a imagem" e "se a cópia falha, o Recortar não apaga nada" (`src/markup/clipboard.test.tsx`).
+- **Lição:** um atalho local da camada esconde que o comando do menu faz outra coisa; testar pelo comando, não só pela tecla.
+
 ## Sair com edição em outra janela parecia travar (Lote 12, antes de publicar)
 - **Sintoma (Wayland aninhado):** Ctrl+Q numa janela sem edições, com outra não salva atrás: a da frente ficava com o véu "Fechando a janela…", Esc não fazia nada e a pergunta ficava escondida.
 - **Causa:** o Wayland não deixa o app trazer outra janela para a frente sem um gesto do usuário nela; o véu não avisava nem cancelava.
@@ -147,6 +154,46 @@ Formato: sintoma, causa, correção, teste, lição.
 - **Correção:** ppp não finito ou fora de 1 a 10 000 é ignorado (72), nos dois eixos juntos para não distorcer.
 - **Teste:** `ppp_fora_da_faixa_e_ignorado` (`src-tauri/src/image/pdf.rs`) e `escala_em_porcentagem_do_tamanho_natural` (`src-tauri/src/image/print_layout.rs`).
 
+### OpenEXR exportado com alfa reto
+- **Sintoma:** um EXR semitransparente exportado aparecia com halo claro em outros programas (a especificação pede cor pré-multiplicada pelo alfa).
+- **Causa:** `encode::exr` gravava a cor sem multiplicar, e o teste da época fixava esse valor.
+- **Correção:** multiplica pelo alfa ao gravar; a leitura (`hdr::decode_exr`) desfaz.
+- **Teste:** `exr_half_e_float` (`src-tauri/src/image/encode.rs`, valores corrigidos pela especificação) e `exr_exportado_volta_igual` (`src-tauri/tests/formatos.rs`).
+- **Lição:** valor esperado se tira da especificação, não do que o código produz.
+
+## Correções da revisão do Lote 12 (antes de publicar)
+
+### A janela que precisava responder à saída não vinha para a frente
+- **Causa:** `setFocus()` no JS é negado pela ACL, e o `catch` vazio escondia o erro.
+- **Correção:** `raise` no Rust (mostrar, desminimizar, focar) em `ask` e `close_other_windows`; nenhuma permissão nova.
+- **Teste:** "a janela perguntada responde, sem fechar" (`src/tabs/closing.test.ts`) exige que o JS não chame `setFocus`.
+- **Lição:** um `catch` vazio em volta de uma API com permissão esconde que ela nunca funcionou.
+
+### Sair ficava preso por uma janela que não respondia ou não terminava de abrir
+- **Causa:** a espera da resposta não tinha prazo, a janela não carregada recusava fechar e `confirm_quit` desistia calado.
+- **Correção:** ping com prazo antes de perguntar; sem resposta, `confirm_quit` devolve `unresponsive` e a janela que pediu pergunta (padrão Cancelar). Janela que não abriu devolve os documentos a outra ao fechar, ou pergunta pelo sistema se for a única.
+- **Teste:** `ping_diz_quem_nao_respondeu`, `janela_que_nao_abriu_fecha_devolvendo_o_que_ia_chegar`, `janela_que_some_antes_da_pergunta_nao_prende_a_saida` (`commands/window.rs`) e "janela que não responde" (`closing.test.ts`).
+
+### Véu apagado por quem não o pôs deixava editável uma janela selada
+- **Causa:** um véu só, global; o fim de um mover e o `quit-cancelled` o tiravam, fosse de quem fosse.
+- **Correção:** `putVeil` devolve a função que tira só o próprio véu; saída numerada por rodada; selo no Rust com motivo (`Seal`); `seal` espera o movimento em andamento.
+- **Teste:** "cada véu cai só pela mão de quem o pôs", "o fim da saída de outra não destrava a janela que está fechando", "com documento mudando de janela, espera terminar antes de selar" e `cancelar_a_saida_nao_solta_quem_esta_fechando_nem_rodada_mais_nova`.
+
+### Edição feita durante uma gravação lenta era dada como respondida ao fechar
+- **Causa:** a versão respondida era lida depois de todas as gravações.
+- **Correção:** véu durante a gravação e nova conferência até não sobrar documento não salvo; só o descarte explícito vale, na versão em que foi feito.
+- **Teste:** "editado durante a gravação lenta de outro: é perguntado de novo".
+
+### Navegar pela pasta roubava o foco e travava num vizinho aberto em outra janela
+- **Correção:** `goFolder` e o histórico pulam para o seguinte (`notElsewhere`), sem trazer a outra janela.
+- **Teste:** "vizinho aberto em outra janela" (`src/viewer/actions.test.ts`, `history.test.ts`).
+
+### Menores
+- Aviso de alteração no disco perdido com o documento mudando de janela: fica pendente até alguém o ter (`mudanca_no_disco_nao_se_perde_com_o_documento_mudando_de_janela`).
+- Janela destruída entre o registro da pergunta e o envio prendia a saída (`begin_ask`).
+- Mover com o seletor de arquivos do sistema aberto: `src/lib/dialogs.ts`. Juntar recusado avisa quem pediu.
+- Fechar durante impressão, PDF ou gravação: espera um pouco e pergunta.
+- Permissão `core:window:allow-destroy` retirada (não era usada).
 ## TIFF de várias páginas (depois do Lote 12)
 
 ### Página menor que a primeira fora dos limites; página maior cortada
@@ -195,3 +242,9 @@ Formato: sintoma, causa, correção, teste, lição.
 - **Sintomas:** cópias sobrepostas de dois valores apagados deixavam um pedaço; bloco forjado com muitas cópias e faixas custava tempo quadrático; a miniatura do IFD1 (a foto de antes das edições) ia para o arquivo.
 - **Correção:** cópias procuradas no bloco original e zeradas juntas; faixas protegidas fundidas com busca binária e teto de casamentos (`None` = EXIF descartado); `exif_for_write` tira o IFD1 e zera a miniatura, e `exif_with_dpi` grava 0 como próximo IFD.
 - **Teste:** `copias_sobrepostas_de_valores_tirados_somem_inteiras`, `copias_demais_derrubam_o_bloco` (`src-tauri/src/image/exifscrub.rs`), `miniatura_antiga_do_exif_nao_e_gravada` (`src-tauri/tests/inspetor.rs`).
+
+### Colar anotação numa página menor que a primeira (merge com a integração da rodada 3)
+- **Sintoma:** anotação copiada que cabia na primeira página, colada numa página menor, ficava fora dela.
+- **Causa:** o colar do clipboard de anotações (frente nova) centrava pelo `width`/`height` do documento.
+- **Correção:** `insert` (`src/markup/clipboard.ts`) usa `shownSize`; o resto do encontro (seleção arrastável, prévia ao vivo, Copiar anotações, prova de cor) já recebia o tamanho da página.
+- **Teste:** "colar numa página menor que a primeira centra a anotação dentro dela" (`src/markup/pageSizes.test.ts`), `src/viewer/pages.test.tsx` e `prova_de_cor_vale_na_pagina_exibida_no_tamanho_dela` (`src-tauri/src/doc/proof.rs`).

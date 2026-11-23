@@ -84,8 +84,8 @@ type Inflight = Arc<OnceLock<Arc<RgbaImage>>>;
 
 /// Estado do documento que um render reflete: `(ops.len(), generation)`.
 pub(super) type RenderState = (usize, u64);
-/// Base da prévia de ajuste: `(doc, quadro, estado, max_w, max_h)`.
-type PreviewKey = (DocId, u32, RenderState, u32, u32);
+/// Base da prévia de ajuste: `(doc, estado, quadro, região, max_w, max_h)`.
+type PreviewKey = (DocId, RenderState, u32, Option<Rect>, u32, u32);
 
 /// JPEG acima disto (em pixels) abre com prévia reduzida e completa em segundo plano.
 pub const PREVIEW_MIN_PIXELS: u64 = 4_000_000;
@@ -117,6 +117,8 @@ pub struct Document {
     /// O disco tem a versão de 16 bits de `source` com `ops[..n]` (último Salvar em 16 bits):
     /// o próximo Salvar relê esse arquivo e refaz só o resto, sem guardar RGBA16 na memória.
     pub(super) deep: Option<DeepBase>,
+    /// Prova de Cor com Perfil (só na tela; ver `doc/proof.rs`).
+    pub(super) proof: Option<crate::image::proof::Proof>,
 }
 
 /// Ver [`Document::deep`].
@@ -202,6 +204,7 @@ impl Document {
             unseen_disk: false,
             original: None,
             deep: None,
+            proof: None,
         };
         doc.info.page_sizes = doc.page_sizes();
         doc
@@ -912,7 +915,7 @@ impl DocStore {
     }
 
     /// `render_view` e o estado do documento que o buffer reflete.
-    fn render_view_state(
+    pub(super) fn render_view_state(
         &self,
         id: DocId,
         frame: u32,
@@ -943,17 +946,29 @@ impl DocStore {
     /// cache de 1 entrada: os ajustes de cor repetem a prévia sem refazer a redução.
     /// A chave inclui `ops.len()` e `generation`, então editar o documento a invalida.
     pub fn preview_base(&self, id: DocId, frame: u32, max_w: u32, max_h: u32) -> AppResult<Arc<Vec<u8>>> {
+        self.preview_region(id, frame, max_w, max_h, None)
+    }
+
+    /// `preview_base` de um trecho da página `frame` (a região visível no visor).
+    pub fn preview_region(
+        &self,
+        id: DocId,
+        frame: u32,
+        max_w: u32,
+        max_h: u32,
+        region: Option<Rect>,
+    ) -> AppResult<Arc<Vec<u8>>> {
         let lock = || self.inner.preview.lock().unwrap_or_else(|e| e.into_inner());
         let state = self.with_doc(id, |d| (d.ops.len(), d.generation))?;
         if let Some((k, buf)) = lock().as_ref()
-            && *k == (id, frame, state, max_w, max_h)
+            && *k == (id, state, frame, region, max_w, max_h)
         {
             return Ok(buf.clone());
         }
         // A chave guardada é a do estado que o render de fato usou.
-        let (buf, state) = self.render_view_state(id, frame, max_w, max_h, None)?;
+        let (buf, state) = self.render_view_state(id, frame, max_w, max_h, region)?;
         let buf = Arc::new(buf);
-        *lock() = Some(((id, frame, state, max_w, max_h), buf.clone()));
+        *lock() = Some(((id, state, frame, region, max_w, max_h), buf.clone()));
         Ok(buf)
     }
 

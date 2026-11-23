@@ -7,10 +7,9 @@ import { useModal } from "../lib/modal";
 import { hasPages, pageSize, shownPage } from "../markup/pages";
 import { applyToTargets, resizeFor, type ResizeMode } from "../sidebar/batch";
 import { batchTargets, withActive } from "../sidebar/selection";
-import { RESIZE_PRESETS, UNITS, fromPixels, linkDims, toPixels, type Unit } from "./units";
+import { DEFAULT_DPI, RESIZE_PRESETS, UNITS, fromPixels, linkDims, toPixels, type Unit } from "./units";
 import "./adjust.css";
 
-const DEFAULT_DPI = 72;
 const MAX_PIXELS = 2 ** 31;
 
 /** Estimativa síncrona fixa (testes). Sem ela, vale o `estimate_size` do Rust no formato do arquivo. */

@@ -1,7 +1,7 @@
 // Liga ao registro de comandos as ações que já existem. Itens de tarefas futuras (Salvar, Exportar,
 // Imprimir, Colar, Anotar ▸…) ficam sem registro e, por isso, desabilitados nos menus.
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "../lib/dialogs";
 import { SUPPORTED_EXTENSIONS } from "../file/extensions";
 import i18n from "../i18n";
 import { openAdjustColor, openResize } from "../adjust/actions";
@@ -9,14 +9,17 @@ import { canRedo, canUndo, redo, undo } from "../edit/history";
 import type { Op } from "../ipc/types";
 import { toggleInspector } from "../inspector/toggle";
 import { shownSize } from "../markup/pages";
+import { deleteSelected } from "../markup/actions";
+import { copyAnnotations, cutAnnotations, duplicateAnnotations, focusedDoc, selectAllAnnotations } from "../markup/clipboard";
 import { openAbout, openPreferences } from "../prefs/dialogs";
 import * as sel from "../select/actions";
 import { maskBounds } from "../select/lasso";
 import { applyToTargets } from "../sidebar/batch";
-import { batchTargets } from "../sidebar/selection";
+import { copyAsFiles } from "../sidebar/files";
+import { batchTargets, selectAllThumbs, sheetOpen } from "../sidebar/selection";
 import { useDocs } from "../store/docs";
 import { quit } from "../tabs/closing";
-import { openHere } from "../tabs/open";
+import { openFiles } from "../file/openFiles";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
 import { CHECK_UPDATES_EVENT } from "../updater/UpdateDialog";
@@ -54,13 +57,23 @@ function zoomToSelection() {
   if (r) view.zoomToRect(r);
 }
 
-/** Esc: sai da apresentação; senão desmarca; senão sai da tela cheia. */
+/** Esc: sai da apresentação; senão desmarca; senão sai da ferramenta de seleção; senão, da tela cheia. */
 function escape() {
   const ui = useUi.getState();
   if (ui.slideshow) return view.stopSlideshow();
-  if (useSelection.getState().selection) return sel.deselect();
+  const { selection, selectionTool, setSelectionTool } = useSelection.getState();
+  if (selection) return sel.deselect();
+  if (selectionTool) return setSelectionTool(null);
   if (ui.fullscreen) return view.setFullscreen(false);
 }
+
+/** Com anotação selecionada, o comando de edição é dela (`onItems`); sem, da imagem. */
+const onFocus = (onItems: (id: number) => unknown, onImage: () => unknown) => () => {
+  const id = focusedDoc();
+  return id === null ? onImage() : onItems(id);
+};
+const hasAnnotation = () => focusedDoc() !== null;
+const hasTarget = () => hasAnnotation() || hasSelection();
 
 const withActive = (f: (id: number) => unknown) => () => {
   const d = view.activeDoc();
@@ -70,35 +83,42 @@ const activeCan = (f: (id: number) => boolean) => () => {
   const d = editable();
   return !!d && f(d.id);
 };
+/** Na folha de contatos não há imagem à vista: o comando age nas miniaturas. */
+const onSheet = (sheet: () => unknown, viewer: () => unknown) => () => (sheetOpen() ? sheet() : viewer());
+const THUMB_STEP = 1.25;
+function stepThumbs(dir: 1 | -1) {
+  const { contactSize, setContactSize } = useUi.getState();
+  setContactSize(contactSize * THUMB_STEP ** dir);
+}
 const nav = (dir: "next" | "prev") => () => view[dir]({ wrap: useUi.getState().slideshow });
 
 type Entry = [CommandId, () => unknown, (() => boolean)?];
 
 /** Arquivo › Abrir…: diálogo do sistema filtrado pelas extensões que o núcleo abre. */
-async function openFiles() {
+async function pickFiles() {
   const picked = await openDialog({
     multiple: true,
     directory: false,
     filters: [{ name: i18n.t("dialog.images"), extensions: [...SUPPORTED_EXTENSIONS] }],
   });
-  if (!picked?.length) return;
-  const [first] = await openHere(picked);
-  if (first) view.activate(first.id);
+  if (picked?.length) await openFiles(picked);
 }
 
 const ENTRIES: Entry[] = [
-  ["file.open", openFiles],
+  ["file.open", pickFiles],
   ["file.close", withActive((id) => view.closeDocs([id])), () => !!view.activeDoc()],
 
   ["edit.undo", withActive(undo), activeCan(canUndo)],
   ["edit.redo", withActive(redo), activeCan(canRedo)],
-  ["edit.cut", sel.cutSelection, hasSelection],
-  ["edit.copy", sel.copySelection, hasDoc],
-  ["edit.delete", sel.deleteSelection, hasSelection],
-  ["edit.selectAll", sel.selectAll, hasDoc],
+  ["edit.cut", onFocus(cutAnnotations, sel.cutSelection), hasTarget],
+  ["edit.copy", onFocus(copyAnnotations, () => copyAsFiles() ?? sel.copySelection()), hasDoc],
+  ["edit.duplicate", onFocus(duplicateAnnotations, () => {}), hasAnnotation],
+  ["edit.delete", onFocus(deleteSelected, sel.deleteSelection), hasTarget],
+  ["edit.selectAll", onFocus(selectAllAnnotations, onSheet(selectAllThumbs, sel.selectAll)), hasDoc],
   ["edit.deselect", escape, () => {
     const { slideshow, fullscreen } = useUi.getState();
-    return slideshow || fullscreen || !!useSelection.getState().selection;
+    const { selection, selectionTool } = useSelection.getState();
+    return slideshow || fullscreen || !!selection || !!selectionTool;
   }],
   ["edit.invertSelection", sel.invertSelection, hasSelection],
   ["edit.preferences", openPreferences],
@@ -108,8 +128,8 @@ const ENTRIES: Entry[] = [
   ["view.contactSheet", () => view.toggleSidebar("contact")],
   ["view.actualSize", view.actualSize, hasDoc],
   ["view.fit", view.fitToWindow, hasDoc],
-  ["view.zoomIn", view.zoomIn, hasDoc],
-  ["view.zoomOut", view.zoomOut, hasDoc],
+  ["view.zoomIn", onSheet(() => stepThumbs(1), view.zoomIn), hasDoc],
+  ["view.zoomOut", onSheet(() => stepThumbs(-1), view.zoomOut), hasDoc],
   ["view.zoomToSelection", zoomToSelection, hasSelection],
   ["view.markupBar", fire(TOGGLE_MARKUP_EVENT)],
   ["view.slideshow", view.startSlideshow, hasDocs],
@@ -127,6 +147,10 @@ const ENTRIES: Entry[] = [
   ["tools.crop", sel.cropToSelection, hasSelection],
   ["tools.adjustColor", openAdjustColor, hasDoc],
   ["tools.resize", openResize, hasDoc],
+  ["tools.selectRect", () => sel.toggleSelectionTool("rect"), hasDoc],
+  ["tools.selectEllipse", () => sel.toggleSelectionTool("ellipse"), hasDoc],
+  ["tools.selectLasso", () => sel.toggleSelectionTool("lasso"), hasDoc],
+  ["tools.selectSmartLasso", () => sel.toggleSelectionTool("smartLasso"), hasDoc],
   ["tools.instantAlpha", sel.startInstantAlpha, hasDoc],
   ["tools.inspector", toggleInspector],
 

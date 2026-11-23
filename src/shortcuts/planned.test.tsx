@@ -55,6 +55,14 @@ describe("menus dos lotes de paridade", () => {
     ]);
   });
 
+  it("as ferramentas de seleção ficam em Ferramentas, ao lado do Alfa Instantâneo", () => {
+    const ids = commandsOf(menu("tools").items);
+    const at = ids.indexOf("tools.selectRect");
+    expect(ids.slice(at, at + 5)).toEqual([
+      "tools.selectRect", "tools.selectEllipse", "tools.selectLasso", "tools.selectSmartLasso", "tools.instantAlpha",
+    ]);
+  });
+
   it("submenus novos ficam nos menus certos", () => {
     const sub = (m: string, label: string) => entries(menu(m).items).find((i) => i.label === label)?.submenu;
     expect(commandsOf(sub("file", "menu.file.share") ?? [])).toEqual(["file.shareEmail", "file.shareDevice"]);

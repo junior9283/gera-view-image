@@ -2,8 +2,8 @@
 .adjust-dialog {
   padding: 12px 16px;
   border-radius: 10px;
-  background: #2b2b2b;
-  color: #eee;
+  background: var(--chrome-panel);
+  color: var(--chrome-fg);
   font: 13px/1.4 system-ui, sans-serif;
   box-shadow: 0 8px 32px rgb(0 0 0 / 0.5);
 }
@@ -31,14 +31,13 @@
 .adjust-dialog h3 {
   margin: 0 0 8px;
 }
-.adjust-preview {
-  display: block;
+/* Prévia na imagem do visor, abaixo da seleção e da Marcação. */
+.adjust-layer {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: auto;
-  max-height: 200px;
-  object-fit: contain;
-  background: #111;
-  border-radius: 4px;
+  height: 100%;
+  z-index: -1;
 }
 .adjust-hist {
   display: grid;
@@ -77,7 +76,7 @@
 }
 .adjust-error {
   margin: 6px 0 0;
-  color: #ff8a80;
+  color: var(--chrome-danger);
 }
 .adjust-actions {
   display: flex;

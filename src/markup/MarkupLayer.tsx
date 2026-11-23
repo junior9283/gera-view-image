@@ -3,17 +3,20 @@ import { useTranslation } from "react-i18next";
 import type { DocInfo } from "../ipc/types";
 import type { OverlayProps } from "../lib/slots";
 import { toImage } from "../select/tools";
+import { ARROWS, isTyping } from "../shortcuts/keymap";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
 import { dpr } from "../viewer/paint";
-import { addAnnotation, commit, deleteSelected } from "./actions";
+import { addAnnotation, commit, deleteSelected, endLive, moveSelectedLive } from "./actions";
+import { cloneItems, selectedItems } from "./clipboard";
 import { loadSource } from "./flatten";
 import { cssFont } from "./fontCss";
-import { DEFAULT_FONT, hitTest, moveItems, normBox, type Annotation, type Point } from "./model";
+import { bounds, hitTest, moveItems, normBox, textBox, textFont, textOf, withText, type Annotation, type Point } from "./model";
 import { onCurrentPage, onPage, pageItems, pageSize } from "./pages";
 import { render, renderSelection, type Source, type ViewXf } from "./render";
-import { getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
+import { annotationsFocused, getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
+import { LINE_HEIGHT, layoutLines, roughWidth } from "./textLayout";
 import { createShape, createStroke, createText, toImageStyle } from "./tools/create";
 import { dragHandle, handlesFor, hitHandle, type HandleId } from "./tools/handles";
 
@@ -21,18 +24,18 @@ import { dragHandle, handlesFor, hitHandle, type HandleId } from "./tools/handle
 const LOUPE_SOURCE_MAX = 2048;
 /** Tolerância de clique numa anotação, em px de tela. */
 const HIT_PX = 4;
+/** Alt+arrastar só duplica depois disto (px de tela). */
+const COPY_PX = 3;
 const NO_IDS: string[] = [];
 
 type Drag =
   | { kind: "create"; tool: ShapeTool; start: Point }
   | { kind: "stroke"; points: Point[]; sketch: boolean }
-  | { kind: "move"; start: Point; before: Annotation[]; ids: string[] }
+  /** `copy`: Alt apertado, ainda sem arrastar (as cópias nascem no primeiro movimento, em `items`). */
+  | { kind: "move"; start: Point; before: Annotation[]; items: Annotation[]; ids: string[]; copy: boolean }
   | { kind: "handle"; start: Point; before: Annotation[]; orig: Annotation; handle: HandleId };
 
 const isShape = (t: Tool): t is ShapeTool => !["select", "sketch", "draw", "text"].includes(t);
-
-const isEditable = (t: EventTarget | null) =>
-  t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
 /** Pixels do documento para a Lupa, só quando há lupa; recarrega a cada revisão. */
 function useLoupeSource(doc: DocInfo | null, needed: boolean, page: number): Source | null {
@@ -52,20 +55,26 @@ function useLoupeSource(doc: DocInfo | null, needed: boolean, page: number): Sou
   return src?.key === key ? src.s : null;
 }
 
-/** Atalhos locais da camada: Delete apaga as selecionadas; Esc desmarca e volta à Seleção. */
+/** Atalhos locais da camada: Delete apaga as selecionadas; Esc desmarca e volta à Seleção; Enter edita o texto; setas movem. */
 function useMarkupKeys() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!ARROWS[e.key]) endLive(); // outra tecla fecha o passo das setas antes de agir
       const st = useMarkup.getState();
       const id = useDocs.getState().activeId;
       const selecting = useSelection.getState().selectionTool !== null; // Delete/Esc são da seleção
-      if (!st.visible || id === null || st.editing || selecting || isEditable(e.target)) return;
+      if (!st.visible || id === null || st.editing || selecting || isTyping(e.target)) return;
       let used = false;
       if (e.key === "Delete" || e.key === "Backspace") used = deleteSelected(id);
       else if (e.key === "Escape") {
         if (getSelected(id).length) st.select(id, []);
         else if (st.tool !== "select") st.setTool("select");
         else return;
+        used = true;
+      } else if (e.key === "Enter" && annotationsFocused(id) && !(e.target as Element | null)?.closest?.("button, a, [role]")) {
+        const [a, ...more] = selectedItems(id);
+        if (more.length || textOf(a) === null) return;
+        st.setEditing(a.id);
         used = true;
       }
       if (used) {
@@ -74,8 +83,28 @@ function useMarkupKeys() {
         e.stopImmediatePropagation();
       }
     };
+    // Setas no `document`: depois da barra lateral e dos menus, antes da navegação (useShortcuts).
+    const onArrow = (e: KeyboardEvent) => {
+      const step = ARROWS[e.key];
+      if (!step || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+      const id = useDocs.getState().activeId;
+      if (!annotationsFocused(id) || useUi.getState().slideshow || document.querySelector('[aria-modal="true"]')) return;
+      e.preventDefault();
+      const k = e.shiftKey ? 10 : 1;
+      moveSelectedLive(id, step[0] * k, step[1] * k);
+    };
+    const onKeyUp = (e: KeyboardEvent) => ARROWS[e.key] && endLive();
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    document.addEventListener("keydown", onArrow);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("blur", endLive);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("keydown", onArrow);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("blur", endLive);
+      endLive();
+    };
   }, []);
 }
 
@@ -141,13 +170,17 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
     };
 
     const onDown = (e: PointerEvent) => {
-      if (isEditable(e.target)) {
+      if (isTyping(e.target)) {
         e.stopPropagation(); // clique no texto em edição
         return;
       }
       const id = cur.current.docId;
       const st = useMarkup.getState();
       if (!st.visible || id === null || e.button !== 0) return;
+      // O `preventDefault` abaixo impede a troca de foco: sem isto, um texto em edição não seria
+      // confirmado e as setas ficariam com a barra lateral.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      endLive();
       const p = at(e);
       const { scale } = cur.current.view;
       const items = getItems(id);
@@ -163,14 +196,14 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
         if (!d) {
           const hit = hitTest(shown, p[0], p[1], HIT_PX / scale);
           if (!hit) {
-            st.select(id, []);
-            return; // área vazia: o arrasto continua sendo o pan do Viewport
+            if (!e.shiftKey) st.select(id, []);
+            return; // área vazia: o arrasto é do Viewport (selecionar ou mover a imagem)
           }
           const ids = e.shiftKey
             ? sel.includes(hit.id) ? sel.filter((x) => x !== hit.id) : [...sel, hit.id]
             : sel.includes(hit.id) ? sel : [hit.id];
           st.select(id, ids);
-          d = { kind: "move", start: p, before: items, ids };
+          d = { kind: "move", start: p, before: items, items, ids, copy: e.altKey };
         }
       } else if (st.tool === "text") {
         // Entra no histórico só ao confirmar o texto (TextEditor).
@@ -201,13 +234,22 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       const p = at(e);
       const { scale } = cur.current.view;
       const st = useMarkup.getState();
-      if (d.kind === "create") setDraft(createShape(d.tool, d.start, p, st.style, scale));
+      if (d.kind === "create") setDraft(createShape(d.tool, d.start, p, st.style, scale, e.shiftKey));
       else if (d.kind === "stroke") {
         d.points.push(p);
         setDraft({ id: "draft", kind: "freehand", geom: { points: d.points }, style: toImageStyle(st.style, scale) });
-      } else if (d.kind === "move") st.setItems(id, moveItems(d.before, d.ids, p[0] - d.start[0], p[1] - d.start[1]));
-      else {
-        const next = dragHandle(d.orig, d.handle, p[0], p[1], d.start, scale);
+      } else if (d.kind === "move") {
+        const [dx, dy] = [p[0] - d.start[0], p[1] - d.start[1]];
+        if (d.copy) {
+          if (Math.hypot(dx, dy) * scale < COPY_PX) return;
+          const clones = cloneItems(id, d.before.filter((a) => d.ids.includes(a.id)));
+          Object.assign(d, { copy: false, items: [...d.before, ...clones], ids: clones.map((a) => a.id) });
+          st.setItems(id, d.items);
+          st.select(id, d.ids);
+        }
+        st.setItems(id, moveItems(d.items, d.ids, dx, dy));
+      } else {
+        const next = dragHandle(d.orig, d.handle, p[0], p[1], d.start, scale, { shift: e.shiftKey, alt: e.altKey });
         st.setItems(id, d.before.map((a) => (a.id === d.orig.id ? next : a)));
       }
     };
@@ -222,7 +264,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       const { scale } = cur.current.view;
       const st = useMarkup.getState();
       if (d.kind === "create") {
-        addAnnotation(id, createShape(d.tool, d.start, p, st.style, scale));
+        addAnnotation(id, createShape(d.tool, d.start, p, st.style, scale, e.shiftKey));
         st.setTool("select");
       } else if (d.kind === "stroke") {
         const a = createStroke(d.points, st.style, scale, d.sketch);
@@ -236,8 +278,9 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       if (!st.visible || id === null) return;
       const p = at(e);
       const hit = hitTest(pageItems(id), p[0], p[1], HIT_PX / cur.current.view.scale);
-      if (hit?.kind === "text") {
+      if (hit && textOf(hit) !== null) {
         e.stopPropagation();
+        st.select(id, [hit.id]);
         st.setEditing(hit.id);
       } else if (hit) e.stopPropagation(); // não alterna Ajustar/Tamanho real sobre uma anotação
     };
@@ -255,7 +298,7 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
     };
   }, []);
 
-  const editingItem = items.find((a) => a.id === editing && a.kind === "text");
+  const editingItem = items.find((a) => a.id === editing && textOf(a) !== null);
   const cursor = !active ? undefined : tool === "select" ? "default" : tool === "text" ? "text" : "crosshair";
 
   return (
@@ -267,20 +310,22 @@ export function MarkupLayer({ scale, panX, panY, imageW, imageH }: OverlayProps)
       style={{ pointerEvents: active ? "auto" : "none", cursor }}
     >
       <canvas ref={canvas} className="markup-canvas" />
-      {docId !== null && editingItem?.kind === "text" && (
+      {docId !== null && editingItem && (
         <TextEditor key={editingItem.id} docId={docId} item={editingItem} view={{ scale, panX, panY }} />
       )}
     </div>
   );
 }
 
-/** `<textarea>` sobre o texto em edição; confirma ao sair (vazio apaga). */
-function TextEditor({ docId, item, view }: { docId: number; item: Extract<Annotation, { kind: "text" }>; view: ViewXf }) {
+/** `<textarea>` sobre o texto em edição; confirma ao sair (vazio apaga o texto, ou a forma fica sem ele). */
+function TextEditor({ docId, item, view }: { docId: number; item: Annotation; view: ViewXf }) {
   const { t } = useTranslation();
-  const [value, setValue] = useState(item.geom.text);
+  const original = textOf(item) ?? "";
+  const [value, setValue] = useState(original);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const f = item.style.font ?? DEFAULT_FONT;
-  const b = normBox(item.geom);
+  const f = textFont(item);
+  const inShape = textBox(item);
+  const b = inShape ?? normBox(bounds(item));
 
   useEffect(() => {
     ref.current?.focus();
@@ -292,26 +337,34 @@ function TextEditor({ docId, item, view }: { docId: number; item: Extract<Annota
     if (st.editing !== item.id) return;
     st.setEditing(null);
     const text = value.replace(/\s+$/, "");
-    if (text && text === item.geom.text) return; // nada mudou: sem passo no desfazer
     const items = getItems(docId);
+    if (item.kind !== "text") {
+      if (text !== original) commit(docId, items.map((a) => (a.id === item.id ? withText(a, text) : a)));
+      return;
+    }
+    if (text && text === original) return; // nada mudou: sem passo no desfazer
     const without = items.filter((a) => a.id !== item.id);
     // Texto recém-criado (vazio) ainda não está no histórico: o "antes" é sem ele.
-    const before = item.geom.text === "" ? without : items;
+    const before = original === "" ? without : items;
     if (!text) {
       commit(docId, without, before);
       return;
     }
     const lines = text.split("\n");
-    const w = Math.max(b.w, f.size * 2, ...lines.map((l) => l.length * f.size * 0.62));
-    const next = { ...item, geom: { ...item.geom, text, w, h: lines.length * f.size * 1.25 } };
+    const w = Math.max(b.w, f.size * 2, ...lines.map(roughWidth(f)));
+    const next = { ...item, geom: { ...item.geom, text, w, h: lines.length * f.size * LINE_HEIGHT } };
     commit(docId, items.map((a) => (a.id === item.id ? next : a)), before);
   };
 
   const size = f.size * view.scale;
+  const lineCount = inShape ? layoutLines(value, b.w, f).length : value.split("\n").length;
+  const height = lineCount * f.size * LINE_HEIGHT;
+  // Na forma, o campo tem a altura do texto e fica no meio, onde ele será desenhado.
+  const top = inShape ? b.y + (b.h - height) / 2 : b.y;
   return (
     <textarea
       ref={ref}
-      className="markup-text-editor"
+      className={`markup-text-editor${inShape ? " in-shape" : ""}`}
       aria-label={t("markup.textEditor")}
       value={value}
       onChange={(e) => setValue(e.target.value)}
@@ -322,9 +375,9 @@ function TextEditor({ docId, item, view }: { docId: number; item: Extract<Annota
       }}
       style={{
         left: view.panX + b.x * view.scale,
-        top: view.panY + b.y * view.scale,
-        width: Math.max(b.w * view.scale, size * 4),
-        height: Math.max(b.h, (value.split("\n").length) * f.size * 1.25) * view.scale + 4,
+        top: view.panY + top * view.scale,
+        width: inShape ? Math.max(b.w * view.scale, size) : Math.max(b.w * view.scale, size * 4),
+        height: (inShape ? height : Math.max(b.h, height)) * view.scale + 4,
         font: cssFont({ ...f, size }),
         color: f.color,
         textAlign: f.align,

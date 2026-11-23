@@ -5,6 +5,7 @@ import { current } from "../file/fileActions";
 import * as ipc from "../ipc/commands";
 import { registerSlot } from "../lib/slots";
 import { registerCommand } from "../shortcuts/commands";
+import { selectedDocs } from "../sidebar/selection";
 import { getPrefs, subscribePrefs } from "../store/prefs";
 import { activeFile, moveActiveToTrash, saveAsActive, toggleLockActive } from "./actions";
 import { FinderHost } from "./FinderHost";
@@ -18,7 +19,7 @@ const withFile = (f: (id: number) => unknown) => () => {
 };
 
 registerCommand("file.saveAs", saveAsActive, () => !!current());
-registerCommand("file.moveToTrash", moveActiveToTrash, hasFile);
+registerCommand("file.moveToTrash", moveActiveToTrash, () => selectedDocs().some((d) => d.path));
 registerCommand("file.tags", withFile((id) => openPopover(id, true)), hasFile);
 registerCommand("file.lock", toggleLockActive, hasFile);
 registerCommand("file.browseVersions", withFile(openVersions), hasFile);

@@ -69,8 +69,8 @@ describe("arquivo", () => {
 
   it("Exportar para WebP cria o arquivo", async () => {
     // Reabre o arquivo salvo pelos Recentes (passa pelo open_documents como o Abrir).
-    await menuItem(0, ["Abrir Recentes", "Open Recent"]);
-    const recent = $(".file-list button");
+    await menuItem(0, ["Abrir Recente", "Open Recent"]);
+    const recent = $(".menu-level-1 .menu-item");
     await recent.waitForExist({ timeout: 5000 });
     await recent.click();
     await browser.waitUntil(async () => (await scale()) > 0, { timeout: 10000 });

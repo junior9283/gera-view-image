@@ -6,6 +6,7 @@ import { SUPPORTED_EXTENSIONS } from "../file/extensions";
 import { newFromClipboard } from "../file/fileActions";
 import * as ipc from "../ipc/commands";
 import { addAnnotation } from "../markup/actions";
+import { pasteAnnotations } from "../markup/clipboard";
 import { DEFAULT_STYLE, newId, type Box } from "../markup/model";
 import { shownSize } from "../markup/pages";
 import { useMarkup } from "../markup/store";
@@ -67,9 +68,11 @@ async function insertLayer(png: Uint8Array, at?: Point): Promise<void> {
   addAnnotation(doc.id, { id: newId(), kind: "image", geom, style: { ...DEFAULT_STYLE } });
 }
 
-/** Editar › Colar: camada flutuante na imagem aberta; sem imagem aberta, um documento novo. */
+/** Editar › Colar: as anotações copiadas ou, se a última cópia for uma imagem, uma camada flutuante na
+ *  imagem aberta; sem imagem aberta, um documento novo. */
 export async function pasteAsLayer(): Promise<void> {
   if (!viewable(activeDoc())) return newFromClipboard();
+  if (await pasteAnnotations()) return;
   await insertLayer(await ipc.clipboardImage());
 }
 

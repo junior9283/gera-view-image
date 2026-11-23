@@ -11,6 +11,9 @@ export const RESIZE_PRESETS = [
   { w: 3840, h: 2160 },
 ] as const;
 
+/** Resolução presumida quando o arquivo não informa. */
+export const DEFAULT_DPI = 72;
+
 /** Milímetros por unidade física (uma polegada = 25,4 mm). */
 const MM: Record<"in" | "cm" | "mm", number> = { in: 25.4, cm: 10, mm: 1 };
 

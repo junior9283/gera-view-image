@@ -648,7 +648,7 @@ fn exif_que_nao_cabe_no_jpeg_avisa() {
 fn metadados_dizem_que_blocos_o_arquivo_tem() {
     let tem = |m: Metadata| (m.carried.exif, m.carried.text);
     assert_eq!(tem(meta("meta_gps.jpg")), (true, false));
-    assert_eq!(tem(meta("meta_iptc.jpg")).1, true);
+    assert!(tem(meta("meta_iptc.jpg")).1);
     assert_eq!(tem(meta("alpha.png")), (false, false));
     let dir = tmp("insp-levados");
     for (fmt, ext) in [(ExportFormat::Png, "png"), (ExportFormat::Tiff, "tiff"), (ExportFormat::Psd, "psd")] {

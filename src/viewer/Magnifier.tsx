@@ -2,7 +2,7 @@
 // sob ele, como a do Pré-Visualização. Pede ao núcleo só a região sob a lente, na resolução que a
 // ampliação pede (não reaproveita o buffer do Viewport, que vem reduzido no "ajustar").
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { renderView } from "../ipc/commands";
+import { renderScreen } from "../ipc/commands";
 import type { Rect } from "../ipc/types";
 import type { OverlayProps } from "../lib/slots";
 import { useDocs } from "../store/docs";
@@ -17,7 +17,7 @@ export const LENS_ZOOM = 3;
 
 let on = false;
 const listeners = new Set<() => void>();
-const subscribe = (l: () => void) => {
+export const subscribeMagnifier = (l: () => void) => {
   listeners.add(l);
   return () => listeners.delete(l);
 };
@@ -52,7 +52,7 @@ function around(cx: number, cy: number, half: number, w: number, h: number): Rec
 }
 
 export function Magnifier({ scale, panX, panY, imageW, imageH }: OverlayProps) {
-  const visible = useSyncExternalStore(subscribe, magnifierOn);
+  const visible = useSyncExternalStore(subscribeMagnifier, magnifierOn);
   const doc = useDocs((s) => s.docs.find((d) => d.id === s.activeId) ?? null);
   const frame = useUi((s) => s.page) ?? 0;
   const showBg = usePrefs((p) => p.showImageBackground);
@@ -124,7 +124,7 @@ export function Magnifier({ scale, panX, panY, imageW, imageH }: OverlayProps) {
     // Margem de uma lente para cada lado: o ponteiro anda sem pedir de novo a cada pixel.
     const region = around(center.x, center.y, half * 2, imageW, imageH)!;
     loading.current = true;
-    renderView(doc.id, frame, Math.max(1, Math.ceil(region.w * density)), Math.max(1, Math.ceil(region.h * density)), region)
+    renderScreen(doc.id, frame, Math.max(1, Math.ceil(region.w * density)), Math.max(1, Math.ceil(region.h * density)), region)
       .then((v) => (buffer.current = { canvas: bufferToCanvas(v), key, region, density }))
       .catch((e) => console.error("falha ao desenhar a lupa:", e))
       .finally(() => {

@@ -33,10 +33,17 @@ export interface Prefs {
   recentColors: string[];
   /** Lote 12: barra de abas visível. */
   tabBar: boolean;
+  /** Arrastar na imagem a move, em vez de selecionar um retângulo. */
+  dragPans: boolean;
+  /** 100%: um pixel da tela por pixel da imagem, ou o tamanho impresso (ppp do documento e da tela). */
+  actualSize: "pixel" | "print";
+  /** Abrir arquivos: em abas, na mesma janela (barra lateral) ou em janelas separadas. */
+  openFilesIn: "tabs" | "window" | "windows";
 }
 
 export const MAX_RECENT = 20;
 export const MAX_RECENT_COLORS = 16;
+export const MAX_VERSIONS_MB = 100_000;
 const FILE = "prefs.json";
 
 export const DEFAULT_PREFS: Prefs = {
@@ -61,6 +68,9 @@ export const DEFAULT_PREFS: Prefs = {
   showImageBackground: true,
   recentColors: [],
   tabBar: false,
+  dragPans: false,
+  actualSize: "pixel",
+  openFilesIn: "window",
 };
 
 const oneOf = <T extends string>(...vals: T[]) => (v: unknown): v is T => vals.includes(v as T);
@@ -83,7 +93,7 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => v is Prefs[K] } = {
   recent: isStrList,
   colorManagement: isBool,
   liveText: isBool,
-  versionsMaxMb: (v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 100_000,
+  versionsMaxMb: (v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_VERSIONS_MB,
   toolbarHidden: isBool,
   toolbarItems: (v): v is string[] | null => v === null || isStrList(v),
   toolbarMode: oneOf("icon", "iconText", "text"),
@@ -92,6 +102,9 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => v is Prefs[K] } = {
   recentColors: (v): v is string[] =>
     Array.isArray(v) && v.length <= MAX_RECENT_COLORS && v.every((s) => typeof s === "string" && /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)),
   tabBar: isBool,
+  dragPans: isBool,
+  actualSize: oneOf("pixel", "print"),
+  openFilesIn: oneOf("tabs", "window", "windows"),
 };
 
 const KEYS = Object.keys(DEFAULT_PREFS) as (keyof Prefs)[];

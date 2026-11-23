@@ -3,7 +3,8 @@
     "minimize": "Minimize",
     "maximize": "Maximize",
     "restore": "Restore",
-    "close": "Close"
+    "close": "Close",
+    "menu": "Window menu"
   },
   "update": {
     "title": "New version available",
@@ -45,7 +46,44 @@
       "pt-BR": "Português (Brasil)",
       "en": "English"
     },
-    "colorManagement": "Color matching (ICC profiles)"
+    "colorManagement": "Color matching (ICC profiles)",
+    "dragPans": "Dragging moves the image (instead of selecting)",
+    "tab": {
+      "general": "General",
+      "images": "Images",
+      "signatures": "Signatures"
+    },
+    "openFilesIn": "Open files",
+    "openIn": {
+      "tabs": "In tabs",
+      "window": "In the same window (sidebar)",
+      "windows": "In separate windows"
+    },
+    "tabBar": "Show the tab bar",
+    "versionsMaxMb": "Space for previous versions (MB; 0 turns off)",
+    "actualSize": "100% equals",
+    "actual": {
+      "pixel": "One screen pixel per image pixel",
+      "print": "Printed size"
+    },
+    "showImageBackground": "Show the background behind transparency",
+    "liveText": "Live Text",
+    "sortBy": "Sort images by",
+    "sort": {
+      "manual": "Manual order",
+      "name": "Name",
+      "date": "Date",
+      "kind": "Kind",
+      "size": "Size"
+    },
+    "sig": {
+      "empty": "No saved signatures.",
+      "name": "Signature {{n}}",
+      "remove": "Remove",
+      "removeNamed": "Remove signature {{n}}",
+      "create": "Create Signature…",
+      "needsImage": "Open an image to create a signature"
+    }
   },
   "about": {
     "title": "About Gera View Image",
@@ -85,7 +123,8 @@
     "empty": "Drag images into this window to open them",
     "zoomLevel": "Zoom {{pct}}%",
     "zoomPercent": "{{pct}}%",
-    "dropHere": "Drop to open"
+    "dropHere": "Drop to open",
+    "imageAlt": "{{name}}: {{text}}"
   },
   "sidebar": {
     "label": "Thumbnails",
@@ -96,6 +135,8 @@
     "itemMenu": "Thumbnail menu",
     "menu": {
       "open": "Open",
+      "copy": "Copy",
+      "copyMany": "Copy {{count}} Images",
       "rotateLeft": "Rotate Left",
       "rotateRight": "Rotate Right",
       "flipH": "Flip Horizontal",
@@ -108,6 +149,7 @@
       "printMany": "Print {{count}} Images…",
       "reveal": "Show in Folder",
       "trash": "Move to Trash",
+      "trashMany": "Move {{count}} Images to Trash",
       "close": "Close",
       "closeMany": "Close {{count}} Images"
     },
@@ -366,7 +408,7 @@
           "denied": "Camera permission denied.",
           "notFound": "No camera found. Connect one and try again.",
           "disconnected": "The camera was disconnected.",
-        "busy": "The camera is in use by another program.",
+          "busy": "The camera is in use by another program.",
           "failed": "Could not turn the camera on."
         }
       }
@@ -449,7 +491,8 @@
       "share": "Share",
       "shareEmail": "Email…",
       "shareDevice": "KDE Connect…",
-      "importScanner": "Import from Scanner…"
+      "importScanner": "Import from Scanner…",
+      "clearMenu": "Clear Menu"
     },
     "edit": {
       "title": "Edit",
@@ -458,6 +501,7 @@
       "cut": "Cut",
       "copy": "Copy",
       "paste": "Paste",
+      "duplicate": "Duplicate Annotation",
       "delete": "Delete",
       "selectAll": "Select All",
       "deselect": "Deselect All",
@@ -483,7 +527,7 @@
       "zoomToSelection": "Zoom to Selection",
       "markupBar": "Show Markup Toolbar",
       "slideshow": "Slideshow",
-      "fullscreen": "Full Screen",
+      "fullscreen": "Enter Full Screen",
       "sortBy": "Sort By",
       "sortByName": "Name",
       "sortByDate": "Date",
@@ -492,8 +536,16 @@
       "toolbar": "Hide Toolbar",
       "customizeToolbar": "Customize Toolbar…",
       "imageBackground": "Show Image Background",
+      "softProof": "Soft Proof with Profile",
+      "softProofNone": "None",
+      "softProofChoose": "Choose Profile…",
       "tabBar": "Show Tab Bar",
-      "allTabs": "Show All Tabs"
+      "allTabs": "Show All Tabs",
+      "fullscreenHide": "Exit Full Screen",
+      "markupBarHide": "Hide Markup Toolbar",
+      "toolbarShow": "Show Toolbar",
+      "imageBackgroundHide": "Hide Image Background",
+      "tabBarHide": "Hide Tab Bar"
     },
     "go": {
       "title": "Go",
@@ -513,6 +565,10 @@
       "crop": "Crop",
       "adjustColor": "Adjust Color…",
       "resize": "Adjust Size…",
+      "selectRect": "Rectangular Selection",
+      "selectEllipse": "Elliptical Selection",
+      "selectLasso": "Lasso Selection",
+      "selectSmartLasso": "Smart Lasso",
       "instantAlpha": "Instant Alpha",
       "inspector": "Show Inspector",
       "annotate": "Annotate",
@@ -542,7 +598,13 @@
       "copyAllText": "Copy All Text",
       "translateText": "Translate…",
       "searchText": "Search Text on the Web…",
-      "searchImageWeb": "Search Image on the Web…"
+      "searchImageWeb": "Search Image on the Web…",
+      "inspectorHide": "Hide Inspector",
+      "magnifierHide": "Hide Magnifier",
+      "showColorsHide": "Hide Colors",
+      "showFontsHide": "Hide Fonts",
+      "markupInspectorHide": "Hide Markup Inspector",
+      "liveTextHide": "Hide Live Text"
     },
     "window": {
       "title": "Window",
@@ -588,7 +650,11 @@
       "fit": "Zoom to Fit",
       "slideshow": "Slideshow",
       "export": "Export",
-      "print": "Print"
+      "print": "Print",
+      "selection": "Selection",
+      "removeBackground": "Remove Background",
+      "colors": "Colors",
+      "fonts": "Fonts"
     },
     "openWith": "Open With",
     "openWithOther": "Other…"
@@ -719,10 +785,7 @@
       "cancel": "Cancel"
     },
     "recent": {
-      "title": "Open Recent",
-      "empty": "No recent files.",
-      "clear": "Clear Menu",
-      "close": "Close"
+      "missing": "“{{name}}” was not found and was removed from the recent files."
     },
     "disk": {
       "changed": "“{{name}}” was changed outside the app.",
@@ -769,6 +832,7 @@
     }
   },
   "color": {
+    "iccFiles": "ICC Profiles",
     "assign": {
       "title": "Assign Profile",
       "current": "Current profile: {{name}}",
@@ -798,6 +862,7 @@
   "share": {
     "sent": "Sent to {{name}}.",
     "noDevice": "No KDE Connect device available.",
+    "leftOut": "Not sent because they are not saved to disk: {{names}}.",
     "pickDevice": "Send to which device?",
     "cancel": "Cancel"
   },
@@ -824,13 +889,15 @@
     },
     "trash": {
       "confirmUnsaved": "{{name}} has unsaved changes. Move it to the Trash and discard them?",
+      "confirmUnsavedMany": "These images have unsaved changes: {{name}}. Move to Trash and discard them?",
       "ok": "Move to Trash",
       "cancel": "Cancel",
+      "doneMany": "{{count}} images moved to Trash",
       "done": "{{name}} was moved to the Trash"
     },
     "saveAs": {
       "images": "Images",
-      "badFormat": "Use an extension that Save can write: .jpg, .png, .tiff, .webp, .avif or .bmp."
+      "badFormat": "Use an extension that Save As can write: .jpg, .png, .tiff, .heic, .webp, .avif, .jp2, .exr or .bmp. Other formats are in Export."
     },
     "versions": {
       "title": "Versions of {{name}}",
@@ -881,7 +948,8 @@
       "copy": "Copy",
       "search": "Search the Web",
       "translate": "Translate",
-      "speak": "Speak"
+      "speak": "Speak",
+      "label": "Selected text"
     },
     "linkEmailTitle": "Write an email to this address?",
     "linkPhoneTitle": "Call this number?",
@@ -899,6 +967,27 @@
     "moving": "Moving the images…",
     "closing": "Closing the window…",
     "quitting": "Quitting…",
+    "saving": "Saving…",
+    "stillOpening": "The window “{{name}}” is still opening with images. Wait, or close it to bring the images back to another window.",
+    "mergeDeclined": "The window “{{name}}” could not be merged: it has an open dialog or an operation in progress.",
+    "unresponsive": {
+      "title": "A window is not responding",
+      "body": "The window “{{name}}” is not responding. If you quit without waiting for it, its unsaved changes are lost.",
+      "leave": "Quit Without Waiting",
+      "cancel": "Cancel"
+    },
+    "running": {
+      "title": "Operation in progress",
+      "body": "This window is printing, saving or editing. Closing now may interrupt it.",
+      "close": "Close Anyway",
+      "wait": "Wait"
+    },
+    "stuck": {
+      "title": "The window did not finish opening",
+      "body": "The images moved to this window have not appeared yet. If you close it now, their unsaved changes are lost.",
+      "close": "Close Without Saving",
+      "cancel": "Cancel"
+    },
     "answerElsewhere": "If another window is asking about unsaved changes, answer it there.",
     "cancelQuit": "Cancel",
     "busy": "Close the panel or finish the current operation before moving the images.",

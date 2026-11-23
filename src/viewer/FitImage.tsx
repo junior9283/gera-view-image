@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { renderView } from "../ipc/commands";
 import type { DocInfo } from "../ipc/types";
 import { DocError } from "./DocError";
+import { useImageAlt } from "./imageAlt";
 import { bufferToCanvas, dpr, useAnimatedFrame } from "./paint";
 
 /** Imagem ajustada (sem ampliar) e centralizada na caixa; GIF animado toca. Usada na apresentação. */
@@ -10,6 +11,7 @@ export function FitImage({ doc, className }: { doc: DocInfo; className?: string 
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const frame = useAnimatedFrame(doc);
+  const alt = useImageAlt(doc);
 
   useEffect(() => {
     const el = box.current!;
@@ -39,7 +41,7 @@ export function FitImage({ doc, className }: { doc: DocInfo; className?: string 
 
   return (
     <div ref={box} className={`fit-image ${className ?? ""}`}>
-      {error ? <DocError doc={doc} /> : <canvas ref={canvas} />}
+      {error ? <DocError doc={doc} /> : <canvas ref={canvas} role="img" aria-label={alt} />}
     </div>
   );
 }

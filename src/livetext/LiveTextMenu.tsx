@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../chrome/notify";
+import { focusByKeys } from "../lib/tablist";
 import { copySelected, lookUp, startSpeaking } from "./actions";
 
 export interface MenuAt {
@@ -41,7 +42,7 @@ export function LiveTextMenu({ at, onClose }: { at: MenuAt; onClose: () => void 
     </button>
   );
   return (
-    <div ref={ref} className="livetext-menu" role="menu" data-livetext-stop style={{ left: at.x, top: at.y }}>
+    <div ref={ref} className="livetext-menu" role="menu" aria-label={t("livetext.menu.label")} onKeyDown={(e) => focusByKeys(e, '[role="menuitem"]')} data-livetext-stop style={{ left: at.x, top: at.y }}>
       {item(t("livetext.menu.copy"), copySelected)}
       {item(t("livetext.menu.search"), () => lookUp("search"))}
       {item(t("livetext.menu.translate"), () => lookUp("translate"))}

@@ -53,7 +53,10 @@
           "libde265-0",
           "libkvazaar7"
         ],
-        "desktopTemplate": "linux/gera-view-image.desktop.hbs"
+        "desktopTemplate": "linux/gera-view-image.desktop.hbs",
+        "files": {
+          "/usr/share/metainfo/io.github.junior9283.geraviewimage.metainfo.xml": "linux/io.github.junior9283.geraviewimage.metainfo.xml"
+        }
       },
       "rpm": {
         "depends": [
@@ -63,7 +66,15 @@
           "libde265",
           "libkvazaar.so.7()(64bit)"
         ],
-        "desktopTemplate": "linux/gera-view-image.desktop.hbs"
+        "desktopTemplate": "linux/gera-view-image.desktop.hbs",
+        "files": {
+          "/usr/share/metainfo/io.github.junior9283.geraviewimage.metainfo.xml": "linux/io.github.junior9283.geraviewimage.metainfo.xml"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/metainfo/io.github.junior9283.geraviewimage.metainfo.xml": "linux/io.github.junior9283.geraviewimage.metainfo.xml"
+        }
       }
     }
   },

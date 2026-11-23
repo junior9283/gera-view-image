@@ -5,6 +5,7 @@ import { registerCommand } from "../shortcuts/commands";
 import { getPrefs, loadPrefs, subscribePrefs } from "../store/prefs";
 import { activeDoc, viewable } from "../viewer/actions";
 import { AssignProfileHost, openAssignProfile } from "./AssignProfileHost";
+import "./proof";
 
 registerCommand("tools.assignProfile", openAssignProfile, () => viewable(activeDoc()));
 registerSlot("above-content", "assign-profile", AssignProfileHost);

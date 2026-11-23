@@ -6,6 +6,7 @@ import i18n from "../i18n";
 import * as ipc from "../ipc/commands";
 import { whenIdle } from "../ipc/inflight";
 import type { DocId, Mask } from "../ipc/types";
+import { nativeDialogOpen } from "../lib/dialogs";
 import { dropDocs, dumpDocs, loadDocs, pack, settleDocs, unpack, type DocStates } from "../lib/docState";
 import { useBatch } from "../sidebar/batch";
 import { effectiveSelection, useThumbSelection } from "../sidebar/selection";
@@ -14,7 +15,7 @@ import { setPrefs } from "../store/prefs";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
 import { activate } from "../viewer/actions";
-import { setVeil, useTabs } from "./store";
+import { putVeil, useTabs } from "./store";
 
 interface TransferState {
   docs: DocStates;
@@ -25,10 +26,10 @@ interface TransferState {
 /** Espera pelos comandos em andamento antes de desistir de mover. */
 export const IDLE_TIMEOUT_MS = 15_000;
 
-/** Diálogo, painel com edição não aplicada, lote ou apresentação: nada muda de janela. */
+/** Diálogo (da página ou do sistema), painel com edição não aplicada, lote ou apresentação: nada muda de janela. */
 export const busy = () =>
   useTabs.getState().veil !== null || useBatch.getState().running || useUi.getState().slideshow ||
-  !!document.querySelector('[aria-modal="true"], .adjust-panel');
+  nativeDialogOpen() || !!document.querySelector('[aria-modal="true"], .adjust-panel');
 
 function collect(ids: DocId[]): string {
   const { activeId } = useDocs.getState();
@@ -54,14 +55,33 @@ function refuseUncarried(ids: DocId[]): boolean {
   return !!d;
 }
 
+let moving: Promise<boolean> | null = null;
+
+export const isMoving = () => moving !== null;
+
+/** Espera o movimento em andamento: fechar a janela no meio dele perderia o que está indo. */
+export async function movesDone(): Promise<void> {
+  while (moving) await moving;
+}
+
 /** Leva os documentos para outra janela por `deliver`; `false` = nada mudou (o usuário foi avisado). */
 export async function moveDocs(ids: DocId[], deliver: (ids: DocId[], state: string) => Promise<unknown>): Promise<boolean> {
   if (busy()) {
     notify(i18n.t("tabs.busy"));
     return false;
   }
+  const job = move(ids, deliver);
+  moving = job;
+  try {
+    return await job;
+  } finally {
+    moving = null;
+  }
+}
+
+async function move(ids: DocId[], deliver: (ids: DocId[], state: string) => Promise<unknown>): Promise<boolean> {
   commitEditing();
-  setVeil("moving");
+  const release = putVeil("moving");
   try {
     await settleDocs(ids);
     if (!(await whenIdle(ids, IDLE_TIMEOUT_MS))) {
@@ -77,7 +97,7 @@ export async function moveDocs(ids: DocId[], deliver: (ids: DocId[], state: stri
     notifyError(e);
     return false;
   } finally {
-    setVeil(null);
+    release();
   }
 }
 

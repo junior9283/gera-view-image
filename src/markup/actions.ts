@@ -14,6 +14,7 @@ const same = (a: Annotation[], b: Annotation[]) => a.length === b.length && a.ev
  * (padrão: o atual); o arrasto passa o do início, porque já mexeu ao vivo.
  */
 export function commit(id: DocId, next: Annotation[], before: Annotation[] = getItems(id)): void {
+  if (live) endLive(); // o passo aberto (seta apertada, slider) entra antes deste
   if (same(before, next)) {
     if (getItems(id) !== before) useMarkup.getState().setItems(id, before);
     return;
@@ -29,6 +30,11 @@ export function addAnnotation(id: DocId, a: Annotation, select = true): void {
 
 export function moveSelected(id: DocId, dx: number, dy: number): void {
   commit(id, moveItems(getItems(id), getSelected(id), dx, dy));
+}
+
+/** Move as selecionadas sem passo no desfazer até `endLive` (seta apertada). */
+export function moveSelectedLive(id: DocId, dx: number, dy: number): void {
+  if (getSelected(id).length) setLive(id, moveItems(getItems(id), getSelected(id), dx, dy));
 }
 
 /** Muda o estilo das selecionadas (um passo só); `patch` em px da imagem. */

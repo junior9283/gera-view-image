@@ -3,7 +3,8 @@
     "minimize": "Minimizar",
     "maximize": "Maximizar",
     "restore": "Restaurar",
-    "close": "Fechar"
+    "close": "Fechar",
+    "menu": "Menu da janela"
   },
   "update": {
     "title": "Nova versão disponível",
@@ -45,7 +46,44 @@
       "pt-BR": "Português (Brasil)",
       "en": "English"
     },
-    "colorManagement": "Correspondência de cor (perfis ICC)"
+    "colorManagement": "Correspondência de cor (perfis ICC)",
+    "dragPans": "Arrastar move a imagem (em vez de selecionar)",
+    "tab": {
+      "general": "Geral",
+      "images": "Imagens",
+      "signatures": "Assinaturas"
+    },
+    "openFilesIn": "Abrir arquivos",
+    "openIn": {
+      "tabs": "Em abas",
+      "window": "Na mesma janela (barra lateral)",
+      "windows": "Em janelas separadas"
+    },
+    "tabBar": "Mostrar a barra de abas",
+    "versionsMaxMb": "Espaço para versões anteriores (MB; 0 desliga)",
+    "actualSize": "100% corresponde a",
+    "actual": {
+      "pixel": "Um pixel da tela por pixel da imagem",
+      "print": "Tamanho impresso"
+    },
+    "showImageBackground": "Mostrar o fundo atrás da transparência",
+    "liveText": "Texto ao Vivo",
+    "sortBy": "Ordenar imagens por",
+    "sort": {
+      "manual": "Ordem manual",
+      "name": "Nome",
+      "date": "Data",
+      "kind": "Tipo",
+      "size": "Tamanho"
+    },
+    "sig": {
+      "empty": "Nenhuma assinatura salva.",
+      "name": "Assinatura {{n}}",
+      "remove": "Remover",
+      "removeNamed": "Remover assinatura {{n}}",
+      "create": "Criar Assinatura…",
+      "needsImage": "Abra uma imagem para criar uma assinatura"
+    }
   },
   "about": {
     "title": "Sobre o Gera View Image",
@@ -85,7 +123,8 @@
     "empty": "Arraste imagens para esta janela para abri-las",
     "zoomLevel": "Zoom {{pct}}%",
     "zoomPercent": "{{pct}}%",
-    "dropHere": "Solte para abrir"
+    "dropHere": "Solte para abrir",
+    "imageAlt": "{{name}}: {{text}}"
   },
   "sidebar": {
     "label": "Miniaturas",
@@ -96,6 +135,8 @@
     "itemMenu": "Menu da miniatura",
     "menu": {
       "open": "Abrir",
+      "copy": "Copiar",
+      "copyMany": "Copiar {{count}} Imagens",
       "rotateLeft": "Girar à Esquerda",
       "rotateRight": "Girar à Direita",
       "flipH": "Espelhar Horizontalmente",
@@ -108,6 +149,7 @@
       "printMany": "Imprimir {{count}} Imagens…",
       "reveal": "Mostrar na Pasta",
       "trash": "Mover para o Lixo",
+      "trashMany": "Mover {{count}} Imagens para o Lixo",
       "close": "Fechar",
       "closeMany": "Fechar {{count}} Imagens"
     },
@@ -366,7 +408,7 @@
           "denied": "Permissão da câmera negada.",
           "notFound": "Nenhuma câmera encontrada. Conecte uma e tente de novo.",
           "disconnected": "A câmera foi desconectada.",
-        "busy": "A câmera está em uso por outro programa.",
+          "busy": "A câmera está em uso por outro programa.",
           "failed": "Não foi possível ligar a câmera."
         }
       }
@@ -419,7 +461,7 @@
       "title": "Arquivo",
       "newFromClipboard": "Novo da Área de Transferência",
       "open": "Abrir…",
-      "openRecent": "Abrir Recentes",
+      "openRecent": "Abrir Recente",
       "close": "Fechar",
       "save": "Salvar",
       "duplicate": "Duplicar",
@@ -449,7 +491,8 @@
       "share": "Compartilhar",
       "shareEmail": "E-mail…",
       "shareDevice": "KDE Connect…",
-      "importScanner": "Importar do Scanner…"
+      "importScanner": "Importar do Scanner…",
+      "clearMenu": "Limpar Menu"
     },
     "edit": {
       "title": "Editar",
@@ -458,6 +501,7 @@
       "cut": "Recortar",
       "copy": "Copiar",
       "paste": "Colar",
+      "duplicate": "Duplicar Anotação",
       "delete": "Apagar",
       "selectAll": "Selecionar Tudo",
       "deselect": "Desmarcar Tudo",
@@ -483,7 +527,7 @@
       "zoomToSelection": "Ampliar Seleção",
       "markupBar": "Mostrar Barra de Marcação",
       "slideshow": "Apresentação",
-      "fullscreen": "Tela Cheia",
+      "fullscreen": "Entrar em Tela Cheia",
       "sortBy": "Ordenar Por",
       "sortByName": "Nome",
       "sortByDate": "Data",
@@ -492,8 +536,16 @@
       "toolbar": "Ocultar Barra de Ferramentas",
       "customizeToolbar": "Personalizar Barra de Ferramentas…",
       "imageBackground": "Mostrar Fundo da Imagem",
+      "softProof": "Prova de Cor com Perfil",
+      "softProofNone": "Nenhum",
+      "softProofChoose": "Escolher Perfil…",
       "tabBar": "Mostrar Barra de Abas",
-      "allTabs": "Mostrar Todas as Abas"
+      "allTabs": "Mostrar Todas as Abas",
+      "fullscreenHide": "Sair da Tela Cheia",
+      "markupBarHide": "Ocultar Barra de Marcação",
+      "toolbarShow": "Mostrar Barra de Ferramentas",
+      "imageBackgroundHide": "Ocultar Fundo da Imagem",
+      "tabBarHide": "Ocultar Barra de Abas"
     },
     "go": {
       "title": "Ir",
@@ -513,6 +565,10 @@
       "crop": "Recortar",
       "adjustColor": "Ajustar Cor…",
       "resize": "Ajustar Tamanho…",
+      "selectRect": "Seleção Retangular",
+      "selectEllipse": "Seleção Elíptica",
+      "selectLasso": "Laço",
+      "selectSmartLasso": "Laço Inteligente",
       "instantAlpha": "Alfa Instantâneo",
       "inspector": "Mostrar Inspetor",
       "annotate": "Anotar",
@@ -542,7 +598,13 @@
       "copyAllText": "Copiar Todo o Texto",
       "translateText": "Traduzir…",
       "searchText": "Pesquisar Texto na Web…",
-      "searchImageWeb": "Pesquisar Imagem na Web…"
+      "searchImageWeb": "Pesquisar Imagem na Web…",
+      "inspectorHide": "Ocultar Inspetor",
+      "magnifierHide": "Ocultar Lupa",
+      "showColorsHide": "Ocultar Cores",
+      "showFontsHide": "Ocultar Fontes",
+      "markupInspectorHide": "Ocultar Inspetor de Marcação",
+      "liveTextHide": "Ocultar Texto ao Vivo"
     },
     "window": {
       "title": "Janela",
@@ -588,7 +650,11 @@
       "fit": "Ajustar à Janela",
       "slideshow": "Apresentação de Slides",
       "export": "Exportar",
-      "print": "Imprimir"
+      "print": "Imprimir",
+      "selection": "Seleção",
+      "removeBackground": "Remover Fundo",
+      "colors": "Cores",
+      "fonts": "Fontes"
     },
     "openWith": "Abrir com",
     "openWithOther": "Outro…"
@@ -719,10 +785,7 @@
       "cancel": "Cancelar"
     },
     "recent": {
-      "title": "Abrir Recentes",
-      "empty": "Nenhum arquivo recente.",
-      "clear": "Limpar Lista",
-      "close": "Fechar"
+      "missing": "“{{name}}” não foi encontrado e saiu dos recentes."
     },
     "disk": {
       "changed": "O arquivo “{{name}}” foi alterado fora do app.",
@@ -769,6 +832,7 @@
     }
   },
   "color": {
+    "iccFiles": "Perfis ICC",
     "assign": {
       "title": "Atribuir Perfil",
       "current": "Perfil atual: {{name}}",
@@ -798,6 +862,7 @@
   "share": {
     "sent": "Enviado para {{name}}.",
     "noDevice": "Nenhum aparelho do KDE Connect disponível.",
+    "leftOut": "Sem arquivo em disco, não enviadas: {{names}}.",
     "pickDevice": "Enviar para qual aparelho?",
     "cancel": "Cancelar"
   },
@@ -824,13 +889,15 @@
     },
     "trash": {
       "confirmUnsaved": "{{name}} tem alterações não salvas. Mover para o Lixo e descartá-las?",
+      "confirmUnsavedMany": "Estas imagens têm alterações não salvas: {{name}}. Mover para o Lixo e descartá-las?",
       "ok": "Mover para o Lixo",
       "cancel": "Cancelar",
+      "doneMany": "{{count}} imagens foram para o Lixo",
       "done": "{{name}} foi para o Lixo"
     },
     "saveAs": {
       "images": "Imagens",
-      "badFormat": "Use uma extensão que o Salvar grava: .jpg, .png, .tiff, .webp, .avif ou .bmp."
+      "badFormat": "Use uma extensão que o Salvar Como grava: .jpg, .png, .tiff, .heic, .webp, .avif, .jp2, .exr ou .bmp. Os outros formatos ficam em Exportar."
     },
     "versions": {
       "title": "Versões de {{name}}",
@@ -881,7 +948,8 @@
       "copy": "Copiar",
       "search": "Pesquisar na Web",
       "translate": "Traduzir",
-      "speak": "Falar"
+      "speak": "Falar",
+      "label": "Texto selecionado"
     },
     "linkEmailTitle": "Escrever um e-mail para este endereço?",
     "linkPhoneTitle": "Ligar para este número?",
@@ -899,6 +967,27 @@
     "moving": "Movendo as imagens…",
     "closing": "Fechando a janela…",
     "quitting": "Saindo…",
+    "saving": "Salvando…",
+    "stillOpening": "A janela “{{name}}” ainda está abrindo com imagens. Espere, ou feche-a para as imagens voltarem a outra janela.",
+    "mergeDeclined": "A janela “{{name}}” não pôde ser juntada: há um diálogo aberto ou uma operação em andamento nela.",
+    "unresponsive": {
+      "title": "Uma janela não responde",
+      "body": "A janela “{{name}}” não responde. Saindo sem esperar por ela, as alterações não salvas nela se perdem.",
+      "leave": "Sair sem esperar",
+      "cancel": "Cancelar"
+    },
+    "running": {
+      "title": "Operação em andamento",
+      "body": "Há uma impressão, gravação ou edição em andamento nesta janela. Fechar agora pode interrompê-la.",
+      "close": "Fechar assim mesmo",
+      "wait": "Esperar"
+    },
+    "stuck": {
+      "title": "A janela não terminou de abrir",
+      "body": "As imagens movidas para esta janela ainda não apareceram. Fechando agora, as alterações não salvas nelas se perdem.",
+      "close": "Fechar sem salvar",
+      "cancel": "Cancelar"
+    },
     "answerElsewhere": "Se outra janela estiver perguntando por alterações não salvas, responda nela.",
     "cancelQuit": "Cancelar",
     "busy": "Feche o painel ou termine a operação em andamento antes de mover as imagens.",
