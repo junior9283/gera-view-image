@@ -62,6 +62,26 @@
       <caption xml:lang="pt_BR">Barra de marcação com anotações</caption>
       <image>https://raw.githubusercontent.com/junior9283/gera-view-image/main/docs/screenshots/04-marcacao.png</image>
     </screenshot>
+    <screenshot>
+      <caption>Contact sheet</caption>
+      <caption xml:lang="pt_BR">Folha de contatos</caption>
+      <image>https://raw.githubusercontent.com/junior9283/gera-view-image/main/docs/screenshots/03-folha-de-contatos.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Several windows and tabs</caption>
+      <caption xml:lang="pt_BR">Várias janelas e abas</caption>
+      <image>https://raw.githubusercontent.com/junior9283/gera-view-image/main/docs/screenshots/15-varias-janelas.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Adjust Color with live preview</caption>
+      <caption xml:lang="pt_BR">Ajustar Cor com prévia ao vivo</caption>
+      <image>https://raw.githubusercontent.com/junior9283/gera-view-image/main/docs/screenshots/05-ajustar-cor.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Inspector with GPS location</caption>
+      <caption xml:lang="pt_BR">Inspetor com a localização do GPS</caption>
+      <image>https://raw.githubusercontent.com/junior9283/gera-view-image/main/docs/screenshots/11-inspetor-gps.png</image>
+    </screenshot>
   </screenshots>
 
   <content_rating type="oars-1.1" />
