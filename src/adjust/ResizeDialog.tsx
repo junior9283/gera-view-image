@@ -4,6 +4,7 @@ import { documentDpi } from "../ipc/commands";
 import type { DocInfo, ResizeFilter } from "../ipc/types";
 import { defaultOptions, exportFormatOf, useEstimate } from "../file/estimate";
 import { useModal } from "../lib/modal";
+import { hasPages, pageSize, shownPage } from "../markup/pages";
 import { applyToTargets, resizeFor, type ResizeMode } from "../sidebar/batch";
 import { batchTargets, withActive } from "../sidebar/selection";
 import { DEFAULT_DPI, RESIZE_PRESETS, UNITS, fromPixels, linkDims, toPixels, type Unit } from "./units";
@@ -29,14 +30,17 @@ export function ResizeDialog({ doc, onClose, estimate }: Props) {
   const titleId = useId();
   const dialog = useRef<HTMLDivElement>(null);
   useModal(dialog, { onClose });
-  const [size, setSize] = useState({ w: doc.width, h: doc.height });
+  // Vale para a página exibida.
+  const [page] = useState(() => (hasPages(doc) ? shownPage(doc.id) : 0));
+  const orig = pageSize(doc, page);
+  const [size, setSize] = useState(orig);
   const [unit, setUnit] = useState<Unit>("px");
   // DPI do documento (arquivo ou último Ajustar Tamanho); 72 quando o arquivo não informa.
   const [docDpi, setDocDpi] = useState(DEFAULT_DPI);
   const [dpi, setDpi] = useState(DEFAULT_DPI);
   useEffect(() => {
     let live = true;
-    documentDpi(doc.id).then(
+    documentDpi(doc.id, page).then(
       (d) => {
         if (!live || !d) return;
         setDocDpi(d);
@@ -47,13 +51,12 @@ export function ResizeDialog({ doc, onClose, estimate }: Props) {
     return () => {
       live = false;
     };
-  }, [doc.id]);
+  }, [doc.id, page]);
   const [link, setLink] = useState(true);
   const [resample, setResample] = useState(true);
   const [filter, setFilter] = useState<ResizeFilter>("lanczos3");
   const [error, setError] = useState<string | null>(null);
 
-  const orig = { w: doc.width, h: doc.height };
   const targets = useMemo(() => withActive(batchTargets(), doc.id), [doc.id]);
   const physical = unit !== "px" && unit !== "%";
   // Sem reamostrar, as dimensões em pixels ficam fixas e a medida física só altera o DPI.
@@ -75,7 +78,7 @@ export function ResizeDialog({ doc, onClose, estimate }: Props) {
   const eff = resample ? size : orig;
   const real = useEstimate(
     doc.id,
-    estimate ? null : { ...defaultOptions(exportFormatOf(doc.format)), resize: [eff.w, eff.h] },
+    estimate ? null : { ...defaultOptions(exportFormatOf(doc.format)), resize: [eff.w, eff.h], ...(page ? { frame: page } : {}) },
   );
   const bytes = estimate ? estimate(eff.w, eff.h) : (real ?? rawSizeBytes(eff.w, eff.h));
   const tooBig = resample && size.w * size.h > MAX_PIXELS;

@@ -8,6 +8,7 @@ import * as ipc from "../ipc/commands";
 import { addAnnotation } from "../markup/actions";
 import { pasteAnnotations } from "../markup/clipboard";
 import { DEFAULT_STYLE, newId, type Box } from "../markup/model";
+import { shownSize } from "../markup/pages";
 import { useMarkup } from "../markup/store";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
@@ -58,7 +59,7 @@ async function insertLayer(png: Uint8Array, at?: Point): Promise<void> {
   const size = pngSize(png);
   if (!viewable(doc)) return;
   if (!size) throw { code: "clipboard_empty", message: "não é PNG" };
-  const img = { w: doc.width, h: doc.height };
+  const img = shownSize(doc);
   const geom = { ...layerBox(size, img, toImage(img, at)), src: await dataUrl(png) };
   useSelection.getState().setSelection(null);
   const mk = useMarkup.getState();
@@ -88,8 +89,9 @@ const isImagePath = (p: string) => {
 export function dropOnImage(paths: string[], at: Point): boolean {
   const doc = activeDoc();
   if (paths.length !== 1 || !isImagePath(paths[0]) || !viewable(doc) || !useUi.getState().view) return false;
-  const [x, y] = toImage({ w: doc.width, h: doc.height }, at);
-  if (x < 0 || y < 0 || x >= doc.width || y >= doc.height) return false;
+  const img = shownSize(doc);
+  const [x, y] = toImage(img, at);
+  if (x < 0 || y < 0 || x >= img.w || y >= img.h) return false;
   ipc.imageFilePng(paths[0]).then((png) => insertLayer(png, at)).catch(notifyError);
   return true;
 }

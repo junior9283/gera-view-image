@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import * as ipc from "../ipc/commands";
 import { listenHere } from "../lib/window";
+import { hasPages } from "../lib/pages";
 import { DOC_UPDATED_EVENT, type DocId, type DocInfo, type Op } from "../ipc/types";
 import { useUi } from "./ui";
 
@@ -21,7 +22,11 @@ interface DocsState {
   close: (id: DocId) => Promise<void>;
   /** Tira da janela sem fechar no Rust (o documento foi para outra janela). */
   detach: (ids: DocId[]) => void;
-  applyOp: (id: DocId, op: Op) => Promise<DocInfo>;
+  /**
+   * Num documento de várias páginas, vale só para a página `page` (ausente = a mostrada; a primeira,
+   * se `id` não é o ativo), como no Pré-Visualização.
+   */
+  applyOp: (id: DocId, op: Op, page?: number) => Promise<DocInfo>;
   undo: (id: DocId) => Promise<DocInfo>;
   redo: (id: DocId) => Promise<DocInfo>;
 }
@@ -101,7 +106,12 @@ export const useDocs = create<DocsState>((set, get) => {
       if (activeId !== null && ids.includes(activeId)) useUi.getState().setPage(null);
       set((s) => (s.docs.some((d) => ids.includes(d.id)) ? without(s, ids) : s));
     },
-    applyOp: (id, op) => replaceWith(ipc.applyOp(id, op)),
+    applyOp: (id, op, page) => {
+      const { docs, activeId } = get();
+      const shown = activeId === id ? (useUi.getState().page ?? 0) : 0;
+      const doc = docs.find((d) => d.id === id);
+      return replaceWith(hasPages(doc) ? ipc.applyOp(id, op, page ?? shown) : ipc.applyOp(id, op));
+    },
     undo: (id) => replaceWith(ipc.undo(id)),
     redo: (id) => replaceWith(ipc.redo(id)),
   };

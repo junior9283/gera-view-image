@@ -35,6 +35,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Salvar Como também grava HEIC (com a libkvazaar), JPEG 2000 e OpenEXR. PDF, GIF, ICO, TGA e PSD continuam só no Exportar.
 
 ### Alterado
+- TIFF de várias páginas é gravado inteiro: Salvar, Salvar Como TIFF e Exportar TIFF (caixa "Todas as páginas", ligada por padrão) levam todas, cada uma com o próprio tamanho, as próprias anotações e etiquetas, e com 16 bits por canal quando a página tem 16 bits. A gravação continua atômica; se o arquivo passar de 2 GB, o app recusa com aviso antes de gravar. Exportar Selecionadas em TIFF também leva todas, e nos outros formatos avisa que só a primeira página vai.
+- Antes de gravar, o app diz o que o formato escolhido não guarda: as outras páginas, as anotações delas, o EXIF (data, câmera, localização) ou o XMP/IPTC (título, descrição, autor, palavras-chave). Salvar e Salvar Como perguntam (Cancelar não muda nada); no Exportar, o aviso aparece no diálogo.
+- Em documentos de várias páginas, recortar, apagar, remover fundo, girar, espelhar, redimensionar e ajustar cor valem só para a página exibida, como no Visualização do macOS. Desfazer, refazer e reverter acompanham. Atribuir Perfil continua valendo para o documento todo.
 - Diálogos, campos, listas e o foco seguem o tema claro ou escuro do sistema, com contraste adequado.
 - No Inspetor, os nomes e valores mais comuns dos metadados (EXIF, formato, lente, IPTC) e o tipo das anotações aparecem em português.
 - Imprimir passou do diálogo do WebKit para o do sistema (`GtkPrintOperation`), com um diálogo próprio antes: prévia da página, cópias, papel, orientação, girar automaticamente, escala em %, Imprimir imagem inteira ou Preencher o papel, de 1 a 16 imagens por página (uma só imagem se repete) e mostrar ou não as marcações.
@@ -46,13 +49,21 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - TIFF com resolução sem unidade (só a proporção) não é mais lido como 1 ppp, o que fazia as páginas impressas e em PDF terem metros de lado.
 - Em documentos de várias páginas (TIFF), cada anotação pertence à página em que foi feita: aparece, é editada, impressa, exportada em PDF e achatada só nela. Antes era carimbada em todas. Exportar, Salvar Como e Copiar usam a página exibida (o Exportar diz qual); as anotações das outras páginas continuam editáveis e não salvas, com aviso, e Duplicar as leva para a cópia. Em GIF e WebP animados continua valendo para todos os quadros.
 - Cancelar o Exportar aberto pelo Salvar (formato que não dá para regravar) não deixa mais as anotações achatadas.
+- TIFF com páginas de tamanhos diferentes: cada página aparece inteira e no tamanho dela. Antes a página menor que a primeira saía fora dos limites e a maior, cortada. Ajustar, Tamanho Real, zoom, seleção, anotações, Inspetor, Recorte, Ajustar Tamanho, impressão e PDF usam a página exibida.
+- Recortar numa página de um TIFF não recorta mais as outras.
+- Salvar não grava mais por cima de um arquivo que virou outra coisa no disco (mais páginas, animação ou outro formato) depois de ignorar o aviso de alteração: abre o Exportar. Reverter passa a acompanhar o formato e as páginas do arquivo relido.
+- Salvar Como grava a página que estava na tela quando foi pedido, mesmo que ela mude com o diálogo aberto.
+- Privacidade: exportar com outra resolução deixava dentro do arquivo uma cópia escondida dos textos do EXIF, que continuava lá depois de apagar o autor ou a descrição. A cópia não é mais criada, e apagar o texto também a remove dos arquivos gravados por versões anteriores.
+- Privacidade: a miniatura embutida no EXIF (que mostra a foto de antes de recortes e outras edições) não é mais levada para o arquivo gravado.
+- TIFF que só abre pelo leitor de uma página (ou com páginas demais) não é mais aberto pela metade: com mais de uma página, o app mostra o erro em vez de abrir só a primeira, que o Salvar gravaria sozinha.
+- EXIF maior que o limite de 64 KB do JPEG saía sem aviso; agora o app avisa, e os avisos de metadados dizem de que documento são.
 - Reiniciar depois de instalar uma atualização descartava as alterações não salvas sem perguntar.
 - O OpenEXR exportado com transparência segue a especificação (cor pré-multiplicada pelo alfa). Antes, outros programas mostravam as bordas claras demais.
 
 ### Limitações conhecidas (o que falta para a 1.0)
 - HDR: OpenEXR, Radiance, PQ e HLG são sempre mostrados em SDR, e gravar por cima perde o alcance original. QOI não abre, do JPEG XL só o primeiro quadro, o JPEG XL em CMYK é recusado e metadados comprimidos (caixas `brob`) do JPEG XL são ignorados.
 - Prova de Cor: sem simulação do branco do papel nem da tinta preta, e sem aviso de gama.
-- TIFF de várias páginas é gravado com uma página só (a exibida); a partir da segunda, sempre a partir dos 8 bits por canal.
+- TIFF de várias páginas: os formatos de uma página (PNG, JPEG e os demais, exceto o Exportar como PDF…) gravam só a página exibida, com aviso antes. O título, a descrição e as palavras-chave editados vão para a primeira página (apagar vale para todas), e um arquivo acima de 2 GB não é gravado de uma vez.
 
 ## [0.4.1] - 2026-11-22
 

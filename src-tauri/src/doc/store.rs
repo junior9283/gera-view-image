@@ -110,6 +110,8 @@ pub struct Document {
     pub(super) disk: Option<DiskStamp>,
     /// Carimbo da abertura: o disco ainda tem o original?
     pub(super) opened_disk: Option<DiskStamp>,
+    /// O disco tem uma versão que o documento não leu nem gravou (mudança externa ignorada).
+    pub(super) unseen_disk: bool,
     /// Decodificação da abertura, guardada quando "Reverter para o Último Salvo" troca `source`.
     pub(super) original: Option<Arc<Decoded>>,
     /// O disco tem a versão de 16 bits de `source` com `ops[..n]` (último Salvar em 16 bits):
@@ -164,7 +166,7 @@ impl Document {
         let source = source.into();
         let p = Path::new(path);
         let disk = DiskStamp::of(p);
-        let writable = Self::can_save(path, source.format, source.frames.len());
+        let writable = Self::can_save(path, source.format, &source);
         let mut info = DocInfo {
             id,
             path: path.to_string(),
@@ -176,6 +178,7 @@ impl Document {
             width: full_size.0,
             height: full_size.1,
             frames: source.frames.len() as u32,
+            page_sizes: vec![],
             delays_ms: vec![],
             plays: 0,
             writable,
@@ -186,7 +189,7 @@ impl Document {
             error: None,
         };
         info.set_playback(&source);
-        Document {
+        let mut doc = Document {
             info,
             source,
             loading,
@@ -198,22 +201,32 @@ impl Document {
             generation: 0,
             disk,
             opened_disk: disk,
+            unseen_disk: false,
             original: None,
             deep: None,
             proof: None,
-        }
+        };
+        doc.info.page_sizes = doc.page_sizes();
+        doc
     }
 
-    /// Salvar grava no próprio arquivo: há caminho, o formato é gravável, uma só página/quadro
-    /// (TIFF de várias páginas e GIF animado perderiam conteúdo) e o arquivo não é só leitura.
-    pub(super) fn can_save(path: &str, format: SourceFormat, frames: usize) -> bool {
+    /// Salvar grava no próprio arquivo: há caminho, o formato é gravável e guarda todas as páginas
+    /// (várias, só TIFF; a animação perderia os quadros) e o arquivo não é só leitura.
+    pub(super) fn can_save(path: &str, format: SourceFormat, source: &Decoded) -> bool {
         let read_only = std::fs::metadata(path)
             .map(|m| m.permissions().readonly())
             .unwrap_or(false);
         // HEIC só é regravável com a libkvazaar (opcional, dlopen).
         let encoder = format != SourceFormat::Heic
             || crate::image::encode_heic::hevc_encoder_available();
-        !path.is_empty() && format.writable() && encoder && frames <= 1 && !read_only
+        let keeps_all = source.frames.len() <= 1 || (format == SourceFormat::Tiff && source.has_pages());
+        !path.is_empty() && format.writable() && encoder && keeps_all && !read_only
+    }
+
+    /// Recalcula se o Salvar grava no próprio arquivo, que está em `format`.
+    pub(super) fn set_format(&mut self, format: SourceFormat) {
+        self.info.format = format;
+        self.info.writable = Self::can_save(&self.info.path, format, &self.source);
     }
 
     fn failed(id: DocId, path: &str, err: AppError) -> Self {
@@ -249,27 +262,38 @@ impl Document {
         Err(AppError::NotFound(format!("quadro {frame} inexistente")))
     }
 
-    /// `ops[..n]` foram gravadas num arquivo só com a página `frame`. Fica com alterações se
-    /// alguma anotação achatada em outra página não foi para o arquivo.
-    pub(super) fn mark_saved(&mut self, n: usize, frame: u32) {
-        let left_out = self.ops[..n]
-            .iter()
-            .any(|op| matches!(op, Op::Composite { frame: Some(f), .. } if *f != frame));
-        self.saved_len = if left_out { usize::MAX } else { n };
+    /// `ops[..n]` (da geração `generation`) foram gravadas num arquivo só com a página `page`
+    /// (`None` = todas). Fica com alterações se alguma edição de outra página não foi para o arquivo
+    /// ou se a lista de operações já é outra.
+    pub(super) fn mark_saved(&mut self, (n, generation): RenderState, page: Option<u32>) {
+        let same = self.generation == generation && self.ops.len() >= n;
+        let left_out = |op: &Op| page.is_some_and(|p| op.page().is_some_and(|f| f != p));
+        self.saved_len = if !same || self.ops[..n].iter().any(left_out) { usize::MAX } else { n };
     }
 
-    /// Dimensões depois de todas as operações.
-    pub fn size_after_ops(&self) -> (u32, u32) {
-        self.ops.iter().fold(self.full_size, ops::output_size)
+    /// Dimensões do quadro `frame` depois das operações que valem para ele.
+    pub fn size_after_ops(&self, frame: u32) -> (u32, u32) {
+        let base = match self.source.frames.get(frame as usize) {
+            Some(img) if frame > 0 => img.dimensions(),
+            _ => self.full_size, // durante a prévia, o quadro guardado é menor que o original
+        };
+        self.ops.iter().filter(|op| op.touches(frame)).fold(base, ops::output_size)
+    }
+
+    /// `DocInfo::page_sizes`.
+    pub(super) fn page_sizes(&self) -> Vec<(u32, u32)> {
+        let n = if self.source.has_pages() { self.info.frames } else { 0 };
+        (0..n).map(|f| self.size_after_ops(f)).collect()
     }
 
     /// Recalcula os campos derivados do `DocInfo` e avança `rev`.
     pub(super) fn refresh(&mut self) {
-        let (w, h) = self.size_after_ops();
+        let (w, h) = self.size_after_ops(0);
+        self.info.frames = self.source.frames.len() as u32;
+        self.info.page_sizes = self.page_sizes();
         let i = &mut self.info;
         i.width = w;
         i.height = h;
-        i.frames = self.source.frames.len() as u32;
         i.set_playback(&self.source);
         i.dirty = self.ops.len() != self.saved_len;
         i.can_undo = !self.ops.is_empty();
@@ -596,8 +620,13 @@ impl DocStore {
                 Ok(d) => {
                     doc.full_size = d.frames.first().map_or((0, 0), RgbaImage::dimensions);
                     doc.source = Arc::new(d);
+                    // O arquivo é relido: pode ter mudado desde a prévia.
+                    doc.set_format(doc.source.format);
                 }
-                Err(e) => doc.error = Some(e),
+                Err(e) => {
+                    doc.error = Some(e);
+                    doc.info.writable = false;
+                }
             }
             doc.loading = false;
             doc.generation += 1;
@@ -682,7 +711,17 @@ impl DocStore {
         self.with_doc(id, |d| d.source.bytes())
     }
 
+    /// Aplica a operação à imagem toda (num documento de várias páginas, a todas).
     pub fn apply_op(&self, id: DocId, op: Op) -> AppResult<DocInfo> {
+        self.apply_op_on(id, op, None)
+    }
+
+    /// Como `apply_op`, só na página `frame`, se o documento tiver páginas. O perfil é do documento
+    /// e as anotações achatadas já dizem a página delas.
+    pub fn apply_op_on(&self, id: DocId, op: Op, frame: Option<u32>) -> AppResult<DocInfo> {
+        if matches!(op, Op::OnPage { .. }) {
+            return Err(AppError::Unsupported("operação já ligada a uma página".into()));
+        }
         // Lote 1: leitura de perfil e conversão do PNG ficam fora da trava dos documentos.
         let op = match op {
             Op::AssignProfile { profile } => {
@@ -701,10 +740,15 @@ impl DocStore {
         let mut map = self.lock_loaded(id);
         let doc = map.get_mut(&id).ok_or_else(|| not_found(id))?;
         doc.check()?;
-        if let Op::Composite { frame: Some(f), .. } = &op {
-            doc.check_frame(*f)?;
-        }
-        ops::validate(doc.size_after_ops(), &op).map_err(AppError::Unsupported)?;
+        let op = match frame {
+            Some(frame) if doc.source.has_pages() && op.page().is_none() && !op.keeps_pixels() => {
+                Op::OnPage { frame, op: Box::new(op) }
+            }
+            _ => op,
+        };
+        let page = op.page().unwrap_or(0);
+        doc.check_frame(page)?;
+        ops::validate(doc.size_after_ops(page), &op).map_err(AppError::Unsupported)?;
         let n = doc.ops.len();
         if !doc.redo.is_empty() {
             doc.redo.clear();
@@ -778,7 +822,7 @@ impl DocStore {
                 state,
             ));
         }
-        let size = doc.size_after_ops();
+        let size = doc.size_after_ops(frame);
         if n == 0 {
             return Ok((Pixels::Source(doc.source.clone(), f), size, 1.0, state));
         }
@@ -806,7 +850,7 @@ impl DocStore {
             .collect();
         let source = doc.source.clone();
         drop(map);
-        // Só operações que não mexem neste quadro (Atribuir Perfil): vale a base ou o original.
+        // Só operações que não mexem neste quadro (Atribuir Perfil, outra página): vale a base ou o original.
         if tail.is_empty() {
             let px = base.map_or(Pixels::Source(source, f), Pixels::Owned);
             return Ok((px, size, 1.0, state));
@@ -897,12 +941,12 @@ impl DocStore {
         Ok((thumb::view_buffer(&px, src, out_w, out_h), state))
     }
 
-    /// Quadro 0 inteiro reduzido para `max_w`x`max_h` (como `render_view`, mas no espaço de cor
+    /// Quadro `frame` inteiro reduzido para `max_w`x`max_h` (como `render_view`, mas no espaço de cor
     /// do documento: quem mostra converte com `to_display`), guardado num
     /// cache de 1 entrada: os ajustes de cor repetem a prévia sem refazer a redução.
     /// A chave inclui `ops.len()` e `generation`, então editar o documento a invalida.
-    pub fn preview_base(&self, id: DocId, max_w: u32, max_h: u32) -> AppResult<Arc<Vec<u8>>> {
-        self.preview_region(id, 0, max_w, max_h, None)
+    pub fn preview_base(&self, id: DocId, frame: u32, max_w: u32, max_h: u32) -> AppResult<Arc<Vec<u8>>> {
+        self.preview_region(id, frame, max_w, max_h, None)
     }
 
     /// `preview_base` de um trecho da página `frame` (a região visível no visor).

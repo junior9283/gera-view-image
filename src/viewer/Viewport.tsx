@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { renderScreen } from "../ipc/commands";
 import type { DocInfo, Rect } from "../ipc/types";
+import { pageSize } from "../lib/pages";
 import { useDocs } from "../store/docs";
 import { getPrefs, usePrefs, type Prefs } from "../store/prefs";
 import { useUi } from "../store/ui";
@@ -50,8 +51,7 @@ const BACKGROUNDS: Record<Exclude<Prefs["background"], "custom">, string> = {
 };
 
 /** Área visível com margem de 25 % (menos pedidos ao arrastar), na densidade que a tela usa. */
-function needFor(view: ViewState, doc: DocInfo, size: Size): Need {
-  const img = { w: doc.width, h: doc.height };
+function needFor(view: ViewState, img: Size, size: Size): Need {
   const vis = visibleRegion(view, img, size);
   const mx = Math.ceil(vis.w / 4);
   const my = Math.ceil(vis.h / 4);
@@ -105,6 +105,8 @@ export function Viewport() {
   const alt = useImageAlt(doc);
   const unit = useZoomUnit(doc?.id, doc?.rev, pixelRatio);
   const frame = page ?? animFrame;
+  /** Tamanho da página mostrada (o da imagem, fora de um documento de várias páginas). */
+  const img = useMemo(() => (doc ? pageSize(doc, page) : null), [doc, page]);
 
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -113,19 +115,19 @@ export function Viewport() {
   const shown = useRef<Buf | null>(null);
   const seq = useRef(0);
   /** Estado mais recente para o `paint` e as respostas assíncronas (atualizado antes de pintar). */
-  const cur = useRef({ doc, view, viewSize, frame, showBg });
+  const cur = useRef({ doc, img, view, viewSize, frame, showBg });
 
   const paint = useRef(() => {
     const cv = canvas.current;
-    const { doc, view, viewSize, frame, showBg } = cur.current;
+    const { doc, img: size, view, viewSize, frame, showBg } = cur.current;
     if (!cv) return;
     paintBuffer(cv, viewSize, null, false);
-    if (!doc || doc.error || !view) return;
+    if (!doc || !size || doc.error || !view) return;
     const b = [buffers.current.get(frame), shown.current].find((x) => x?.id === doc.id);
     if (!b) return;
-    const img = { x: view.panX, y: view.panY, w: doc.width * view.scale, h: doc.height * view.scale };
+    const img = { x: view.panX, y: view.panY, w: size.w * view.scale, h: size.h * view.scale };
     let dest: { x: number; y: number; w: number; h: number };
-    if (b.img.w === doc.width && b.img.h === doc.height) {
+    if (b.img.w === size.w && b.img.h === size.h) {
       dest = { x: img.x + b.region.x * view.scale, y: img.y + b.region.y * view.scale, w: b.region.w * view.scale, h: b.region.h * view.scale };
     } else if (b.region.w === b.img.w && b.region.h === b.img.h) {
       dest = img; // dimensões mudaram (ex.: girar): o buffer antigo inteiro ocupa a imagem nova até chegar o certo
@@ -148,10 +150,10 @@ export function Viewport() {
   }, []);
 
   useEffect(() => syncView(true), [doc?.id]);
-  useEffect(() => syncView(false), [doc?.width, doc?.height, doc?.error]);
+  useEffect(() => syncView(false), [img?.w, img?.h, doc?.error]);
 
   useLayoutEffect(() => {
-    cur.current = { doc, view, viewSize, frame, showBg };
+    cur.current = { doc, img, view, viewSize, frame, showBg };
     paint.current();
   });
 
@@ -171,8 +173,8 @@ export function Viewport() {
 
   // Pede o buffer que falta para a view atual.
   useEffect(() => {
-    if (!doc || doc.error || !view || viewSize.w <= 0) return;
-    const need = needFor(view, doc, viewSize);
+    if (!doc || !img || doc.error || !view || viewSize.w <= 0) return;
+    const need = needFor(view, img, viewSize);
     const have = buffers.current.get(frame);
     if (have && satisfies(have, doc, frame, need)) return;
     const { id, rev } = doc;
@@ -184,7 +186,7 @@ export function Viewport() {
         if (now?.id !== id || now.rev !== rev) return;
         const old = buffers.current.get(frame);
         if (old && old.id === id && old.rev === rev && old.seq > my) return;
-        const b: Buf = { canvas: bufferToCanvas(v), id, rev, frame, region: need.rect, img: { w: doc.width, h: doc.height }, seq: my };
+        const b: Buf = { canvas: bufferToCanvas(v), id, rev, frame, region: need.rect, img, seq: my };
         const cache = buffers.current;
         for (const f of [...cache.keys()]) {
           const x = cache.get(f)!;
@@ -197,7 +199,7 @@ export function Viewport() {
       }
     }, have ? 40 : 0);
     return () => clearTimeout(timer);
-  }, [doc, frame, view, viewSize, pixelRatio]);
+  }, [doc, img, frame, view, viewSize, pixelRatio]);
 
   // Roda, pinça e arraste (listeners nativos: a roda precisa de passive: false). O botão esquerdo faz
   // pan com Espaço pressionado ou com a preferência "arrastar move a imagem" e nenhuma ferramenta de
@@ -278,7 +280,7 @@ export function Viewport() {
   }, []);
 
   const overlay: OverlayProps | null =
-    doc && !doc.error && view ? { scale: view.scale, panX: view.panX, panY: view.panY, imageW: doc.width, imageH: doc.height } : null;
+    doc && img && !doc.error && view ? { scale: view.scale, panX: view.panX, panY: view.panY, imageW: img.w, imageH: img.h } : null;
 
 
   return (

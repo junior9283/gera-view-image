@@ -2,6 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import * as ipc from "../ipc/commands";
 import { NEUTRAL_ADJUST, type ColorAdjust, type DocId, type Histogram, type Levels } from "../ipc/types";
+import { useShownPage } from "../markup/pages";
+import { useDocs } from "../store/docs";
 import { applyToTargets } from "../sidebar/batch";
 import { batchTargets, withActive } from "../sidebar/selection";
 import { isNeutral, type SliderKey } from "./neutral";
@@ -52,6 +54,8 @@ interface Props {
 export function AdjustColorPanel({ docId, onClose }: Props) {
   const { t } = useTranslation();
   const titleId = useId();
+  // O painel acompanha a página exibida, a que o OK ajusta.
+  const page = useShownPage(useDocs((s) => s.docs.find((d) => d.id === docId)));
   const [adj, setAdj] = useState<ColorAdjust>(NEUTRAL_ADJUST);
   const [hist, setHist] = useState<Histogram | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,13 +69,13 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
   useEffect(() => {
     let alive = true;
     ipc
-      .histogram(docId)
+      .histogram(docId, page)
       .then((h) => alive && setHist(h))
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [docId]);
+  }, [docId, page]);
 
   useEffect(() => {
     if (hist && histRef.current) drawHistogram(histRef.current, hist);
@@ -85,7 +89,7 @@ export function AdjustColorPanel({ docId, onClose }: Props) {
 
   const auto = () =>
     ipc
-      .autoLevels(docId)
+      .autoLevels(docId, page)
       .then((a) => setAdj(a))
       .catch(() => setError(t("adjust.autoFailed")));
 

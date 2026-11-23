@@ -185,7 +185,7 @@ fn salvar_preserva_permissoes() {
 
 #[test]
 fn salvar_raw_pede_exportar() {
-    for nome in ["img.dng", "img.psd", "img.svg", "anim.gif", "multi.tiff"] {
+    for nome in ["img.dng", "img.psd", "img.svg", "anim.gif"] {
         let path = copia("raw-exportar", nome);
         let store = DocStore::new();
         let info = store.open_documents(&[s(&path)]).remove(0);
@@ -528,7 +528,7 @@ fn dpi_do_documento_segue_o_redimensionar() {
             },
         )
         .unwrap();
-    assert_eq!(store.current_dpi(id).unwrap(), Some((300.0, 300.0)));
+    assert_eq!(store.current_dpi(id, 0).unwrap(), Some((300.0, 300.0)));
     let dest = tmp("dpi").join("dpi.png");
     store
         .export(id, &s(&dest), &opts(ExportFormat::Png), None)

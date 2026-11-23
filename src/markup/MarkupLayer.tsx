@@ -13,7 +13,7 @@ import { cloneItems, selectedItems } from "./clipboard";
 import { loadSource } from "./flatten";
 import { cssFont } from "./fontCss";
 import { bounds, hitTest, moveItems, normBox, textBox, textFont, textOf, withText, type Annotation, type Point } from "./model";
-import { onCurrentPage, onPage, pageItems } from "./pages";
+import { onCurrentPage, onPage, pageItems, pageSize } from "./pages";
 import { render, renderSelection, type Source, type ViewXf } from "./render";
 import { annotationsFocused, getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
 import { LINE_HEIGHT, layoutLines, roughWidth } from "./textLayout";
@@ -44,7 +44,8 @@ function useLoupeSource(doc: DocInfo | null, needed: boolean, page: number): Sou
   useEffect(() => {
     if (!needed || !doc || doc.error || src?.key === key) return;
     let alive = true;
-    loadSource(doc.id, doc.width, doc.height, LOUPE_SOURCE_MAX, page)
+    const { w, h } = pageSize(doc, page);
+    loadSource(doc.id, w, h, LOUPE_SOURCE_MAX, page)
       .then((s) => alive && setSrc({ key, s }))
       .catch((e) => console.error("falha ao carregar a imagem da lupa:", e));
     return () => {

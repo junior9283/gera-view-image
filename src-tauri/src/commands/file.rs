@@ -100,10 +100,14 @@ pub fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
 }
 
-/// DPI atual do documento (o do arquivo ou o do último Ajustar Tamanho).
+/// DPI atual da página do documento (o do arquivo ou o do último Ajustar Tamanho).
 #[tauri::command]
-pub async fn document_dpi(store: State<'_, DocStore>, id: DocId) -> AppResult<Option<f32>> {
-    Ok(store.current_dpi(id)?.map(|(x, _)| x))
+pub async fn document_dpi(
+    store: State<'_, DocStore>,
+    id: DocId,
+    frame: Option<u32>,
+) -> AppResult<Option<f32>> {
+    Ok(store.current_dpi(id, frame.unwrap_or(0))?.map(|(x, _)| x))
 }
 
 fn doc_path(store: &DocStore, id: DocId) -> AppResult<String> {

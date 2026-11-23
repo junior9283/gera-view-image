@@ -13,9 +13,14 @@ use tauri::{AppHandle, State, image::Image, ipc::Response};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 #[tauri::command]
-pub async fn apply_op(store: State<'_, DocStore>, id: DocId, op: Op) -> AppResult<DocInfo> {
+pub async fn apply_op(
+    store: State<'_, DocStore>,
+    id: DocId,
+    op: Op,
+    frame: Option<u32>,
+) -> AppResult<DocInfo> {
     let store = store.inner().clone();
-    blocking(move || store.apply_op(id, op)).await
+    blocking(move || store.apply_op_on(id, op, frame)).await
 }
 
 #[tauri::command]
@@ -38,10 +43,11 @@ pub async fn instant_alpha(
     x: u32,
     y: u32,
     tolerance: f32,
+    frame: Option<u32>,
 ) -> AppResult<Mask> {
     let store = store.inner().clone();
     blocking(move || {
-        let img = store.render_full(id, 0)?;
+        let img = store.render_full(id, frame.unwrap_or(0))?;
         Ok(select::instant_alpha(&img, (x, y), tolerance))
     })
     .await
@@ -53,10 +59,11 @@ pub async fn snap_lasso(
     store: State<'_, DocStore>,
     id: DocId,
     points: Vec<(f32, f32)>,
+    frame: Option<u32>,
 ) -> AppResult<Vec<(f32, f32)>> {
     let store = store.inner().clone();
     blocking(move || {
-        let img = store.render_full(id, 0)?;
+        let img = store.render_full(id, frame.unwrap_or(0))?;
         Ok(select::snap_lasso(&img, &points))
     })
     .await
@@ -128,22 +135,30 @@ const SAMPLE: u32 = 1024;
 
 /// Amostra reduzida (compartilha o cache de `preview_base`); o RGBA começa em
 /// `thumb::HEADER_LEN`.
-fn sample(store: &DocStore, id: DocId) -> AppResult<Arc<Vec<u8>>> {
-    let buf = store.preview_base(id, SAMPLE, SAMPLE)?;
+fn sample(store: &DocStore, id: DocId, frame: Option<u32>) -> AppResult<Arc<Vec<u8>>> {
+    let buf = store.preview_base(id, frame.unwrap_or(0), SAMPLE, SAMPLE)?;
     thumb::view_buffer_size(&buf).ok_or_else(|| AppError::Io("buffer de prévia inválido".into()))?;
     Ok(buf)
 }
 
 #[tauri::command]
-pub async fn histogram(store: State<'_, DocStore>, id: DocId) -> AppResult<color::Histogram> {
+pub async fn histogram(
+    store: State<'_, DocStore>,
+    id: DocId,
+    frame: Option<u32>,
+) -> AppResult<color::Histogram> {
     let store = store.inner().clone();
-    blocking(move || Ok(color::histogram(&sample(&store, id)?[thumb::HEADER_LEN..]))).await
+    blocking(move || Ok(color::histogram(&sample(&store, id, frame)?[thumb::HEADER_LEN..]))).await
 }
 
 #[tauri::command]
-pub async fn auto_levels(store: State<'_, DocStore>, id: DocId) -> AppResult<ColorAdjust> {
+pub async fn auto_levels(
+    store: State<'_, DocStore>,
+    id: DocId,
+    frame: Option<u32>,
+) -> AppResult<ColorAdjust> {
     let store = store.inner().clone();
-    blocking(move || Ok(color::auto_levels(&sample(&store, id)?[thumb::HEADER_LEN..]))).await
+    blocking(move || Ok(color::auto_levels(&sample(&store, id, frame)?[thumb::HEADER_LEN..]))).await
 }
 
 #[cfg(test)]

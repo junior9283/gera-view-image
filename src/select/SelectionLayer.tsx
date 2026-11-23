@@ -41,6 +41,8 @@ const ANTS_PHASES = 8;
 interface Props extends ViewTransform {
   docId: number;
   format?: SourceFormat;
+  /** Página mostrada (documento de várias páginas). */
+  frame?: number;
   imageWidth: number;
   imageHeight: number;
 }
@@ -106,7 +108,7 @@ function sizeLabelStyle(r: Rect, view: ViewTransform, area: { w: number; h: numb
  * da Marcação e dos botões. Teclas: com uma seleção, Shift soma e Alt subtrai (laço, formas e Alfa);
  * sem seleção prévia, Shift força quadrado/círculo. Arrastar dentro da seleção a move.
  */
-export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih, scale, panX, panY }: Props) {
+export function SelectionLayer({ docId, format, frame, imageWidth: iw, imageHeight: ih, scale, panX, panY }: Props) {
   const { t } = useTranslation();
   const selection = useSelection((s) => s.selection);
   const tool = useSelection((s) => s.selectionTool);
@@ -363,7 +365,7 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
       const gen = ++alphaSeq.current;
       // Uma chamada por vez ao Rust; tolerâncias novas se reduzem à última.
       const request = latestOnly(
-        (tol: number) => ipc.instantAlpha(docId, seed[0], seed[1], tol),
+        (tol: number) => ipc.instantAlpha(docId, seed[0], seed[1], tol, frame),
         (m, _tol, last) => {
           if (gen !== alphaSeq.current) return; // arrasto cancelado ou substituído
           if (!d.released || !last) return setAlpha(m);
@@ -420,7 +422,7 @@ export function SelectionLayer({ docId, format, imageWidth: iw, imageHeight: ih,
       const pts = simplifyPath(d.points, 1 / scale);
       if (pts.length < 3) return d.mode === "replace" ? setSelection(null) : undefined;
       if (!d.snap) return setSelection(compose(d, { type: "polygon", data: pts }));
-      void ipc.snapLasso(docId, pts).then((snapped) => {
+      void ipc.snapLasso(docId, pts, frame).then((snapped) => {
         if (snapped.length >= 3) setSelection(compose(d, { type: "polygon", data: snapped }));
       });
     } else if (d.kind !== "create") {

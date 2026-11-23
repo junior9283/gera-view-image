@@ -48,6 +48,11 @@ impl Decoded {
         self.frames.iter().map(|f| f.as_raw().len()).sum()
     }
 
+    /// Várias páginas (TIFF): mais de um quadro, sem ser animação.
+    pub fn has_pages(&self) -> bool {
+        self.frames.len() > 1 && self.playback().delays_ms.is_empty()
+    }
+
     /// Como a animação toca: atrasos vazios quando não há animação (estática, TIFF de páginas).
     pub fn playback(&self) -> Playback {
         let animated =
@@ -77,6 +82,10 @@ pub struct Playback {
 /// Teto de memória de uma imagem decodificada (RGBA8, todas as páginas somadas).
 /// Arquivos que declaram mais que isso falham com erro antes de alocar.
 pub const MAX_DECODE_BYTES: usize = 2 << 30;
+
+/// Teto de páginas de um TIFF: além disso o arquivo é forjado (cada página custa memória e um
+/// tamanho em todo `DocInfo`).
+pub const MAX_PAGES: usize = 10_000;
 
 /// Recusa dimensões cujo RGBA8 (somado a `already` bytes de páginas anteriores) passe do teto.
 pub(super) fn check_budget(w: u32, h: u32, already: usize) -> AppResult<usize> {
@@ -341,9 +350,13 @@ fn decode_format(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
         Tga => decode_image_crate(bytes, ImageFormat::Tga, format),
         Gif => decode_gif(bytes),
         Webp => decode_webp(bytes),
-        Tiff => {
-            decode_tiff(bytes).or_else(|_| decode_image_crate(bytes, ImageFormat::Tiff, format))
-        }
+        // O leitor alternativo só lê a primeira página: só vale para um arquivo de uma página só,
+        // senão o documento abriria sem as outras (e o Salvar as apagaria). Teto e cadeia de IFDs
+        // inválida também não caem nele.
+        Tiff => decode_tiff(bytes).or_else(|e| match super::container::tiff_pages(bytes) {
+            Some(pages) if pages.len() == 1 => decode_image_crate(bytes, ImageFormat::Tiff, format),
+            _ => Err(e),
+        }),
         Heic | Avif => decode_heif(bytes, format),
         Svg => decode_svg(bytes),
         Psd => decode_psd(bytes),
@@ -565,6 +578,9 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
         if !dec.more_images() {
             break;
         }
+        if frames.len() >= MAX_PAGES {
+            return Err(AppError::Unsupported("páginas demais".into()));
+        }
         dec.next_image().map_err(map)?;
     }
     let n = frames.len();
@@ -581,6 +597,19 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
 
 pub(super) fn short() -> AppError {
     AppError::Corrupt("dados de pixel incompletos".into())
+}
+
+/// Perfil ICC e DPI da primeira página de um TIFF (a que o cabeçalho aponta).
+pub fn tiff_page_info(bytes: &[u8]) -> (Option<Vec<u8>>, Option<(f32, f32)>) {
+    let Ok(dec) = tiff::decoder::Decoder::new(Cursor::new(bytes)) else {
+        return (None, None);
+    };
+    let mut dec = dec.with_limits({
+        let mut l = tiff::decoder::Limits::default();
+        l.ifd_value_size = 64 << 20;
+        l
+    });
+    (dec.get_tag_u8_vec(tiff::tags::Tag::IccProfile).ok(), tiff_dpi(&mut dec))
 }
 
 fn tiff_dpi<R: std::io::Read + std::io::Seek>(

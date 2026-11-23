@@ -8,7 +8,7 @@ import { answerConfirm, closeVersions, useFinderUi } from "./store";
 import { VersionsBrowser } from "./VersionsBrowser";
 import "../file/file.css";
 
-function ConfirmDiscard({ name, text, ok }: { name: string; text: string; ok: string }) {
+function ConfirmDiscard({ name, text, ok, details }: { name: string; text: string; ok: string; details: string[] }) {
   const { t } = useTranslation();
   const titleId = useId();
   const dialog = useRef<HTMLDivElement>(null);
@@ -17,6 +17,13 @@ function ConfirmDiscard({ name, text, ok }: { name: string; text: string; ok: st
     <div className="file-backdrop" role="presentation">
       <div ref={dialog} className="file-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
         <h3 id={titleId}>{t(text, { name })}</h3>
+        {details.length > 0 && (
+          <ul className="file-hint">
+            {details.map((d) => (
+              <li key={d}>{d}</li>
+            ))}
+          </ul>
+        )}
         <div className="file-actions">
           <span className="file-spacer" />
           <button type="button" autoFocus onClick={() => answerConfirm(false)}>{t("finder.trash.cancel")}</button>
@@ -34,7 +41,7 @@ export function FinderHost() {
   return (
     <>
       {doc && <VersionsBrowser key={doc.id} doc={doc} onClose={closeVersions} />}
-      {confirm && <ConfirmDiscard key={confirm.id} name={confirm.name} text={confirm.text} ok={confirm.ok} />}
+      {confirm && <ConfirmDiscard key={confirm.id} name={confirm.name} text={confirm.text} ok={confirm.ok} details={confirm.details} />}
     </>
   );
 }

@@ -2,12 +2,13 @@
 import { create } from "zustand";
 import type { DocId } from "../ipc/types";
 
-/** `text` e `ok` são chaves de i18n (`text` recebe `{ name }`). */
+/** `text` e `ok` são chaves de i18n (`text` recebe `{ name }`); `details`, itens já traduzidos. */
 interface Confirm {
   id: DocId;
   name: string;
   text: string;
   ok: string;
+  details: string[];
   resolve: (ok: boolean) => void;
 }
 
@@ -18,7 +19,7 @@ interface FinderUi {
   focusTags: boolean;
   /** Documento no navegador de versões. */
   versions: DocId | null;
-  /** Pedido de confirmação antes de descartar alterações (Lixo, Restaurar versão). */
+  /** Pedido de confirmação antes de descartar algo (Lixo, Restaurar versão, gravar com perdas). */
   confirm: Confirm | null;
   /** Último estado de bloqueio conhecido de cada documento. */
   locked: Record<DocId, boolean>;
@@ -35,11 +36,11 @@ export const closeVersions = () => useFinderUi.setState({ versions: null });
 export const setLockedState = (id: DocId, locked: boolean) =>
   useFinderUi.setState((s) => ({ locked: { ...s.locked, [id]: locked } }));
 
-/** Pergunta (diálogo do `FinderHost`) se pode descartar as alterações; `true` = pode. */
-export function askDiscard(id: DocId, name: string, text: string, ok: string): Promise<boolean> {
+/** Pergunta (diálogo do `FinderHost`) se pode descartar as alterações (ou os `details`); `true` = pode. */
+export function askDiscard(id: DocId, name: string, text: string, ok: string, details: string[] = []): Promise<boolean> {
   return new Promise((resolve) => {
     useFinderUi.getState().confirm?.resolve(false);
-    useFinderUi.setState({ confirm: { id, name, text, ok, resolve } });
+    useFinderUi.setState({ confirm: { id, name, text, ok, details, resolve } });
   });
 }
 

@@ -10,7 +10,7 @@
 //!   devolve erro e o arquivo fica onde está.
 use super::{
     model::{DocId, DocInfo},
-    store::{DeepBase, DocStore, Document},
+    store::DocStore,
     versions,
 };
 use crate::{
@@ -265,8 +265,7 @@ impl DocStore {
         let path = self.file_path(id)?;
         set_locked(&path, locked)?;
         self.with_doc_mut(id, |d| {
-            d.info.writable =
-                Document::can_save(&d.info.path, d.info.format, d.source.frames.len());
+            d.set_format(d.info.format);
         })
         .map(|(_, i)| i)
     }
@@ -291,29 +290,21 @@ impl DocStore {
             ));
         }
         self.wait_ready(id)?;
-        let (n, generation) = self.with_doc(id, |d| (d.ops.len(), d.generation))?;
+        let state = self.with_doc(id, |d| (d.ops.len(), d.generation))?;
+        let page = self.written_page(id, opts)?;
         self.export(id, dest, opts, keywords)?;
         self.meta_written(id, opts.format.carries_text());
         let dest_path = Path::new(dest);
         self.with_doc_mut(id, |d| {
             d.relocate(dest_path);
-            d.info.format = format;
+            d.set_format(format);
             d.opened_disk = d.disk;
-            d.info.writable = Document::can_save(dest, format, d.source.frames.len());
-            let same = d.generation == generation && d.ops.len() >= n;
-            if same {
-                d.mark_saved(n, opts.frame);
-            } else {
-                d.saved_len = usize::MAX;
-            }
+            d.mark_saved(state, page);
+            let same = d.generation == state.1 && d.ops.len() >= state.0;
             // Com perfil de saída (ou sem perfil), o arquivo não está no espaço do documento.
             let same_color = opts.color_profile.is_none() && !opts.strip_metadata;
-            d.deep = (same && opts.depth16 && opts.frame == 0 && same_color).then(|| DeepBase {
-                source: Arc::downgrade(&d.source),
-                generation,
-                n,
-                disk: d.disk,
-            });
+            let first = page.is_none_or(|p| p == 0);
+            d.deep = (same && opts.depth16 && first && same_color).then(|| d.deep_base(state));
         })
         .map(|(_, i)| i)
     }
@@ -363,14 +354,16 @@ impl DocStore {
                 d.original = Some(d.source.clone());
             }
             d.full_size = dec.frames.first().map_or((0, 0), |f| f.dimensions());
-            d.info.writable = Document::can_save(&d.info.path, d.info.format, dec.frames.len());
             d.source = Arc::new(dec);
+            d.set_format(d.info.format);
             d.ops.clear();
             d.redo.clear();
             d.generation += 1;
             d.error = None;
             d.saved_len = usize::MAX;
             d.deep = None;
+            // Pedido explícito, e a versão atual fica guardada: o Salvar pode trocar o arquivo.
+            d.unseen_disk = false;
         })?;
         self.meta_source_changed(id, false);
         self.invalidate(id);

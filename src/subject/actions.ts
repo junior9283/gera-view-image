@@ -5,6 +5,7 @@ import { notify, notifyError } from "../chrome/notify";
 import i18n from "../i18n";
 import * as ipc from "../ipc/commands";
 import type { DocInfo, Mask } from "../ipc/types";
+import { hasPages, shownPage } from "../markup/pages";
 import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 
@@ -21,6 +22,9 @@ const activeDoc = (): DocInfo | undefined => {
   const { docs, activeId } = useDocs.getState();
   return docs.find((d) => d.id === activeId);
 };
+
+/** Página mostrada, num documento de várias páginas (numa animação, o primeiro quadro). */
+const pageOf = (doc: DocInfo | undefined): number => (doc && hasPages(doc) ? shownPage(doc.id) : 0);
 
 /** Há documento ativo aberto e nenhuma segmentação em andamento. */
 export const canSegment = () => {
@@ -52,8 +56,8 @@ export function cancelSubject() {
   void ipc.segmentCancel().catch(() => {});
 }
 
-/** Máscara do sujeito do documento ativo, ou `null` (cancelado, recusado, documento mudou). */
-async function subjectOf(doc: DocInfo): Promise<(Mask & { type: "bitmap" }) | null> {
+/** Máscara do sujeito da página `page`, ou `null` (cancelado, recusado, documento ou página mudou). */
+async function subjectOf(doc: DocInfo, page: number): Promise<(Mask & { type: "bitmap" }) | null> {
   const token = ++run;
   const ready = await ipc.segmentModelReady();
   if (!ready) {
@@ -66,10 +70,11 @@ async function subjectOf(doc: DocInfo): Promise<(Mask & { type: "bitmap" }) | nu
   }
   setPhase({ kind: "busy", downloading: !ready });
   try {
-    const mask = await ipc.segmentSubject(doc.id);
+    const mask = await ipc.segmentSubject(doc.id, page);
     const now = activeDoc();
-    // Cancelado, ou o documento mudou (outra op, outro documento) enquanto a máscara era calculada.
+    // Cancelado, ou o documento mudou (outra op, documento ou página) enquanto a máscara era calculada.
     if (token !== run || now?.id !== doc.id || now.rev !== doc.rev || mask.type !== "bitmap") return null;
+    if (pageOf(doc) !== page) return null;
     return mask;
   } catch (e) {
     if (token !== run) return null;
@@ -84,16 +89,17 @@ async function subjectOf(doc: DocInfo): Promise<(Mask & { type: "bitmap" }) | nu
 /** Ferramentas › Remover Fundo: o fundo fica transparente numa só operação (desfazível). */
 export async function removeBackground() {
   const doc = activeDoc();
-  const mask = doc && (await subjectOf(doc));
+  const page = pageOf(doc);
+  const mask = doc && (await subjectOf(doc, page));
   if (!doc || !mask) return;
   useSelection.getState().setSelection(null);
-  await useDocs.getState().applyOp(doc.id, { type: "makeTransparent", data: invertBitmap(mask) });
+  await useDocs.getState().applyOp(doc.id, { type: "makeTransparent", data: invertBitmap(mask) }, page);
 }
 
 /** Seleciona o sujeito (a seleção serve para Recortar, Apagar, Copiar...). */
 export async function selectSubject(): Promise<Mask | null> {
   const doc = activeDoc();
-  const mask = doc && (await subjectOf(doc));
+  const mask = doc && (await subjectOf(doc, pageOf(doc)));
   if (!mask) return null;
   useSelection.getState().setSelection(mask);
   return mask;
@@ -102,6 +108,7 @@ export async function selectSubject(): Promise<Mask | null> {
 /** Copiar Objeto: seleciona o sujeito e o põe na área de transferência (fundo transparente). */
 export async function copySubject() {
   const doc = activeDoc();
+  const page = pageOf(doc);
   const mask = await selectSubject();
-  if (doc && mask) await ipc.copyRegion(doc.id, mask);
+  if (doc && mask) await ipc.copyRegion(doc.id, mask, page);
 }

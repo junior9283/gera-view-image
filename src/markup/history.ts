@@ -6,6 +6,7 @@ import type { DocId } from "../ipc/types";
 import { registerDocState } from "../lib/docState";
 import { useDocs } from "../store/docs";
 import { transformForOp, type Annotation } from "./model";
+import { onPage, pageSize, shownPage } from "./pages";
 import { getItems, useMarkup } from "./store";
 
 /** Anotações antes e depois de um passo. */
@@ -109,11 +110,16 @@ export function forgetHistory(id: DocId): void {
  */
 export function installHistory(): () => void {
   const orig = useDocs.getState().applyOp;
-  const tracked: typeof orig = async (id, op) => {
+  const tracked: typeof orig = async (id, op, page = shownPage(id)) => {
     const doc = useDocs.getState().docs.find((d) => d.id === id);
     const before = getItems(id);
-    const after = doc && before.length ? transformForOp(before, op, doc.width, doc.height) : null;
-    const info = await orig(id, op);
+    // Num documento de várias páginas, só as anotações da página mudam com ela.
+    const mine = onPage(before, doc, page);
+    const { w, h } = doc ? pageSize(doc, page) : { w: 0, h: 0 };
+    const moved = doc && mine.length ? transformForOp(mine, op, w, h) : null;
+    const byId = new Map(moved?.map((a) => [a.id, a]));
+    const after = moved && before.map((a) => byId.get(a.id) ?? a);
+    const info = await orig(id, op, page);
     if (after) {
       pushOp(id, { before, after });
       setItems(id, after);

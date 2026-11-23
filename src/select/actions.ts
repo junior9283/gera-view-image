@@ -1,7 +1,7 @@
 // Ações de seleção para os menus/atalhos (Task 6). Atuam no documento ativo.
 import * as ipc from "../ipc/commands";
 import { annotationsPng } from "../markup/flatten";
-import { shownPage } from "../markup/pages";
+import { shownPage, shownSize } from "../markup/pages";
 import { useMarkup } from "../markup/store";
 import type { DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
@@ -19,13 +19,15 @@ export const deselect = () => sel().setSelection(null);
 
 export function selectAll() {
   const doc = activeDoc();
-  if (doc) sel().setSelection({ type: "rect", data: { x: 0, y: 0, w: doc.width, h: doc.height } });
+  if (doc) sel().setSelection({ type: "rect", data: { x: 0, y: 0, ...shownSize(doc) } });
 }
 
 export function invertSelection() {
   const doc = activeDoc();
   const { selection, setSelection } = sel();
-  if (doc && selection) setSelection(invertMask(selection, doc.width, doc.height));
+  if (!doc || !selection) return;
+  const { w, h } = shownSize(doc);
+  setSelection(invertMask(selection, w, h));
 }
 
 /** Escolhe a ferramenta de seleção da imagem; a Marcação larga o ponteiro. */
@@ -49,7 +51,8 @@ export async function cropToSelection() {
   const doc = activeDoc();
   const { selection } = sel();
   if (!doc || !selection) return;
-  const bounds = maskBounds(selection, doc.width, doc.height);
+  const { w, h } = shownSize(doc);
+  const bounds = maskBounds(selection, w, h);
   if (!bounds) return;
   // Uma op só (um desfazer, sem estado parcial): fora da máscara vira transparente e depois corta.
   const data = selection.type === "rect" ? bounds : { ...bounds, mask: selection };
@@ -74,7 +77,11 @@ export async function deleteSelection() {
 }
 
 export async function cutSelection() {
-  if (!sel().selection) return;
+  const doc = activeDoc();
+  const { selection } = sel();
+  if (!doc || !selection) return;
+  // A página e a seleção de quando se recortou, mesmo que mudem enquanto a cópia é feita.
+  const page = shownPage(doc.id);
   await copySelection();
-  await deleteSelection();
+  await useDocs.getState().applyOp(doc.id, { type: "erase", data: selection }, page);
 }

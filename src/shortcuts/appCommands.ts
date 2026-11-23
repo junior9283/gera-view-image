@@ -8,6 +8,7 @@ import { openAdjustColor, openResize } from "../adjust/actions";
 import { canRedo, canUndo, redo, undo } from "../edit/history";
 import type { Op } from "../ipc/types";
 import { toggleInspector } from "../inspector/toggle";
+import { shownSize } from "../markup/pages";
 import { deleteSelected } from "../markup/actions";
 import { copyAnnotations, cutAnnotations, duplicateAnnotations, focusedDoc, selectAllAnnotations } from "../markup/clipboard";
 import { openAbout, openPreferences } from "../prefs/dialogs";
@@ -51,7 +52,8 @@ async function transform(op: Op) {
 function zoomToSelection() {
   const d = editable();
   const { selection } = useSelection.getState();
-  const r = d && selection && maskBounds(selection, d.width, d.height);
+  const size = d && shownSize(d);
+  const r = size && selection && maskBounds(selection, size.w, size.h);
   if (r) view.zoomToRect(r);
 }
 

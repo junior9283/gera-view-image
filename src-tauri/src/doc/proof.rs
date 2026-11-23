@@ -110,6 +110,34 @@ mod tests {
     }
 
     #[test]
+    fn prova_de_cor_vale_na_pagina_exibida_no_tamanho_dela() {
+        let dir = TempDir::new("doc-prova-paginas");
+        let p = dir.path().join("Papel.icc");
+        std::fs::write(&p, cmyk_profile("Papel")).unwrap();
+        // TIFF de duas páginas: a segunda (6x8) é maior que a primeira (4x3) e de outra cor.
+        let mut pages = Decoded::single(RgbaImage::from_pixel(4, 3, Rgba([255, 0, 0, 255])), SourceFormat::Tiff);
+        pages.frames.push(RgbaImage::from_pixel(6, 8, Rgba([0, 0, 255, 255])));
+        pages.delays_ms.push(0);
+        let store = DocStore::new();
+        let id = store.insert_decoded("", pages).id;
+        store.set_proof(id, p.to_str()).unwrap();
+        let gray = |b: &[u8]| {
+            let px = &b[8..11];
+            px[0].abs_diff(px[1]) <= 3 && px[1].abs_diff(px[2]) <= 3
+        };
+        let tela = store.render_screen(id, 1, 99, 99, None).unwrap();
+        assert_eq!(thumb::view_buffer_size(&tela), Some((6, 8)));
+        assert!(gray(&tela), "cinza na prova: {:?}", &tela[8..12]);
+        // Trecho do visor fora da primeira página, dentro da segunda.
+        let r = Rect { x: 4, y: 5, w: 2, h: 3 };
+        let trecho = store.render_screen(id, 1, 99, 99, Some(r)).unwrap();
+        assert_eq!(thumb::view_buffer_size(&trecho), Some((2, 3)));
+        assert!(gray(&trecho), "{:?}", &trecho[8..12]);
+        // Sem prova, a página continua azul.
+        assert_eq!(px(store.render_view(id, 1, 99, 99, None).unwrap()), [0, 0, 255, 255]);
+    }
+
+    #[test]
     fn perfil_invalido_mantem_o_atual() {
         let (store, id) = store();
         store.set_proof(id, Some("display-p3")).unwrap();

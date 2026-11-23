@@ -201,3 +201,57 @@ Formato: sintoma, causa, correção, teste, lição.
 - Mover com o seletor de arquivos do sistema aberto: `src/lib/dialogs.ts`. Juntar recusado avisa quem pediu.
 - Fechar durante impressão, PDF ou gravação: espera um pouco e pergunta.
 - Permissão `core:window:allow-destroy` retirada (não era usada).
+## TIFF de várias páginas (depois do Lote 12)
+
+### Página menor que a primeira fora dos limites; página maior cortada
+- **Causa:** `DocStore::pixels()` devolvia o tamanho da página 1 para qualquer quadro, e a interface usava `width`/`height` do documento.
+- **Correção:** `Document::size_after_ops(frame)`, `DocInfo::page_sizes`, e na interface `pageSize`/`useShownPage` (`src/lib/pages.ts`, `src/markup/pages.ts`).
+- **Teste:** `src-tauri/tests/paginas.rs` e `src/markup/pageSizes.test.ts`.
+- **Lição:** fixture de várias páginas precisa ter páginas de tamanhos diferentes.
+
+### Recortar apagava em todas as páginas
+- **Causa:** as operações não tinham página.
+- **Correção:** `Op::OnPage { frame, op }`, criado só por `DocStore::apply_op_on` (um `OnPage` vindo do IPC é recusado). Toda edição vale para a página exibida, inclusive girar e redimensionar, como no macOS; o perfil de cor é do documento.
+- **Teste:** `cortar_vale_so_para_a_pagina_exibida`, `girar_e_redimensionar_valem_so_para_a_pagina_exibida` (`src-tauri/tests/paginas.rs`).
+
+### Gravar um TIFF perdia as outras páginas
+- **Correção:** cada página é codificada com os próprios metadados e juntada por `container::TiffJoin` (só pixels e tags são copiados); teto de 2 GB conferido antes de gravar (`too_large`). Os 16 bits e as etiquetas de cada página são lidos do arquivo atual, apontando o cabeçalho para ela.
+- **Teste:** `salvar_grava_todas_as_paginas`, `salvar_mantem_16_bits_em_todas_as_paginas`, `salvar_mantem_as_etiquetas_de_cada_pagina` (`src-tauri/tests/paginas.rs`).
+
+### Salvar por cima de um arquivo que virou outra coisa
+- **Sintoma:** com a mudança no disco ignorada (ou depois de Reverter), Ctrl+S gravava uma página no formato antigo por cima de um TIFF de várias.
+- **Causa:** `save` e `revert` não recalculavam formato, páginas nem `writable`.
+- **Correção:** `Document::set_format` no reverter, e o Salvar confere o formato e as páginas do arquivo no disco (`unseen_disk`) antes de gravar.
+- **Teste:** `salvar_nao_apaga_paginas_que_apareceram_no_disco`, `salvar_nao_grava_por_cima_de_outro_formato`, `reverter_recalcula_formato_paginas_e_se_da_para_gravar`.
+
+### Salvar Como gravava outra página
+- **Causa:** a página era lida depois do diálogo do sistema.
+- **Teste:** "grava a página de quando foi pedido" (`src/file/loss.test.tsx`).
+- **Lição:** o que depende da tela se captura antes de qualquer `await`.
+
+### Texto apagado continuava nos bytes do EXIF
+- **Causa:** `exif_with_dpi` regravava o IFD0 no fim e deixava o antigo (com os textos) como espaço morto, fora do alcance da limpeza.
+- **Correção:** só a tabela do IFD0 muda de lugar, os valores ficam onde estão e a tabela antiga é zerada; `exifscrub::scrub` zera também as cópias do valor tirado em áreas mortas (arquivos de versões anteriores).
+- **Teste:** `resolucao_nova_nao_deixa_copia_dos_textos_no_exif`, `copia_morta_de_versoes_antigas_tambem_e_apagada` (`src-tauri/tests/inspetor.rs`).
+- **Lição:** em metadados, "não aparece no leitor" não é "não está no arquivo": o teste procura nos bytes.
+
+### EXIF acima de 64 KB sumia do JPEG sem aviso
+- **Correção:** aviso `exifTooBig` em `metaedit::notes`, com o nome do documento.
+- **Teste:** `exif_que_nao_cabe_no_jpeg_avisa` (`src-tauri/tests/inspetor.rs`) e `src/file/loss.test.tsx`.
+
+### TIFF de várias páginas abria só a primeira pelo leitor alternativo (checagem de segurança)
+- **Sintoma:** com páginas demais ou uma página que o leitor de páginas não lê (CMYK), o arquivo abria com uma página só, gravável; o Salvar apagaria as outras.
+- **Correção:** o leitor de uma página só é usado quando `container::tiff_pages` confirma um IFD só.
+- **Teste:** `tiff_com_paginas_demais_nao_abre_como_uma_pagina`, `tiff_de_varias_paginas_nao_cai_no_leitor_de_uma_pagina` (`src-tauri/tests/paginas.rs`).
+- **Lição:** um fallback que lê menos do que o principal não pode produzir um documento gravável.
+
+### Limpeza de cópias do EXIF: resíduo, custo e miniatura (checagem de segurança)
+- **Sintomas:** cópias sobrepostas de dois valores apagados deixavam um pedaço; bloco forjado com muitas cópias e faixas custava tempo quadrático; a miniatura do IFD1 (a foto de antes das edições) ia para o arquivo.
+- **Correção:** cópias procuradas no bloco original e zeradas juntas; faixas protegidas fundidas com busca binária e teto de casamentos (`None` = EXIF descartado); `exif_for_write` tira o IFD1 e zera a miniatura, e `exif_with_dpi` grava 0 como próximo IFD.
+- **Teste:** `copias_sobrepostas_de_valores_tirados_somem_inteiras`, `copias_demais_derrubam_o_bloco` (`src-tauri/src/image/exifscrub.rs`), `miniatura_antiga_do_exif_nao_e_gravada` (`src-tauri/tests/inspetor.rs`).
+
+### Colar anotação numa página menor que a primeira (merge com a integração da rodada 3)
+- **Sintoma:** anotação copiada que cabia na primeira página, colada numa página menor, ficava fora dela.
+- **Causa:** o colar do clipboard de anotações (frente nova) centrava pelo `width`/`height` do documento.
+- **Correção:** `insert` (`src/markup/clipboard.ts`) usa `shownSize`; o resto do encontro (seleção arrastável, prévia ao vivo, Copiar anotações, prova de cor) já recebia o tamanho da página.
+- **Teste:** "colar numa página menor que a primeira centra a anotação dentro dela" (`src/markup/pageSizes.test.ts`), `src/viewer/pages.test.tsx` e `prova_de_cor_vale_na_pagina_exibida_no_tamanho_dela` (`src-tauri/src/doc/proof.rs`).

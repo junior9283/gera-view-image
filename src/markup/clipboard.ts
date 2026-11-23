@@ -9,7 +9,7 @@ import { activeDoc, viewable } from "../viewer/actions";
 import { commit } from "./actions";
 import { itemsPng } from "./flatten";
 import { bounds, boxOf, clamp, deserialize, newId, normBox, serialize, translate, type Annotation, type Box } from "./model";
-import { onCurrentPage, pageItems } from "./pages";
+import { onCurrentPage, pageItems, shownSize } from "./pages";
 import { annotationsFocused, getItems, getSelected, useMarkup } from "./store";
 
 /** Deslocamento da cópia, em px de tela. */
@@ -47,7 +47,7 @@ const sameBox = (a: Box, b: Box) => a.x === b.x && a.y === b.y && a.w === b.w &&
 export const cloneItems = (id: DocId, items: readonly Annotation[]): Annotation[] =>
   items.map((a) => onCurrentPage(id, { ...a, id: newId(), page: undefined }));
 
-/** Põe `items` na página mostrada, sem cair em cima de iguais e dentro da imagem, e os seleciona. */
+/** Põe `items` na página mostrada, sem cair em cima de iguais e dentro dela, e os seleciona. */
 function insert(id: DocId, items: Annotation[]): void {
   const doc = activeDoc();
   if (!viewable(doc) || !items.length) return;
@@ -56,10 +56,11 @@ function insert(id: DocId, items: Annotation[]): void {
   let group = cloneItems(id, items);
   while (taken.some((b) => sameBox(b, bounds(group[0])))) group = group.map((a) => translate(a, step, step));
   const box = normBox(unionBox(group));
-  // Veio de uma imagem maior e ficaria fora desta: vai para o centro.
-  if (box.x >= doc.width || box.y >= doc.height || box.x + box.w <= 0 || box.y + box.h <= 0) {
+  // Veio de uma imagem (ou página) maior e ficaria fora desta: vai para o centro.
+  const { w, h } = shownSize(doc);
+  if (box.x >= w || box.y >= h || box.x + box.w <= 0 || box.y + box.h <= 0) {
     const center = (size: number, max: number) => clamp((max - size) / 2, 0, max);
-    const [dx, dy] = [center(box.w, doc.width) - box.x, center(box.h, doc.height) - box.y];
+    const [dx, dy] = [center(box.w, w) - box.x, center(box.h, h) - box.y];
     group = group.map((a) => translate(a, dx, dy));
   }
   commit(id, [...getItems(id), ...group]);

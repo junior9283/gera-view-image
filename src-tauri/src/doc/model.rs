@@ -56,6 +56,8 @@ pub struct DocInfo {
     pub width: u32,
     pub height: u32,
     pub frames: u32,
+    /// Tamanho de cada página, depois das operações (TIFF de várias páginas); vazio nos outros.
+    pub page_sizes: Vec<(u32, u32)>,
     /// Atraso de cada quadro em ms (já com a regra dos navegadores); vazio sem animação.
     pub delays_ms: Vec<u32>,
     /// Vezes que a animação toca no total; 0 = para sempre.
@@ -190,9 +192,32 @@ pub enum Op {
     AssignProfile {
         profile: String,
     },
+    /// Operação só na página `frame` de um documento de várias páginas. Quem embrulha é
+    /// `DocStore::apply_op_on`; vinda pronta da interface, é recusada.
+    OnPage {
+        frame: u32,
+        op: Box<Op>,
+    },
 }
 
 impl Op {
+    /// A operação em si, fora do invólucro de página.
+    pub fn inner(&self) -> &Op {
+        match self {
+            Op::OnPage { op, .. } => op,
+            op => op,
+        }
+    }
+
+    /// Página a que a operação se limita (`None` = a imagem toda).
+    pub fn page(&self) -> Option<u32> {
+        match self {
+            Op::Composite { frame, .. } => *frame,
+            Op::OnPage { frame, .. } => Some(*frame),
+            _ => None,
+        }
+    }
+
     /// A operação não altera os pixels (só como eles são interpretados).
     pub fn keeps_pixels(&self) -> bool {
         matches!(self, Op::AssignProfile { .. })
@@ -200,9 +225,6 @@ impl Op {
 
     /// A operação muda os pixels do quadro `frame`.
     pub fn touches(&self, frame: u32) -> bool {
-        match self {
-            Op::Composite { frame: Some(f), .. } => *f == frame,
-            op => !op.keeps_pixels(),
-        }
+        self.page().is_none_or(|f| f == frame) && !self.inner().keeps_pixels()
     }
 }

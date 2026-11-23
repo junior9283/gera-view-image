@@ -18,6 +18,8 @@ import { openHere } from "../tabs/open";
 import { activate, activeDoc, viewable } from "../viewer/actions";
 import { openIds, placeOpened } from "./openFiles";
 import { runBeforeSave } from "./beforeSave";
+import { exportFormatOf } from "./estimate";
+import { confirmLosses, TEXT_FORMATS } from "./loss";
 import { confirmClose } from "./unsaved";
 
 export type FileDialog =
@@ -67,7 +69,10 @@ export async function saveDoc(d: DocInfo): Promise<boolean> {
   };
   // Antes de achatar: cancelar o Exportar não pode deixar nada mudado.
   if (!d.writable) return toExport();
-  await runBeforeSave(d.id);
+  // Um TIFF de várias páginas é gravado inteiro.
+  const allPages = hasPages(d);
+  if (!(await confirmLosses(d, { format: exportFormatOf(d.format), stripMetadata: false, allPages }))) return false;
+  await runBeforeSave(d.id, allPages ? null : 0);
   const out = await ipc.save(d.id, getPendingKeywords(d.id));
   if (out.type === "needsExport") return toExport();
   update(out.data);
@@ -78,19 +83,20 @@ export async function saveDoc(d: DocInfo): Promise<boolean> {
 }
 
 /**
- * Só a página `page` de `info` foi para `dest`: avisa se ficaram de fora anotações de outra, por
+ * Só a página `page` (nulo = todas) de `info` foi para `dest`: avisa se ficaram de fora anotações de outra, por
  * achatar ou já achatadas (aí o documento, que passou a ser `dest`, continua com alterações).
  */
-export function warnLeftOut(info: DocInfo, page: number, dest: string): void {
+export function warnLeftOut(info: DocInfo, page: number | null, dest: string): void {
+  if (page === null) return;
   if (leavesOut(info.id, page) || (hasPages(info) && info.path === dest && info.dirty)) notify(t("file.otherPages", { page: page + 1 }));
 }
 
 /**
- * Exporta a página `opts.frame` de um documento (achata antes as anotações dela), com etiquetas.
+ * Exporta a página `opts.frame` de um documento, ou todas (achata antes as anotações dela), com etiquetas.
  * Devolve o `DocInfo` atualizado.
  */
 export async function exportDoc(id: DocId, dest: string, opts: ExportOptions, tags: string[] = []): Promise<DocInfo> {
-  const page = opts.frame ?? 0;
+  const page = opts.allPages ? null : (opts.frame ?? 0);
   await runBeforeSave(id, page);
   const keywords = getPendingKeywords(id);
   let info: DocInfo;
@@ -109,19 +115,13 @@ export async function exportDoc(id: DocId, dest: string, opts: ExportOptions, ta
 }
 
 /**
- * Formatos em que o Salvar/Exportar grava as palavras-chave: IPTC 2:25 (JPEG, TIFF) e/ou XMP
- * `dc:subject` (JPEG, TIFF, PNG, WebP). AVIF (o codificador só grava EXIF), BMP e OpenEXR as perdem.
- */
-const KEYWORD_FORMATS: ReadonlySet<string> = new Set(["jpeg", "tiff", "png", "webp", "psd"]);
-
-/**
  * Depois de gravar no próprio arquivo: palavras-chave pendentes saem da fila só se o formato as
  * grava; senão continuam pendentes e o usuário é avisado (`format` nulo = metadados removidos).
  */
 export function settleKeywords(id: DocId, format: string | null): void {
   void reportMetaNotes(id);
   if (!getPendingKeywords(id) && !hasPendingTextEdits(id)) return;
-  if (format && KEYWORD_FORMATS.has(format)) clearKeywords(id);
+  if (format && TEXT_FORMATS.has(format)) clearKeywords(id);
   else notify(t("file.keywordsNotSaved"));
 }
 

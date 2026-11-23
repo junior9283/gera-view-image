@@ -7,6 +7,7 @@ import { useUi } from "../store/ui";
 import { addAnnotation } from "./actions";
 import { CameraTab } from "./CameraTab";
 import { DEFAULT_STYLE, newId, type Point } from "./model";
+import { shownSize } from "./pages";
 import {
   MAX_SIGNATURES,
   catmullRom,
@@ -39,11 +40,12 @@ async function insert(sig: Signature) {
   const ratio = img.naturalWidth && img.naturalHeight ? img.naturalHeight / img.naturalWidth : 0.33;
   const { view, viewSize } = useUi.getState();
   const scale = view?.scale ?? 1;
-  const w = Math.min(doc.width, INSERT_PX / scale);
+  const size = shownSize(doc);
+  const w = Math.min(size.w, INSERT_PX / scale);
   const h = w * ratio;
   // Centro da área visível, em coordenadas da imagem (o centro da imagem sem view).
-  const cx = view ? (viewSize.w / 2 - view.panX) / scale : doc.width / 2;
-  const cy = view ? (viewSize.h / 2 - view.panY) / scale : doc.height / 2;
+  const cx = view ? (viewSize.w / 2 - view.panX) / scale : size.w / 2;
+  const cy = view ? (viewSize.h / 2 - view.panY) / scale : size.h / 2;
   addAnnotation(doc.id, { id: newId(), kind: "signature", geom: { x: cx - w / 2, y: cy - h / 2, w, h, src }, style: { ...DEFAULT_STYLE } });
 }
 
