@@ -176,17 +176,22 @@ pub fn run() {
             app.manage(commands::theme::Compositing(
                 commands::theme::probe_compositing(app.handle()),
             ));
-            let drag_root = app.path().app_cache_dir()?.join("drag");
-            commands::drag::sweep_stale(&drag_root, commands::drag::pid_alive);
-            app.manage(commands::drag::DragTemp(
-                drag_root.join(std::process::id().to_string()),
-            ));
+            // Pastas `<cache>/{drag,scan}/<pid>` deste processo, sem restos de um antigo com o mesmo pid.
+            let temp = |name: &str| -> tauri::Result<std::path::PathBuf> {
+                Ok(commands::drag::fresh_temp(
+                    &app.path().app_cache_dir()?.join(name),
+                    std::process::id(),
+                    commands::drag::pid_alive,
+                ))
+            };
+            app.manage(commands::drag::DragTemp(temp("drag")?));
             // Digitalizações: PNG temporário numa pasta 0700 deste processo (some ao abrir).
-            let scan_root = app.path().app_cache_dir()?.join("scan");
-            commands::drag::sweep_stale(&scan_root, commands::drag::pid_alive);
-            app.manage(commands::scan::ScanTemp(
-                scan_root.join(std::process::id().to_string()),
-            ));
+            app.manage(commands::scan::ScanTemp(temp("scan")?));
+            // O reinício do atualizador pode pular o `RunEvent::Exit` (quando o pedido de saída
+            // falha); a tabela de recursos é esvaziada em toda saída e roda a limpeza também.
+            let handle = app.handle().clone();
+            app.resources_table()
+                .add(commands::OnDrop::new(move || shutdown(&handle)));
             // Lote 5: versões guardadas a cada Salvar (~/.local/share/gera-view-image/versions).
             doc::versions::configure(app.path().data_dir()?.join("gera-view-image").join("versions"));
             if let Some(window) = app.get_webview_window(doc::windows::MAIN_WINDOW) {
@@ -203,13 +208,19 @@ pub fn run() {
         .expect("erro ao executar o aplicativo Tauri")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                if let Some(temp) = app.try_state::<commands::drag::DragTemp>() {
-                    commands::drag::cleanup(&temp.0);
-                }
-                app.state::<commands::scan::Scans>().cancel_all();
-                if let Some(temp) = app.try_state::<commands::scan::ScanTemp>() {
-                    commands::drag::cleanup(&temp.0);
-                }
+                shutdown(app);
             }
         });
+}
+
+/// Ao sair (ou reiniciar): nenhum `scanimage` fica para trás e os temporários somem. Pode rodar
+/// mais de uma vez.
+fn shutdown(app: &tauri::AppHandle) {
+    if let Some(temp) = app.try_state::<commands::drag::DragTemp>() {
+        commands::drag::cleanup(&temp.0);
+    }
+    app.state::<commands::scan::Scans>().cancel_all();
+    if let Some(temp) = app.try_state::<commands::scan::ScanTemp>() {
+        commands::drag::cleanup(&temp.0);
+    }
 }

@@ -4,9 +4,12 @@
 //! confiável: nomes com controles são descartados e o PNG passa pelo decodificador do app.
 use super::{blocking, window::claimed_one};
 use crate::{
-    doc::{model::DocInfo, store::DocStore},
+    doc::{
+        model::{DocInfo, SourceFormat},
+        store::DocStore,
+    },
     error::{AppError, AppResult},
-    image::decode,
+    image::decode::{self, Decoded},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -30,6 +33,9 @@ pub const PROGRAM: &str = "scanimage";
 pub const QUERY_TIMEOUT: Duration = Duration::from_secs(15);
 /// Uma página em 1200 ppp num scanner lento.
 pub const SCAN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// Teto do PNG digitalizado: um scanner de rede hostil (eSCL/sane-airscan anunciado pelo mDNS)
+/// poderia escrever sem parar. Um A4 em 1200 ppp com 16 bits por canal tem ~840 MB crus.
+pub const MAX_SCAN_BYTES: u64 = 1 << 30;
 pub const MIN_DPI: u32 = 75;
 pub const MAX_DPI: u32 = 1200;
 /// Resoluções oferecidas quando o dispositivo aceita uma faixa contínua (ou não diz).
@@ -266,6 +272,8 @@ pub struct Scans {
     devices: Mutex<HashMap<String, Vec<ScanDevice>>>,
     options: Mutex<HashMap<(String, String), ScanOptions>>,
     next: AtomicU64,
+    /// Teto da saída do `scanimage` em bytes; `None` = `MAX_SCAN_BYTES` (os testes usam um menor).
+    limit: Option<u64>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -305,6 +313,14 @@ pub struct Finished {
 }
 
 impl Scans {
+    #[cfg(test)]
+    fn with_limit(limit: u64) -> Self {
+        Scans {
+            limit: Some(limit),
+            ..Default::default()
+        }
+    }
+
     /// Roda `program args` para a janela `label`. `None` = cancelado. A saída padrão vai para
     /// `stdout` (arquivo) ou volta em `Finished::stdout`.
     pub fn run(
@@ -315,6 +331,7 @@ impl Scans {
         stdout: Option<File>,
         timeout: Duration,
     ) -> AppResult<Option<Finished>> {
+        let watch = stdout.as_ref().map(File::try_clone).transpose()?;
         let mut child = Command::new(program)
             .args(args)
             .stdin(Stdio::null())
@@ -323,6 +340,9 @@ impl Scans {
             // Grupo próprio: matar leva junto qualquer filho que segure os canos.
             .process_group(0)
             .spawn()?;
+        // A saída em arquivo é olhada a cada volta do laço: acima do teto, o processo morre.
+        let max = self.max_output();
+        let over = |f: &File| f.metadata().is_ok_and(|m| m.len() > max);
         let out = child.stdout.take().map(|o| drain(o, MAX_TEXT));
         let err = child.stderr.take().map(|e| drain(e, MAX_TEXT));
         let token = self.next.fetch_add(1, Ordering::Relaxed);
@@ -339,17 +359,19 @@ impl Scans {
             let Some(r) = running.get_mut(label).filter(|r| r.token == token) else {
                 break None; // cancelado: quem tirou da lista já matou e esperou
             };
+            let full = watch.as_ref().is_some_and(over);
             match r.child.try_wait() {
                 Ok(Some(status)) => {
                     running.remove(label);
                     break Some(status);
                 }
-                Ok(None) if started.elapsed() < timeout => {}
+                Ok(None) if started.elapsed() < timeout && !full => {}
                 result => {
                     stop(&mut r.child);
                     running.remove(label);
                     return Err(match result {
                         Err(e) => e.into(),
+                        _ if full => too_big(max),
                         _ => AppError::Io(TIMEOUT.into()),
                     });
                 }
@@ -364,6 +386,10 @@ impl Scans {
             stdout,
             stderr,
         }))
+    }
+
+    fn max_output(&self) -> u64 {
+        self.limit.unwrap_or(MAX_SCAN_BYTES)
     }
 
     fn lock_running(&self) -> std::sync::MutexGuard<'_, HashMap<String, Running>> {
@@ -443,7 +469,7 @@ impl Scans {
         Ok(Some(options))
     }
 
-    /// Digitaliza para `out` (PNG). `None` = cancelado.
+    /// Digitaliza para `out` e devolve a imagem (só PNG). `None` = cancelado.
     pub fn scan(
         &self,
         label: &str,
@@ -452,7 +478,7 @@ impl Scans {
         kind: ScanKind,
         dpi: u32,
         out: &Path,
-    ) -> AppResult<Option<()>> {
+    ) -> AppResult<Option<Decoded>> {
         self.known(label, device)?;
         let options = lock(&self.options)
             .get(&(label.to_string(), device.to_string()))
@@ -477,7 +503,7 @@ impl Scans {
         if !done.status.success() {
             return Err(failure(&done.stderr));
         }
-        Ok(Some(()))
+        read_png(out, self.max_output()).map(Some)
     }
 }
 
@@ -493,6 +519,30 @@ fn failure(stderr: &[u8]) -> AppError {
         line.trim_start_matches("scanimage:"),
         MAX_MESSAGE,
     ))
+}
+
+fn too_big(max: u64) -> AppError {
+    AppError::Unsupported(format!(
+        "digitalização grande demais (o limite é {} MiB)",
+        max >> 20
+    ))
+}
+
+/// Lê a digitalização sem passar de `max` bytes e só aceita PNG.
+fn read_png(path: &Path, max: u64) -> AppResult<Decoded> {
+    let mut bytes = Vec::new();
+    File::open(path)?
+        .take(max.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > max {
+        return Err(too_big(max));
+    }
+    if decode::detect_format(path, &bytes) != Some(SourceFormat::Png) {
+        return Err(AppError::Corrupt(
+            "o scanner não devolveu uma imagem PNG".into(),
+        ));
+    }
+    decode::decode_bytes(path, &bytes)
 }
 
 /// Arquivo novo só do dono (0600); não segue link nem reaproveita arquivo existente.
@@ -562,11 +612,10 @@ pub async fn scan_image(
         let dir = app.state::<ScanTemp>().0.clone();
         super::drag::private_dir(&dir)?;
         let out = dir.join(format!("scan-{}.png", N.fetch_add(1, Ordering::Relaxed)));
-        let result =
+        let decoded =
             app.state::<Scans>()
                 .scan(window.label(), &program, &device, mode, resolution, &out);
         // A imagem fica no documento: o arquivo sai já, com ou sem erro.
-        let decoded = result.and_then(|done| done.map(|()| decode::decode(&out)).transpose());
         let _ = std::fs::remove_file(&out);
         match decoded? {
             Some(d) => {
@@ -732,7 +781,14 @@ All options specific to device `test:0':
         let names: Vec<&str> = devices.iter().map(|d| d.name.as_str()).collect();
         assert_eq!(
             names,
-            ["fake:ok", "fake:slow", "fake:fail;$(id)"],
+            [
+                "fake:ok",
+                "fake:slow",
+                "fake:flood",
+                "fake:jpeg",
+                "fake:tree",
+                "fake:fail;$(id)"
+            ],
             "opção e controle descartados"
         );
         assert_eq!(devices[0].label, "Fake Scanner");
@@ -770,22 +826,122 @@ All options specific to device `test:0':
             "resolução fora da lista do dispositivo"
         );
         assert!(!out.exists());
-        assert_eq!(
-            scans
-                .scan("main", &fake(), "fake:ok", ScanKind::Gray, 300, &out)
-                .unwrap(),
-            Some(())
-        );
+        let d = scans
+            .scan("main", &fake(), "fake:ok", ScanKind::Gray, 300, &out)
+            .unwrap()
+            .unwrap();
+        assert_eq!(d.frames[0].dimensions(), (30, 30));
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(out.metadata().unwrap().permissions().mode() & 0o777, 0o600);
-        let d = decode::decode(&out).unwrap();
-        assert_eq!(d.frames[0].dimensions(), (30, 30));
-        // O arquivo nunca é reaproveitado (nem seguido, se for link).
+        // O arquivo nunca é reaproveitado.
         assert!(
             scans
                 .scan("main", &fake(), "fake:ok", ScanKind::Gray, 300, &out)
                 .is_err()
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn link_plantado_no_lugar_da_saida_nao_e_seguido() {
+        let scans = Scans::default();
+        scans.list("main", &fake()).unwrap();
+        let dir = out_dir("link");
+        let alvo = dir.join("alvo.txt");
+        std::fs::write(&alvo, "intacto").unwrap();
+        let out = dir.join("scan.png");
+        std::os::unix::fs::symlink(&alvo, &out).unwrap();
+        assert!(
+            scans
+                .scan("main", &fake(), "fake:ok", ScanKind::Color, 300, &out)
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&alvo).unwrap(), "intacto");
+        assert!(out.symlink_metadata().unwrap().file_type().is_symlink());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn saida_sem_fim_e_interrompida_no_teto() {
+        let scans = Scans::with_limit(1 << 20);
+        scans.list("main", &fake()).unwrap();
+        let dir = out_dir("flood");
+        let out = dir.join("scan.png");
+        let started = Instant::now();
+        let e = scans
+            .scan("main", &fake(), "fake:flood", ScanKind::Color, 300, &out)
+            .unwrap_err();
+        assert_eq!(e.code(), "unsupported");
+        assert!(e.to_string().contains("grande demais"), "{e}");
+        assert!(started.elapsed() < Duration::from_secs(20));
+        assert!(scans.lock_running().is_empty(), "o processo foi morto");
+        // Sem poder parar no meio de uma escrita, passa no máximo o que cabe entre duas olhadas.
+        assert!(out.metadata().unwrap().len() < 1 << 30);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn png_acima_do_teto_que_terminou_antes_da_olhada_e_recusado() {
+        let scans = Scans::with_limit(64);
+        scans.list("main", &fake()).unwrap();
+        let dir = out_dir("teto");
+        let e = scans
+            .scan("main", &fake(), "fake:ok", ScanKind::Color, 300, &dir.join("a.png"))
+            .unwrap_err();
+        assert!(e.to_string().contains("grande demais"), "{e}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn saida_que_nao_e_png_e_recusada() {
+        let scans = Scans::default();
+        scans.list("main", &fake()).unwrap();
+        let dir = out_dir("jpeg");
+        let e = scans
+            .scan("main", &fake(), "fake:jpeg", ScanKind::Color, 300, &dir.join("a.png"))
+            .unwrap_err();
+        assert_eq!(e.code(), "corrupt");
+        assert!(e.to_string().contains("PNG"), "{e}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// O processo `pid` acabou (sumiu ou é zumbi à espera do `init`)?
+    fn gone(pid: u32) -> bool {
+        match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+            Err(_) => true,
+            Ok(stat) => stat
+                .rsplit_once(") ")
+                .is_some_and(|(_, rest)| rest.starts_with('Z') || rest.starts_with('X')),
+        }
+    }
+
+    #[test]
+    fn cancelar_mata_o_grupo_inteiro_com_o_neto() {
+        let scans = std::sync::Arc::new(Scans::default());
+        scans.list("main", &fake()).unwrap();
+        let dir = out_dir("neto");
+        let out = dir.join("a.png");
+        let (s, o) = (scans.clone(), out.clone());
+        let job = std::thread::spawn(move || {
+            s.scan("main", &fake(), "fake:tree", ScanKind::Color, 300, &o)
+        });
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let pid = loop {
+            let text = std::fs::read_to_string(&out).unwrap_or_default();
+            if let Ok(pid) = text.trim().parse::<u32>() {
+                break pid;
+            }
+            assert!(Instant::now() < deadline, "o neto não começou");
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        assert!(!gone(pid), "o neto está vivo antes de cancelar");
+        scans.cancel("main");
+        assert!(job.join().unwrap().unwrap().is_none());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !gone(pid) {
+            assert!(Instant::now() < deadline, "o neto {pid} sobreviveu ao cancelamento");
+            std::thread::sleep(Duration::from_millis(20));
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -826,7 +982,7 @@ All options specific to device `test:0':
         scans.cancel("doc-1"); // outra janela: não mexe nesta
         assert!(!job.is_finished());
         scans.cancel("main");
-        assert_eq!(job.join().unwrap().unwrap(), None);
+        assert!(job.join().unwrap().unwrap().is_none());
         assert!(started.elapsed() < Duration::from_secs(10));
         assert!(scans.lock_running().is_empty());
 
@@ -867,13 +1023,10 @@ All options specific to device `test:0':
         );
         let dir = out_dir("real");
         let out = dir.join("t.png");
-        assert_eq!(
-            scans
-                .scan("main", &program, "test:0", ScanKind::Color, 75, &out)
-                .unwrap(),
-            Some(())
-        );
-        let d = decode::decode(&out).unwrap();
+        let d = scans
+            .scan("main", &program, "test:0", ScanKind::Color, 75, &out)
+            .unwrap()
+            .unwrap();
         assert!(d.frames[0].width() > 100 && d.frames[0].height() > 100);
         std::fs::remove_dir_all(&dir).unwrap();
     }

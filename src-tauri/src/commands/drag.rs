@@ -29,10 +29,16 @@ pub struct DragTemp(pub PathBuf);
 
 const ICON_PX: u32 = 96;
 
-/// Cria `dir` (e os pais) só para o dono e corrige a permissão se ele já existia.
+/// Cria `dir` (e os pais) só para o dono e corrige a permissão se ele já existia. A pasta é
+/// aberta sem seguir link (`O_NOFOLLOW`) e corrigida pelo descritor: um link plantado no lugar
+/// dela é erro, e a permissão do alvo nunca muda.
 pub(crate) fn private_dir(dir: &Path) -> io::Result<()> {
     fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
-    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+        .open(dir)?
+        .set_permissions(fs::Permissions::from_mode(0o700))
 }
 
 /// Grava o PNG em `<base>/<id>/<nome>.png` (pastas 0700, arquivo 0600). Cada documento tem a
@@ -64,6 +70,15 @@ pub fn cleanup(base: &Path) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => eprintln!("temporários do arraste: {e}"),
         _ => {}
     }
+}
+
+/// Pasta de temporários deste processo (`<root>/<pid>`), sem restos: apaga as de processos que já
+/// terminaram e também a do próprio pid, herdada de um processo antigo que caiu com o mesmo número.
+pub fn fresh_temp(root: &Path, pid: u32, alive: impl Fn(u32) -> bool) -> PathBuf {
+    sweep_stale(root, alive);
+    let dir = root.join(pid.to_string());
+    cleanup(&dir);
+    dir
 }
 
 /// Apaga as pastas `<root>/<pid>` de processos que já terminaram (o app caiu sem limpar).
@@ -248,6 +263,34 @@ mod tests {
 
     fn mode(p: &Path) -> u32 {
         fs::metadata(p).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn pasta_do_proprio_pid_herdada_comeca_vazia() {
+        let root = scratch("reuso");
+        let velha = root.join("4242");
+        fs::create_dir_all(&velha).unwrap();
+        fs::write(velha.join("scan-0.png"), b"resto").unwrap();
+        let dir = fresh_temp(&root, 4242, |_| true);
+        assert_eq!(dir, velha);
+        assert!(!velha.join("scan-0.png").exists(), "resto de um processo antigo com o mesmo pid");
+        cleanup(&root);
+    }
+
+    #[test]
+    fn pasta_privada_nao_segue_link_plantado() {
+        let root = scratch("link");
+        let alvo = root.join("alvo");
+        fs::create_dir_all(&alvo).unwrap();
+        fs::set_permissions(&alvo, fs::Permissions::from_mode(0o755)).unwrap();
+        let link = root.join("scan");
+        std::os::unix::fs::symlink(&alvo, &link).unwrap();
+        assert!(private_dir(&link).is_err());
+        assert_eq!(mode(&alvo), 0o755, "a permissão do alvo não muda");
+        // Um arquivo no lugar da pasta também é recusado.
+        fs::write(root.join("arquivo"), b"x").unwrap();
+        assert!(private_dir(&root.join("arquivo")).is_err());
+        cleanup(&root);
     }
 
     #[test]

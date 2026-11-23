@@ -55,6 +55,27 @@ impl Epochs {
     }
 }
 
+/// Roda uma função uma vez, quando cai. Guardado na tabela de recursos do app, que o Tauri esvazia
+/// em `cleanup_before_exit` em toda saída, inclusive nos caminhos do reinício (atualizador) que
+/// pulam o `RunEvent::Exit`.
+pub struct OnDrop(Mutex<Option<Box<dyn FnOnce() + Send>>>);
+
+impl OnDrop {
+    pub fn new(f: impl FnOnce() + Send + 'static) -> Self {
+        OnDrop(Mutex::new(Some(Box::new(f))))
+    }
+}
+
+impl tauri::Resource for OnDrop {}
+
+impl Drop for OnDrop {
+    fn drop(&mut self) {
+        if let Some(f) = self.0.get_mut().unwrap_or_else(|e| e.into_inner()).take() {
+            f();
+        }
+    }
+}
+
 static T0: OnceLock<Instant> = OnceLock::new();
 
 /// Marca o início do processo para `log_timing`.
@@ -81,5 +102,19 @@ mod tests {
         E.of("main").fetch_add(1, SeqCst);
         assert_eq!(E.of("main").load(SeqCst), 1);
         assert_eq!(E.of("doc-1").load(SeqCst), 0);
+    }
+
+    #[test]
+    fn limpeza_roda_quando_a_tabela_de_recursos_e_esvaziada() {
+        use std::sync::{Arc, atomic::{AtomicU32, Ordering::SeqCst}};
+        let runs = Arc::new(AtomicU32::new(0));
+        let mut table = tauri::ResourceTable::default();
+        let r = runs.clone();
+        table.add(OnDrop::new(move || {
+            r.fetch_add(1, SeqCst);
+        }));
+        assert_eq!(runs.load(SeqCst), 0);
+        drop(table);
+        assert_eq!(runs.load(SeqCst), 1);
     }
 }

@@ -16,7 +16,7 @@ no próprio teste.
 |---|---|---|
 | `rgb.jpg` | 40×20, EXIF `Orientation=6` | `image` (JpegEncoder) + segmento APP1 Exif montado à mão |
 | `alpha.png` | 30×30 RGBA | `image` |
-| `fake-scanimage` | script `sh` (755) | à mão: `scanimage` falso dos testes de `commands::scan` (lista, `--all-options`, PNG = `alpha.png`, lento e com falha) |
+| `fake-scanimage` | script `sh` (755) | à mão: `scanimage` falso dos testes de `commands::scan` (lista, `--all-options`, PNG = `alpha.png`, lento, com falha, saída sem fim, JPEG no lugar de PNG e neto no grupo) |
 | `anim.gif` | 16×16, 3 quadros (100/200/300 ms) | `image` (GifEncoder) |
 | `multi.tiff` | 2 páginas: 32×24 e 16×16 | `tiff` (TiffEncoder, dois IFDs) |
 | `img.webp` | 24×16, sem perdas | `image` (WebPEncoder) |
