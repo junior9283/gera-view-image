@@ -155,8 +155,6 @@ pub fn icc_from_primaries(
 
 // ---------- PNG ----------
 
-/// Cor declarada pelos blocos do PNG antes do primeiro `IDAT`; `None` = vale o `iCCP`, que o
-/// decodificador já lê. Blocos de CRC errado são ignorados; de um repetido vale o primeiro.
 /// A primeira caixa `colr` do tipo `nclx` de um HEIF/AVIF declara PQ ou HLG? Só para estimar
 /// memória: quem decide a cor é o decodificador.
 pub fn isobmff_is_hdr(bytes: &[u8]) -> bool {
@@ -165,6 +163,8 @@ pub fn isobmff_is_hdr(bytes: &[u8]) -> bool {
     })
 }
 
+/// Cor declarada pelos blocos do PNG antes do primeiro `IDAT`; `None` = vale o `iCCP`, que o
+/// decodificador já lê. Blocos de CRC errado são ignorados; de um repetido vale o primeiro.
 pub fn png_color(bytes: &[u8]) -> Option<Color> {
     let (mut cicp, mut iccp, mut srgb, mut gama, mut chrm) = (None, false, false, None, None);
     let mut rest = bytes.get(8..).unwrap_or_default();
@@ -245,6 +245,66 @@ mod tests {
                     assert!(icc::is_rgb_profile(&b), "{p}/{t}");
                 }
             }
+        }
+    }
+
+    /// PNG mínimo (assinatura, `IHDR`, os blocos dados e `IDAT`), só para `png_color`.
+    fn png(chunks: &[Vec<u8>]) -> Vec<u8> {
+        let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+        for c in [&[chunk(b"IHDR", &[0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0])][..], chunks, &[chunk(b"IDAT", &[])]].concat() {
+            out.extend(c);
+        }
+        out
+    }
+
+    fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut body = kind.to_vec();
+        body.extend(data);
+        let mut out = (data.len() as u32).to_be_bytes().to_vec();
+        out.extend(&body);
+        out.extend(crc32fast::hash(&body).to_be_bytes());
+        out
+    }
+
+    fn chrm(xy: [(u32, u32); 4]) -> Vec<u8> {
+        chunk(b"cHRM", &xy.iter().flat_map(|&(x, y)| [x.to_be_bytes(), y.to_be_bytes()]).flatten().collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn png_color_sobre_bytes_puros() {
+        let p3 = icc::known_profile("display-p3").unwrap().to_vec();
+        assert_eq!(png_color(&png(&[])), Some(Color::Srgb), "sem nada é sRGB");
+        assert_eq!(png_color(&png(&[chunk(b"cICP", &[12, 13, 0, 1])])), Some(Color::Icc(p3.clone())));
+        assert_eq!(png_color(&png(&[chunk(b"cICP", &[1, 16, 0, 1])])), Some(Color::Hdr(hdr::Transfer::Pq, None)));
+        // CRC errado: o bloco é pulado (e o seguinte ainda vale).
+        let mut quebrado = chunk(b"cICP", &[12, 13, 0, 1]);
+        *quebrado.last_mut().unwrap() ^= 1;
+        assert_eq!(png_color(&png(&[quebrado.clone()])), Some(Color::Srgb));
+        assert_eq!(png_color(&png(&[quebrado, chunk(b"iCCP", b"x\0\0")])), None, "vale o iCCP");
+        // Matriz YCbCr, faixa reduzida e bloco curto: o cICP não vale.
+        for ruim in [[12, 13, 1, 1].as_slice(), &[12, 13, 0, 0], &[12]] {
+            assert_eq!(png_color(&png(&[chunk(b"cICP", ruim)])), Some(Color::Srgb), "{ruim:?}");
+        }
+        // gAMA 0, absurdo ou o do sRGB: curva do sRGB.
+        for g in [0u32, 1, 45_455, u32::MAX] {
+            assert_eq!(png_color(&png(&[chunk(b"gAMA", &g.to_be_bytes())])), Some(Color::Srgb), "gAMA {g}");
+        }
+        // Primárias alinhadas (matriz degenerada, sem inversa) ou zeradas não contam; o gAMA ainda vale.
+        let alinhadas = chrm([(31_270, 32_900), (30_000, 30_000), (40_000, 40_000), (50_000, 50_000)]);
+        assert_eq!(png_color(&png(std::slice::from_ref(&alinhadas))), Some(Color::Srgb));
+        assert_eq!(png_color(&png(&[chrm([(0, 0); 4])])), Some(Color::Srgb));
+        let gama18 = chunk(b"gAMA", &55_556u32.to_be_bytes());
+        assert!(matches!(png_color(&png(&[alinhadas, gama18])), Some(Color::Icc(_))));
+        // Repetido: vale o primeiro; depois do IDAT nada conta.
+        let dois = [chunk(b"cICP", &[12, 13, 0, 1]), chunk(b"cICP", &[1, 16, 0, 1])];
+        assert_eq!(png_color(&png(&dois)), Some(Color::Icc(p3)));
+        let mut depois = png(&[]);
+        depois.extend(chunk(b"cICP", &[1, 16, 0, 1]));
+        assert_eq!(png_color(&depois), Some(Color::Srgb));
+        // Cortado no meio de um bloco: sem pânico.
+        let b = png(&[chunk(b"cICP", &[12, 13, 0, 1])]);
+        for n in 0..b.len() {
+            let _ = png_color(&b[..n]);
         }
     }
 

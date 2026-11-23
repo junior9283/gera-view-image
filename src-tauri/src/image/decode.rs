@@ -28,7 +28,10 @@ pub struct Decoded {
     /// Atenção: a tag Orientation continua com o valor ORIGINAL, mas `frames` já está girado.
     /// Quem gravar este EXIF num arquivo novo deve reescrever Orientation = 1.
     pub exif: Option<Vec<u8>>,
+    /// Resolução da primeira página (ou da imagem).
     pub dpi: Option<(f32, f32)>,
+    /// Resolução de cada página de um TIFF de várias; vazio nos outros formatos (ver `dpi_of`).
+    pub page_dpi: Vec<Option<(f32, f32)>>,
 }
 
 impl Decoded {
@@ -41,6 +44,15 @@ impl Decoded {
             icc: None,
             exif: None,
             dpi: None,
+            page_dpi: Vec::new(),
+        }
+    }
+
+    /// Resolução da página `frame`: a dela num TIFF de várias páginas, senão a da imagem.
+    pub fn dpi_of(&self, frame: u32) -> Option<(f32, f32)> {
+        match self.page_dpi.get(frame as usize) {
+            Some(&d) => d,
+            None => self.dpi,
         }
     }
 
@@ -119,20 +131,26 @@ pub fn estimate_bytes(path: &Path, bytes: &[u8]) -> usize {
         // Luz linear: os pixels passam por f32 antes do RGBA8.
         Some(SourceFormat::Exr | SourceFormat::Hdr) => 20,
         Some(SourceFormat::Jxl) => jxl::WORK_BYTES_PER_PIXEL,
-        // PQ/HLG: RGBA16 de trabalho (e, no HEIF, o plano de 16 bits) antes do RGBA8.
-        Some(SourceFormat::Png) if matches!(cicp::png_color(bytes), Some(cicp::Color::Hdr(..))) => 12,
+        // PQ/HLG: o RGB16 decodificado e o RGBA16 de trabalho vivos juntos (6 + 8), depois o RGBA8.
+        Some(SourceFormat::Png) if matches!(cicp::png_color(bytes), Some(cicp::Color::Hdr(..))) => 14,
         Some(SourceFormat::Heic | SourceFormat::Avif) if cicp::isobmff_is_hdr(bytes) => 20,
         // 16 bits por canal (Farbfeld sempre): o RGBA16 vivo junto do RGBA8.
         Some(SourceFormat::Farbfeld) => 12,
         Some(SourceFormat::Pnm) if pnm_maxval(bytes).is_some_and(|m| m > 255) => 12,
         _ => 4,
     };
-    let est = if format == Some(SourceFormat::Raw) {
-        raw_sensor_pixels(bytes).map_or(by_file, |px| px.saturating_mul(12).max(by_file))
-    } else {
+    let by_size = || {
         imagesize::blob_size(bytes)
             .map(|s| s.width.saturating_mul(s.height).saturating_mul(per_pixel))
             .unwrap_or(by_file)
+    };
+    let est = match format {
+        Some(SourceFormat::Raw) => {
+            raw_sensor_pixels(bytes).map_or(by_file, |px| px.saturating_mul(12).max(by_file))
+        }
+        // A mesma conta do `decode_exr`, com os blocos em voo.
+        Some(SourceFormat::Exr) => hdr::exr_work_bytes(bytes).unwrap_or_else(by_size),
+        _ => by_size(),
     };
     est.min(MAX_DECODE_BYTES)
 }
@@ -492,6 +510,7 @@ fn frames_of<'a>(
         icc: None,
         exif: None,
         dpi: None,
+        page_dpi: Vec::new(),
     })
 }
 
@@ -535,7 +554,7 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
     });
     let mut frames = Vec::new();
     let mut icc = None;
-    let mut dpi = None;
+    let mut page_dpi = Vec::new();
     let mut total = 0;
     loop {
         let (w, h) = dec.dimensions().map_err(map)?;
@@ -545,8 +564,8 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
         let orientation = dec.find_tag_unsigned::<u8>(Tag::Orientation).ok().flatten();
         if frames.is_empty() {
             icc = dec.get_tag_u8_vec(Tag::IccProfile).ok();
-            dpi = tiff_dpi(&mut dec);
         }
+        page_dpi.push(tiff_dpi(&mut dec));
         let to8 = |v: Vec<u16>| v.into_iter().map(|x| (x >> 8) as u8).collect::<Vec<u8>>();
         let (data, channels) = match (dec.read_image().map_err(map)?, color) {
             (R::U8(v), C::Gray(8)) => (v, 1),
@@ -591,7 +610,8 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
         format: SourceFormat::Tiff,
         icc,
         exif: None,
-        dpi,
+        dpi: page_dpi.first().copied().flatten(),
+        page_dpi,
     })
 }
 
@@ -663,36 +683,43 @@ fn decode_heif(bytes: &[u8], format: SourceFormat) -> AppResult<Decoded> {
         // Plano de 16 bits, RGBA16 de trabalho e o RGBA8 final.
         hdr::check_pixels(handle.width() as usize, handle.height() as usize, 20)?;
     }
-    let chroma = match transfer {
-        Some(_) => RgbChroma::HdrRgbaLe,
-        None => RgbChroma::Rgba,
-    };
     // O libheif já aplica as transformações do contêiner (irot/imir): não há EXIF a aplicar.
-    let img = lib
-        .decode(&handle, ColorSpace::Rgb(chroma), None)
-        .map_err(|e| match map(e) {
-            // Sem libde265 a libheif não tem decodificador HEVC: mensagem própria na interface.
-            AppError::Unsupported(m) if format == SourceFormat::Heic && !hevc => {
-                AppError::HeicDecoderMissing(m)
-            }
-            other => other,
-        })?;
+    let decode_as = |chroma| lib.decode(&handle, ColorSpace::Rgb(chroma), None);
+    // PQ/HLG de mais de 8 bits saem em 16. Os de 8 bits, ou os que a libheif não converte para 16,
+    // seguem pelo caminho de 8 bits de sempre (nunca falham onde antes abriam), com o mesmo mapeamento.
+    let (img, deep) = match transfer {
+        Some(_) if handle.luma_bits_per_pixel() > 8 => match decode_as(RgbChroma::HdrRgbaLe) {
+            Ok(img) => (Ok(img), true),
+            Err(_) => (decode_as(RgbChroma::Rgba), false),
+        },
+        _ => (decode_as(RgbChroma::Rgba), false),
+    };
+    let img = img.map_err(|e| match map(e) {
+        // Sem libde265 a libheif não tem decodificador HEVC: mensagem própria na interface.
+        AppError::Unsupported(m) if format == SourceFormat::Heic && !hevc => AppError::HeicDecoderMissing(m),
+        other => other,
+    })?;
     let (w, h) = (img.width(), img.height());
     check_budget(w, h, 0)?;
     let planes = img.planes();
     let plane = planes.interleaved.ok_or_else(short)?;
-    let bytes_px = if transfer.is_some() { 8 } else { 4 };
+    let bytes_px = if deep { 8 } else { 4 };
     let row = |y: usize| {
         let start = y * plane.stride;
         plane.data.get(start..start + w as usize * bytes_px).ok_or_else(short)
     };
-    let rgba = match transfer {
+    let rgba = match transfer.filter(|_| deep) {
         None => {
             let mut out = Vec::with_capacity(w as usize * h as usize * 4);
             for y in 0..h as usize {
                 out.extend_from_slice(row(y)?);
             }
-            RgbaImage::from_raw(w, h, out)
+            match transfer {
+                // 8 bits com PQ/HLG: o mesmo mapeamento, a partir dos valores de 8 bits.
+                Some(t) => Rgba16Image::from_raw(w, h, out.into_iter().map(|v| u16::from(v) * 257).collect())
+                    .map(|i| sdr8(i, t)),
+                None => RgbaImage::from_raw(w, h, out),
+            }
         }
         Some(t) => {
             let max = (1u32 << plane.bits_per_pixel.clamp(1, 16)) - 1;

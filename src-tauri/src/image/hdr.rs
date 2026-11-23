@@ -131,6 +131,23 @@ fn check_exr_headers(headers: &[::exr::meta::header::Header]) -> AppResult<usize
     Ok(largest)
 }
 
+/// Memória de trabalho do `decode_exr` para a janela de exibição `w`x`h`: o RGBA f32 de saída e o
+/// RGBA8 final, mais os blocos em voo (`block`, um por thread do leitor e folga).
+fn exr_need(w: usize, h: usize, block: usize) -> Option<usize> {
+    let blocks = block.checked_mul(rayon::current_num_threads().saturating_add(2))?;
+    w.checked_mul(h)?.checked_mul(size_of::<[f32; 4]>() + 4)?.checked_add(blocks)
+}
+
+/// O que `decode_exr` vai exigir do orçamento, lido só dos cabeçalhos (para a estimativa de memória).
+/// `None` se os cabeçalhos forem ilegíveis ou recusados.
+pub(super) fn exr_work_bytes(bytes: &[u8]) -> Option<usize> {
+    use ::exr::prelude::MetaData;
+    let meta = MetaData::read_from_buffered(Cursor::new(bytes), false).ok()?;
+    let block = check_exr_headers(&meta.headers).ok()?;
+    let size = meta.headers.first()?.shared_attributes.display_window.size;
+    exr_need(size.width(), size.height(), block)
+}
+
 /// Primeira camada com R, G e B (ou só Y, que vira cinza), recortada na janela de exibição. O alfa
 /// do OpenEXR é pré-multiplicado.
 pub fn decode_exr(bytes: &[u8]) -> AppResult<Decoded> {
@@ -149,11 +166,7 @@ pub fn decode_exr(bytes: &[u8]) -> AppResult<Decoded> {
         .ok_or_else(|| AppError::Unsupported("EXR sem canais R, G e B ou Y".into()))?;
     let window = header.shared_attributes.display_window;
     let (w, h) = (window.size.width(), window.size.height());
-    // RGBA f32 de saída e o RGBA8 final, mais os blocos em voo (um por thread do leitor e folga).
-    let need = block.checked_mul(rayon::current_num_threads().saturating_add(2)).and_then(|b| {
-        w.checked_mul(h)?.checked_mul(size_of::<[f32; 4]>() + 4)?.checked_add(b)
-    });
-    if need.is_none_or(|n| n > MAX_DECODE_BYTES) {
+    if exr_need(w, h, block).is_none_or(|n| n > MAX_DECODE_BYTES) {
         return Err(AppError::Unsupported(format!("imagem grande demais ({w}x{h})")));
     }
     let origin = header.own_attributes.layer_position;

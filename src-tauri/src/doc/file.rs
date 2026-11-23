@@ -120,7 +120,8 @@ fn file_name(p: &Path) -> String {
 /// Arquivo de origem em memória, para ler o que uma gravação leva dele (metadados, 16 bits).
 struct SourceFile {
     bytes: Vec<u8>,
-    /// TIFF com as mesmas páginas do documento: o IFD de cada uma.
+    /// TIFF de várias páginas: o IFD de cada uma. Se o disco tiver outro número de páginas que o
+    /// documento, elas casam por índice até onde houver.
     pages: Vec<u64>,
 }
 
@@ -131,7 +132,7 @@ impl SourceFile {
         }
         let bytes = std::fs::read(path).ok()?;
         let pages = container::tiff_pages(&bytes)
-            .filter(|p| p.len() > 1 && p.len() == frames as usize)
+            .filter(|p| p.len() > 1 && frames > 1)
             .unwrap_or_default();
         Some(SourceFile { bytes, pages })
     }
@@ -150,7 +151,7 @@ impl SourceFile {
 /// Bytes prontos para gravar e o que a gravação muda no documento.
 struct Encoded {
     bytes: Vec<u8>,
-    /// Ver `metaedit::notes`.
+    /// Ver `metaedit::notes`; `tiffValueDropped`: uma tag de alguma página ficou de fora (`TiffJoin::lost`).
     notes: Vec<&'static str>,
     /// Alguma página foi gravada com os 16 bits de verdade.
     deep: bool,
@@ -168,7 +169,7 @@ impl Document {
                 Op::Resize { dpi: Some(d), .. } => Some((*d, *d)),
                 _ => None,
             })
-            .or(self.source.dpi)
+            .or(self.source.dpi_of(frame))
     }
 
     /// `None`: o disco bate com o carimbo. `Some(true)`: apagado/movido. `Some(false)`: alterado.
@@ -237,7 +238,8 @@ impl DocStore {
     }
 
     /// Pixels finais da página `frame`, os metadados a levar (os do documento na primeira página;
-    /// nas outras, os da própria página no arquivo) e o estado que os pixels refletem.
+    /// nas outras, os da própria página no arquivo, com as edições de texto e palavras-chave) e o
+    /// estado que os pixels refletem.
     fn render_for_write(
         &self,
         id: DocId,
@@ -249,7 +251,7 @@ impl DocStore {
         let (source, dpi, resized, icc, assigned) = self.with_doc(id, |d| {
             let icc = d.profile().map(|p| p.bytes().to_vec());
             let dpi = d.dpi(frame);
-            (d.source.clone(), dpi, dpi != d.source.dpi, icc, matches!(d.profile(), Some(Profile::Assigned(_))))
+            (d.source.clone(), dpi, dpi != d.source.dpi_of(frame), icc, matches!(d.profile(), Some(Profile::Assigned(_))))
         })?;
         let bytes = file.and_then(|f| f.page(frame));
         let (iptc, xmp) = bytes.map(metadata::file_iim_xmp).unwrap_or_default();
@@ -268,14 +270,16 @@ impl DocStore {
         } else {
             let exif = bytes.and_then(container::tiff_exif_block);
             let (page_icc, page_dpi) = bytes.map_or((icc.clone(), dpi), decode::tiff_page_info);
-            // Os textos e as palavras-chave editados são da primeira página; apagar vale em todas.
-            let texts = exif.is_some() || iptc.is_some() || xmp.is_some();
+            // Editar vale em todas as páginas: o campo que a página tem recebe o valor novo (o antigo
+            // não pode sobrar nela); o que ela não tem não é criado, só sai algum resto dele do EXIF.
+            let (has, has_keywords) = metadata::page_texts(iptc.as_deref(), xmp.as_deref(), exif.as_deref());
+            let (text_edits, absent) = text_edits.map_or((None, None), |e| e.split_present(&has));
             MetaCarry {
                 icc: if assigned { icc } else { page_icc },
                 dpi: if resized { dpi } else { page_dpi },
-                iptc_keywords: keywords.filter(|k| texts && k.is_empty()),
-                text_edits: text_edits.map(|e| e.only_clearing()).filter(|e| texts && !e.is_empty()),
-                exif_cleared: None,
+                iptc_keywords: keywords.filter(|_| has_keywords),
+                text_edits,
+                exif_cleared: absent,
                 exif,
                 iptc,
                 xmp,
@@ -395,7 +399,10 @@ impl DocStore {
                     }
                 }
             }
-            if let Some(all) = all {
+            if let Some(mut all) = all {
+                if join.lost() {
+                    all.notes.push("tiffValueDropped");
+                }
                 return Ok(Encoded { bytes: join.finish(), ..all });
             }
         }

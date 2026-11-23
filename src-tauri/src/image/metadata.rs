@@ -141,6 +141,17 @@ pub fn known_texts(iim: Option<&[u8]>, exif_tiff: Option<&[u8]>) -> [Option<Stri
     [t.title, t.description, t.author, t.alt_text]
 }
 
+/// Textos que uma página tem (IPTC-IIM, XMP e EXIF dela) e se ela tem palavras-chave: onde uma
+/// edição de texto ou de palavras-chave troca o valor numa página que não é a primeira.
+pub fn page_texts(iim: Option<&[u8]>, xmp: Option<&str>, exif_tiff: Option<&[u8]>) -> (metaedit::Texts, bool) {
+    let (mut iptc, mut keywords) = (Vec::new(), Vec::new());
+    if let Some(d) = iim {
+        parse_iim(d, &mut iptc, &mut keywords);
+    }
+    let has_keywords = !keywords.is_empty() || xmp.is_some_and(|x| !xmp_keywords(x).is_empty());
+    (metaedit::texts_of(xmp, &iptc, &parse_blocks(&[], exif_tiff).exif), has_keywords)
+}
+
 /// Extrai EXIF (bloco TIFF cru), GPS, IPTC e palavras-chave (IPTC + XMP `dc:subject`).
 pub fn parse_blocks(file: &[u8], exif_tiff: Option<&[u8]>) -> Blocks {
     let mut out = Blocks::default();
@@ -413,10 +424,7 @@ pub fn icc_description(icc: &[u8]) -> Option<String> {
                 let len = u32::from_be_bytes(tag.get(20..24)?.try_into().ok()?) as usize;
                 let o = u32::from_be_bytes(tag.get(24..28)?.try_into().ok()?) as usize;
                 let s = tag.get(o..o.checked_add(len)?)?;
-                let units: Vec<u16> = s
-                    .chunks_exact(2)
-                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
-                    .collect();
+                let units: Vec<u16> = s.as_chunks::<2>().0.iter().map(|&c| u16::from_be_bytes(c)).collect();
                 String::from_utf16_lossy(&units)
             }
             _ => return None,

@@ -406,15 +406,23 @@ pub struct TiffJoin {
     /// Onde está o ponteiro do próximo IFD da última página.
     next: usize,
     max: usize,
+    /// Alguma página perdeu uma tag que o leitor não copia (valor acima de 64 MB, tipo desconhecido).
+    lost: bool,
 }
 
 impl TiffJoin {
     /// `max`: teto de bytes do arquivo montado.
     pub fn new(max: usize) -> Self {
-        TiffJoin { out: Vec::new(), next: 4, max }
+        TiffJoin { out: Vec::new(), next: 4, max, lost: false }
+    }
+
+    /// Alguma página ficou sem uma das tags dela (ver `push`): quem grava avisa o usuário.
+    pub fn lost(&self) -> bool {
+        self.lost
     }
 
     /// Acrescenta a página de `tiff`. `None` se passar do teto (ou de 4 GiB, o limite do formato).
+    /// Uma tag que o leitor não copia (valor acima de `MAX_VALUE`) fica de fora e marca `lost`.
     pub fn push(&mut self, tiff: &[u8]) -> Option<()> {
         const OFFSETS: u16 = 273;
         const COUNTS: u16 = 279;
@@ -429,7 +437,9 @@ impl TiffJoin {
         } else if self.out[..4] != tiff[..4] {
             return None;
         }
-        let mut entries = r.read_ifd(r.ifd0()?, 0)?;
+        let ifd = r.ifd0()?;
+        let mut entries = r.read_ifd(ifd, 0)?;
+        self.lost |= entries.len() < usize::from(r.u16(ifd)?);
         let longs = |tag| -> Option<Vec<usize>> {
             let e = entries.iter().find(|e| e.tag == tag)?;
             Some(match e.ty {
@@ -470,13 +480,15 @@ impl TiffJoin {
 /// EXIF (bloco TIFF) com a resolução `dpi` no IFD0; sem EXIF, um bloco só com ela. Só a tabela do
 /// IFD0 vai para o fim: as outras entradas (e os valores e IFDs que elas apontam) ficam como estão,
 /// e a tabela antiga é zerada, para nenhum texto sobrar fora do alcance de quem o apagar depois.
-/// `None` se o bloco for ilegível ou a tabela estiver sobre um valor (forjado).
+/// `None` se o bloco for ilegível, a tabela estiver sobre um valor ou sobre o cabeçalho (forjado):
+/// quem chama descarta o EXIF.
 pub fn exif_with_dpi(exif: Option<&[u8]>, dpi: f32) -> Option<Vec<u8>> {
     // IFD0 vazio: zero entradas e nenhum IFD seguinte.
     const EMPTY: &[u8] = b"II*\0\x08\0\0\0\0\0\0\0\0\0";
     let exif = exif.unwrap_or(EMPTY);
     let r = Reader::new(exif)?;
-    let at = r.ifd0()?;
+    // Antes do 8 a tabela está sobre o cabeçalho: zerá-la o apagaria.
+    let at = r.ifd0().filter(|&at| at >= 8)?;
     let first = at.checked_add(2)?;
     let end = first.checked_add(12 * r.u16(at)? as usize)?;
     let table = exif.get(first..end)?;

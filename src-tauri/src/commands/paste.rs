@@ -18,6 +18,7 @@ use std::{
     borrow::Cow,
     path::Path,
     sync::{Mutex, PoisonError},
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, State, image::Image, ipc::Response};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -72,12 +73,20 @@ fn flattened_region(img: &RgbaImage, mask: Option<&Mask>, png: Option<Vec<u8>>) 
     select::extract_region(flat.as_ref().unwrap_or(img), mask)
 }
 
-/// PNG da imagem na área de transferência (bytes crus), para virar anotação `image`.
+/// A imagem da área de transferência do sistema, em RGBA.
+fn read_clipboard(app: &AppHandle) -> Option<RgbaImage> {
+    let img = app.clipboard().read_image().ok()?;
+    RgbaImage::from_raw(img.width(), img.height(), img.rgba().to_vec())
+}
+
+/// PNG da imagem na área de transferência (bytes crus), para virar anotação `image`. Logo depois de
+/// um `pasted_annotations` sem anotações, usa a imagem que ele acabou de ler em vez de ler de novo.
 #[tauri::command]
-pub async fn clipboard_image(app: AppHandle) -> AppResult<Response> {
-    let img = app.clipboard().read_image().map_err(|_| AppError::ClipboardEmpty)?;
-    let rgba = RgbaImage::from_raw(img.width(), img.height(), img.rgba().to_vec())
-        .ok_or(AppError::ClipboardEmpty)?;
+pub async fn clipboard_image(app: AppHandle, copied: State<'_, AnnotationClipboard>) -> AppResult<Response> {
+    let rgba = match copied.take_read(Instant::now()) {
+        Some(img) => img,
+        None => read_clipboard(&app).ok_or(AppError::ClipboardEmpty)?,
+    };
     blocking(move || layer_png(rgba)).await.map(Response::new)
 }
 
@@ -111,13 +120,36 @@ const MAX_ANNOTATIONS: usize = 64 << 20;
 
 /// Anotações copiadas, para qualquer janela colar. Só valem enquanto o desenho delas ainda for o que
 /// está na área de transferência do sistema: copiar outra coisa, em qualquer app, as substitui.
+///
+/// A comparação é pelos pixels exatos (tamanho e SHA-256). Um gerenciador de área de transferência
+/// que regrava a imagem copiada (outro formato, outra compressão, perfil de cor) a torna "outra
+/// coisa": o Colar traz o desenho como camada, e não as anotações editáveis.
 #[derive(Default)]
-pub struct AnnotationClipboard(Mutex<Option<Copied>>);
+pub struct AnnotationClipboard(Mutex<Slot>);
+
+#[derive(Default)]
+struct Slot {
+    copied: Option<Copied>,
+    /// A imagem que `pasted_annotations` leu e não era o desenho das anotações: o Colar pede
+    /// `clipboard_image` logo em seguida, que a usa em vez de ler (e decodificar) de novo.
+    read: Option<(Instant, RgbaImage)>,
+}
 
 struct Copied {
     data: String,
+    size: (u32, u32),
     digest: [u8; 32],
 }
+
+impl Copied {
+    fn new(data: String, img: &RgbaImage) -> Self {
+        let (w, h) = img.dimensions();
+        Copied { data, size: (w, h), digest: digest(w, h, img.as_raw()) }
+    }
+}
+
+/// Quanto tempo a imagem lida vale para o `clipboard_image` seguinte.
+const READ_TTL: Duration = Duration::from_secs(2);
 
 fn digest(w: u32, h: u32, rgba: &[u8]) -> [u8; 32] {
     Sha256::new()
@@ -129,22 +161,37 @@ fn digest(w: u32, h: u32, rgba: &[u8]) -> [u8; 32] {
 }
 
 impl AnnotationClipboard {
-    fn set(&self, data: String, digest: [u8; 32]) {
-        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(Copied { data, digest });
+    fn slot(&self) -> std::sync::MutexGuard<'_, Slot> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn set(&self, copied: Copied) {
+        *self.slot() = Slot { copied: Some(copied), read: None };
     }
 
     fn is_empty(&self) -> bool {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).is_none()
+        self.slot().copied.is_none()
     }
 
-    /// As anotações, se `current` (o resumo da imagem do sistema agora) é o desenho delas; senão
-    /// esquece as antigas.
-    fn matching(&self, current: Option<[u8; 32]>) -> Option<String> {
-        let mut slot = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        if slot.as_ref().map(|c| c.digest) != current {
-            *slot = None;
+    /// As anotações, se `current` (a imagem do sistema agora) é o desenho delas; senão esquece as
+    /// antigas e guarda `current` para o `clipboard_image` seguinte. O resumo só é calculado quando o
+    /// tamanho bate.
+    fn matching(&self, current: Option<RgbaImage>, now: Instant) -> Option<String> {
+        let mut slot = self.slot();
+        let same = |c: &Copied, img: &RgbaImage| {
+            c.size == img.dimensions() && c.digest == digest(img.width(), img.height(), img.as_raw())
+        };
+        match (&slot.copied, current) {
+            (Some(c), Some(img)) if same(c, &img) => return Some(c.data.clone()),
+            (_, img) => *slot = Slot { copied: None, read: img.map(|i| (now, i)) },
         }
-        slot.as_ref().map(|c| c.data.clone())
+        None
+    }
+
+    /// A imagem guardada por `matching`, uma vez só e enquanto for recente.
+    fn take_read(&self, now: Instant) -> Option<RgbaImage> {
+        let (at, img) = self.slot().read.take()?;
+        (now.saturating_duration_since(at) <= READ_TTL).then_some(img)
     }
 }
 
@@ -171,11 +218,11 @@ pub async fn copy_annotations(
     })
     .await?;
     let (w, h) = img.dimensions();
-    let digest = digest(w, h, img.as_raw());
+    let annotations = Copied::new(data, &img);
     app.clipboard()
         .write_image(&Image::new_owned(img.into_raw(), w, h))
         .map_err(|e| AppError::Io(e.to_string()))?;
-    copied.set(data, digest);
+    copied.set(annotations);
     Ok(())
 }
 
@@ -188,8 +235,7 @@ pub async fn pasted_annotations(
     if copied.is_empty() {
         return Ok(None);
     }
-    let current = app.clipboard().read_image().ok();
-    Ok(copied.matching(current.map(|i| digest(i.width(), i.height(), i.rgba()))))
+    Ok(copied.matching(read_clipboard(&app), Instant::now()))
 }
 
 #[cfg(test)]
@@ -211,24 +257,52 @@ mod tests {
     #[test]
     fn anotacoes_copiadas_valem_ate_a_proxima_copia() {
         let clip = AnnotationClipboard::default();
-        let sum = |c: [u8; 4], w: u32, h: u32| digest(w, h, solid(w, h, c).as_raw());
+        let now = Instant::now();
         assert!(clip.is_empty());
-        assert_eq!(clip.matching(Some(sum([0; 4], 2, 2))), None);
+        assert_eq!(clip.matching(Some(solid(2, 2, [0; 4])), now), None);
 
-        clip.set("ação".into(), sum([1, 2, 3, 4], 2, 3));
-        let seen = Some(sum([1, 2, 3, 4], 2, 3));
-        assert_eq!(clip.matching(seen).as_deref(), Some("ação"));
-        assert_eq!(clip.matching(seen).as_deref(), Some("ação")); // cola quantas vezes quiser
+        clip.set(Copied::new("ação".into(), &solid(2, 3, [1, 2, 3, 4])));
+        let seen = || Some(solid(2, 3, [1, 2, 3, 4]));
+        assert_eq!(clip.matching(seen(), now).as_deref(), Some("ação"));
+        assert_eq!(clip.matching(seen(), now).as_deref(), Some("ação")); // cola quantas vezes quiser
 
         // Os mesmos bytes noutro formato não são a mesma imagem; e a antiga não volta.
-        assert_eq!(clip.matching(Some(sum([1, 2, 3, 4], 3, 2))), None);
+        assert_eq!(clip.matching(Some(solid(3, 2, [1, 2, 3, 4])), now), None);
         assert!(clip.is_empty());
-        assert_eq!(clip.matching(seen), None);
+        assert_eq!(clip.matching(seen(), now), None);
+
+        // Um pixel diferente (o gerenciador regravou a imagem com perda) também não é o desenho.
+        clip.set(Copied::new("y".into(), &solid(2, 3, [1, 2, 3, 4])));
+        let mut quase = solid(2, 3, [1, 2, 3, 4]);
+        quase.put_pixel(1, 1, Rgba([1, 2, 3, 5]));
+        assert_eq!(clip.matching(Some(quase), now), None);
 
         // Sem imagem no sistema (copiaram um texto): também não valem mais.
-        clip.set("x".into(), sum([9; 4], 1, 1));
-        assert_eq!(clip.matching(None), None);
+        clip.set(Copied::new("x".into(), &solid(1, 1, [9; 4])));
+        assert_eq!(clip.matching(None, now), None);
         assert!(clip.is_empty());
+    }
+
+    /// A imagem que o Colar já leu para conferir as anotações serve ao `clipboard_image` seguinte, uma
+    /// vez só e por pouco tempo; anotações novas a descartam.
+    #[test]
+    fn imagem_lida_ao_conferir_as_anotacoes_e_reutilizada_uma_vez() {
+        let clip = AnnotationClipboard::default();
+        let t0 = Instant::now();
+        clip.set(Copied::new("a".into(), &solid(2, 2, [1; 4])));
+        let outra = solid(5, 4, [7, 8, 9, 255]);
+        assert_eq!(clip.matching(Some(outra.clone()), t0), None);
+        assert_eq!(clip.take_read(t0 + Duration::from_millis(50)), Some(outra.clone()));
+        assert_eq!(clip.take_read(t0), None, "uma vez só");
+
+        clip.set(Copied::new("b".into(), &solid(2, 2, [1; 4])));
+        assert_eq!(clip.matching(Some(outra.clone()), t0), None);
+        assert_eq!(clip.take_read(t0 + READ_TTL + Duration::from_millis(1)), None, "velha demais");
+
+        clip.set(Copied::new("c".into(), &solid(2, 2, [1; 4])));
+        assert_eq!(clip.matching(Some(outra), t0), None);
+        clip.set(Copied::new("d".into(), &solid(2, 2, [1; 4])));
+        assert_eq!(clip.take_read(t0), None, "copiar de novo descarta a lida");
     }
 
     #[test]

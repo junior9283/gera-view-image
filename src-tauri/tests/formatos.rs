@@ -26,6 +26,8 @@ const LINHAS: [[u8; 3]; 4] = [[255, 0, 0], [170, 0, 85], [85, 0, 170], [0, 0, 25
 const JXL_RGB: &str = "0000000c4a584c200d0a870a00000014667479706a786c20000000006a786c20000000096a786c6c0a000000e16a786c63ff0a1840fc40020802010030034b189b9c71840338800338204ac039050100204480081001224084ffff3ff8ffffa23ec61873aeb5f7dee79c730e014544444444646666def77e55555515fcffffc1ffff17f531c69873adbdf73ee79c73082822222222223333f3bef7abaaaaaae0ffff0ffeffbfa88f31c69c6bedbdf739e79c43401111111111999999f7bd5f55555505ffff7ff0ffff457d8c31e65c6befbdcf39e71c028a88888888c8ccccbceffdaaaaaaaa03f0e5ff0300000000003ffeff00fc4c5501f0335505c0cf541500dffd7f000000000000";
 const JXL_RGBA: &str = "0000000c4a584c200d0a870a00000014667479706a786c20000000006a786c20000000096a786c6c0a000000466a786c63ff0a1840fc087e800408101000bc004b18938e85838414a85e0c00de5f400880f7ff2f5555aaaa54d5f7ff43aaaa5455a9aade20c03551a5aa8001030600";
 const JXL_PERDA: &str = "ff0a1840fc6402010c01f3431300800a9551c60d5ecef57cf9a1c362dac67586b6dab6b084b1d95e1824249cc0c6857d37071d236fb05d905249220de26e0a04775a1d7800c8684056050e8000";
+/// 2x2 (200, 100, 50) com alfa 128 e um canal extra de profundidade (libjxl 0.11, sem perdas).
+const JXL_ALFA_E_PROFUNDIDADE: &str = "ff0a081050288004084000010058004b188b15c209326fa85f07d87b1217a382b160008801";
 const JXL_CINZA: &str = "0000000c4a584c200d0a870a00000014667479706a786c20000000006a786c20000000096a786c6c0a0000002b6a786c63ff0a1840fc00c58d0804010054004b2824c6454142c27942ff0cce82ee0f947fa0fb03";
 const J2K_RGB: &str = "ff4fff51002f0000000000060000000400000000000000000000000600000004000000000000000000030f01010f01010f0101ff52000c00000001010204040001ff5c000a4080888890888890ff640025000143726561746564206279204f70656e4a5045472076657273696f6e20322e352e34ff90000a00000000004d0001ff93cffc300c093f4fcffc300801dfdff8902002455d3f80a7fe2404025fa7fe2404091780a3ff0604800b3c23cbb3bbbbbbbfa3ff0604800c1715e5d9dddddddfffd9";
 /// 4x4 de uma cor só (200, 100, 50), DXT1.
@@ -241,6 +243,24 @@ fn exr_so_com_luminancia_abre_em_cinza() {
     perto(d.frames[0].get_pixel(0, 0).0, [124, 124, 124, 255], 1);
 }
 
+/// Blocos de 16 linhas (ZIP16) numa imagem larga e baixa: os blocos em voo pesam mais que os
+/// pixels, e a estimativa conta o mesmo que o decodificador exige.
+#[test]
+fn estimativa_do_exr_conta_os_blocos_em_voo() {
+    use exr::prelude::*;
+    let (w, h) = (4096usize, 1usize);
+    let canais = SpecificChannels::rgb(|_: Vec2<usize>| (0.5f32, 0.25f32, 0.125f32));
+    let enc = Encoding { compression: Compression::ZIP16, blocks: Blocks::ScanLines, line_order: LineOrder::Increasing };
+    let layer = Layer::new((w, h), LayerAttributes::named("ação"), enc, canais);
+    let mut c = Cursor::new(Vec::new());
+    Image::from_layer(layer).write().to_buffered(&mut c).unwrap();
+    let b = c.into_inner();
+    let bloco = 16 * w * 12;
+    let est = estimate_bytes(Path::new("a.exr"), &b);
+    assert!(est >= w * h * 20 + bloco * 3, "estimativa {est} sem os blocos de {bloco} bytes");
+    assert_eq!(abre("a.exr", &b).frames[0].dimensions(), (4096, 1));
+}
+
 /// Cabeçalho que declara dimensões absurdas: recusa antes de alocar.
 #[test]
 fn exr_gigante_e_recusado() {
@@ -306,6 +326,31 @@ fn jpeg_xl() {
     perto(d.frames[0].get_pixel(0, 0).0, [255, 0, 0, 128], 1);
     let p = abre("cinza.jxl", &hex(JXL_CINZA)).frames[0].get_pixel(0, 0).0;
     assert!(p[0] == p[1] && p[1] == p[2] && p[3] == 255, "{p:?}");
+}
+
+/// Canais extras além do alfa (profundidade, seleção...) não impedem de abrir: valem cor e alfa.
+#[test]
+fn jpeg_xl_com_alfa_e_canais_extras_abre_com_cor_e_alfa() {
+    let d = abre("ação.jxl", &hex(JXL_ALFA_E_PROFUNDIDADE));
+    perto(d.frames[0].get_pixel(1, 1).0, [200, 100, 50, 128], 1);
+}
+
+/// `.pic` também é extensão de PICT e Softimage: só abre como Radiance com a assinatura dele.
+#[test]
+fn pic_so_e_radiance_com_a_assinatura() {
+    let pict = [vec![0u8; 512], vec![0x00, 0x0A, 0, 0, 0, 0, 0, 2, 0, 2, 0x00, 0x11, 0x02, 0xFF]].concat();
+    let softimage = b"\x53\x80\xF6\x34\0\0\0\0Softimage PIC".to_vec();
+    for (nome, bytes) in [("ação.pic", pict), ("b.PIC", softimage)] {
+        assert_eq!(formato(nome, &bytes), None, "{nome}");
+        match decode_bytes(Path::new(nome), &bytes) {
+            Err(AppError::Corrupt(m)) => assert!(m.contains("não corresponde"), "{m}"),
+            other => panic!("{nome}: {:?}", other.map(|_| ())),
+        }
+    }
+    for assinatura in ["#?RADIANCE", "#?RGBE"] {
+        let b = format!("{assinatura}\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 1\n").into_bytes();
+        assert_eq!(formato("a.pic", &b).as_deref(), Some("hdr"), "{assinatura}");
+    }
 }
 
 #[test]
@@ -397,6 +442,20 @@ fn icns_usa_o_maior_icone() {
     // O maior corrompido: vale o seguinte.
     let b = icns(&[(b"ic08", b"\x89PNG\r\n\x1a\nlixo".to_vec()), (b"ic07", png_lado(128, [9, 8, 7, 255]))]);
     assert_eq!(abre("app.icns", &b).frames[0].dimensions(), (128, 128));
+}
+
+/// Cada candidato quebrado custa uma decodificação: no máximo três, do maior para o menor.
+#[test]
+fn icns_tenta_no_maximo_tres_icones_quebrados() {
+    let quebrado = || b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\x04\0\0\0\x04\0\x08\x06\0\0\0lixo".to_vec();
+    let bom = (b"is32", vec![9u8; 16 * 16 * 3]);
+    let com = |n: usize| {
+        let mut itens: Vec<(&[u8; 4], Vec<u8>)> = (0..n).map(|_| (b"ic10", quebrado())).collect();
+        itens.push((bom.0, bom.1.clone()));
+        icns(&itens)
+    };
+    assert_eq!(abre("ação.icns", &com(2)).frames[0].dimensions(), (16, 16));
+    assert!(matches!(decode_bytes(Path::new("a.icns"), &com(3)), Err(AppError::Corrupt(_))));
 }
 
 #[test]
@@ -536,11 +595,14 @@ fn avif_pq_e_hlg_viram_sdr() {
     }
 }
 
+// Constantes do BT.2100 como a norma as escreve.
+#[allow(clippy::excessive_precision)]
 fn pq(v: f32) -> f32 {
     let e = v.powf(1.0 / 78.84375);
     ((e - 0.8359375).max(0.0) / (18.8515625 - 18.6875 * e)).powf(1.0 / 0.1593017578125) * 10000.0 / 203.0
 }
 
+#[allow(clippy::excessive_precision)]
 fn hlg(v: f32) -> f32 {
     if v <= 0.5 { v * v / 3.0 } else { (((v - 0.55991073) / 0.17883277).exp() + 0.28466892) / 12.0 }
 }
@@ -686,7 +748,7 @@ struct Bits(Vec<u8>, usize);
 impl Bits {
     fn put(&mut self, v: u32, n: usize) {
         for i in 0..n {
-            if self.1 % 8 == 0 {
+            if self.1.is_multiple_of(8) {
                 self.0.push(0);
             }
             *self.0.last_mut().unwrap() |= (((v >> i) & 1) as u8) << (self.1 % 8);
@@ -737,7 +799,8 @@ fn estimativa_conta_o_trabalho_do_hdr() {
     let png = png_de([10, 20, 30, 255]);
     assert_eq!(estimate_bytes(Path::new("a.png"), &png), 16 * 4);
     let pq = com_chunks(&png, &[chunk(b"cICP", &[9, 16, 0, 1])]);
-    assert_eq!(estimate_bytes(Path::new("a.png"), &pq), 16 * 12);
+    // RGB16 decodificado (6) e RGBA16 de trabalho (8) vivos juntos.
+    assert_eq!(estimate_bytes(Path::new("a.png"), &pq), 16 * 14);
     let avif = hex(AVIF_10);
     assert_eq!(estimate_bytes(Path::new("a.avif"), &avif), 16 * 16 * 4);
     let at = avif.windows(8).position(|w| w == b"colrnclx").unwrap() + 8;

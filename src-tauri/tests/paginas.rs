@@ -342,7 +342,7 @@ fn exportar_todas_redimensiona_cada_pagina_na_propria_proporcao() {
     assert_eq!(tamanhos(&dest), [(20, 15), (11, 15), (10, 12)]);
 }
 
-/// Apagar a descrição vale para todas as páginas; trocá-la, só para a primeira.
+/// Apagar ou trocar a descrição vale para todas as páginas: o valor antigo não sobra em nenhuma.
 #[test]
 fn texto_apagado_sai_de_todas_as_paginas() {
     use gera_view_image_lib::commands::describe::MetadataEdits;
@@ -351,11 +351,181 @@ fn texto_apagado_sai_de_todas_as_paginas() {
     let tem = |t: &str| fs::read(&path).unwrap().windows(t.len()).any(|w| w == t.as_bytes());
     store.set_meta_edits(id, &texto("nova"));
     salva(&store, id);
-    assert!(!tem("pagina 0") && tem("pagina 1") && tem("pagina 2") && tem("nova"));
+    assert!(!tem("pagina") && tem("nova"));
     store.set_meta_edits(id, &texto(""));
     salva(&store, id);
     assert!(!tem("pagina") && !tem("nova"));
     assert_eq!(tamanhos(&path), TAMANHOS);
+}
+
+/// Registros IPTC-IIM 2:xx.
+fn iim(registros: &[(u8, &str)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (n, v) in registros {
+        out.extend([0x1C, 2, *n]);
+        out.extend((v.len() as u16).to_be_bytes());
+        out.extend(v.as_bytes());
+    }
+    out
+}
+
+fn xmp(descricao: &str, chaves: &[&str]) -> String {
+    let lis: String = chaves.iter().map(|k| format!("<rdf:li>{k}</rdf:li>")).collect();
+    format!(
+        "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" \
+         xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><rdf:Description rdf:about=\"\">\
+         <dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">{descricao}</rdf:li></rdf:Alt></dc:description>\
+         <dc:subject><rdf:Bag>{lis}</rdf:Bag></dc:subject></rdf:Description></rdf:RDF></x:xmpmeta>"
+    )
+}
+
+/// Páginas 1 e 2 com descrição e palavras-chave (EXIF, IPTC e XMP); a 3 só com a descrição do TIFF.
+fn com_textos(path: &Path) {
+    let mut out = Cursor::new(Vec::new());
+    let mut e = TiffEncoder::new(&mut out).unwrap();
+    for i in 0..3 {
+        let mut img = e.new_image::<ct::RGB8>(4, 3).unwrap();
+        img.encoder().write_tag(Tag::ImageDescription, &*format!("segredo {i}")).unwrap();
+        if i < 2 {
+            let iptc = iim(&[(25, "velha"), (25, "fica"), (120, &format!("legenda velha {i}"))]);
+            img.encoder().write_tag(Tag::Unknown(33723), &iptc[..]).unwrap();
+            let x = xmp(&format!("xmp velho {i}"), &["velha", "fica"]);
+            img.encoder().write_tag(Tag::Unknown(700), x.as_bytes()).unwrap();
+        }
+        img.write_data(&[9; 36]).unwrap();
+    }
+    fs::write(path, out.into_inner()).unwrap();
+}
+
+/// Bytes do arquivo com a página `n` como primeira (o que os leitores de uma página veem).
+fn pagina(bytes: &[u8], n: usize) -> Vec<u8> {
+    use gera_view_image_lib::image::container::{tiff_pages, tiff_set_first};
+    let mut b = bytes.to_vec();
+    tiff_set_first(&mut b, tiff_pages(bytes).unwrap()[n]);
+    b
+}
+
+/// Trocar uma palavra-chave, a descrição ou o título vale em todas as páginas que têm o campo; nas que
+/// não têm, nada é criado. O valor antigo não sobra em nenhum byte do arquivo.
+#[test]
+fn edicao_de_texto_e_palavras_chave_vale_em_todas_as_paginas() {
+    use gera_view_image_lib::commands::describe::MetadataEdits;
+    let path = tmp("paginas-privacidade").join("t.tiff");
+    com_textos(&path);
+    let store = DocStore::new();
+    let id = abre(&store, &path);
+    let edits = MetadataEdits {
+        description: Some("nova descrição".into()),
+        title: Some("Título ação".into()),
+        ..Default::default()
+    };
+    store.set_meta_edits(id, &edits);
+    store.save(id, Some(vec!["fica".into(), "praia".into()])).unwrap();
+    let bytes = fs::read(&path).unwrap();
+    let tem = |b: &[u8], t: &str| b.windows(t.len()).any(|w| w == t.as_bytes());
+    for velho in ["velha", "segredo", "legenda velha", "xmp velho"] {
+        assert!(!tem(&bytes, velho), "{velho:?} sobrou no arquivo");
+    }
+    assert_eq!(tamanhos(&path), [(4, 3); 3]);
+    // Página 2: o valor novo no lugar do antigo; o título, que ela não tinha, não aparece.
+    let p2 = pagina(&bytes, 1);
+    let (iptc, x) = file_iim_xmp(&p2);
+    let (iptc, x) = (String::from_utf8_lossy(&iptc.unwrap()).into_owned(), x.unwrap());
+    for (onde, texto) in [(&iptc, "fica"), (&iptc, "praia"), (&iptc, "nova descrição"), (&x, "praia"), (&x, "nova descrição")] {
+        assert!(onde.contains(texto), "{texto:?} faltou na página 2");
+    }
+    assert!(!iptc.contains("Título") && !x.contains("Título"), "título criado na página 2");
+    // Página 3: tinha só a descrição; palavras-chave não são criadas.
+    let (iptc3, x3) = file_iim_xmp(&pagina(&bytes, 2));
+    let iptc3 = String::from_utf8_lossy(&iptc3.unwrap_or_default()).into_owned();
+    let x3 = x3.unwrap_or_default();
+    assert!(!iptc3.contains("praia") && !x3.contains("praia"), "palavras-chave criadas na página 3");
+    assert!(x3.contains("nova descrição") || iptc3.contains("nova descrição"));
+}
+
+/// Valor acima do teto do leitor de tags (64 MB): a página entra sem ele, mas a perda fica registrada
+/// para o aviso.
+#[test]
+fn pagina_que_perde_um_valor_grande_e_avisada() {
+    use gera_view_image_lib::image::container::{TiffJoin, TiffMeta, tiff_pages, tiff_with_meta};
+    let um = || {
+        let mut c = Cursor::new(Vec::new());
+        TiffEncoder::new(&mut c).unwrap().write_image::<ct::Gray8>(5, 4, &[7; 20]).unwrap();
+        c.into_inner()
+    };
+    let mut j = TiffJoin::new(1 << 28);
+    j.push(&um()).unwrap();
+    assert!(!j.lost());
+    let grande = "x".repeat((64 << 20) + 1);
+    j.push(&tiff_with_meta(&um(), &TiffMeta { xmp: Some(&grande), ..Default::default() }).unwrap()).unwrap();
+    assert!(j.lost());
+    let b = j.finish();
+    assert_eq!(tiff_pages(&b).unwrap().len(), 2);
+    assert!(b.len() < 64 << 20, "o valor grande não foi copiado");
+}
+
+/// TIFF de 4 páginas, cada uma com a própria descrição `disco {i}`.
+fn quatro_no_disco(path: &Path) {
+    let mut out = Cursor::new(Vec::new());
+    let mut e = TiffEncoder::new(&mut out).unwrap();
+    for i in 0..4 {
+        let mut img = e.new_image::<ct::RGB8>(2, 2).unwrap();
+        img.encoder().write_tag(Tag::ImageDescription, &*format!("disco {i}")).unwrap();
+        img.write_data(&[5; 12]).unwrap();
+    }
+    fs::write(path, out.into_inner()).unwrap();
+}
+
+/// O arquivo no disco passou a ter outro número de páginas: cada página do documento ainda leva os
+/// metadados da página de mesmo índice, até onde houver.
+#[test]
+fn paginas_do_disco_diferentes_das_do_documento_casam_por_indice() {
+    let (store, id, path) = novo("paginas-indice");
+    quatro_no_disco(&path);
+    let dest = path.with_file_name("e.tiff");
+    store.export(id, &s(&dest), &opts(ExportFormat::Tiff, true, 0), None).unwrap();
+    let mut dec = Decoder::new(Cursor::new(fs::read(&dest).unwrap())).unwrap();
+    let mut got = Vec::new();
+    loop {
+        got.push(dec.get_tag_ascii_string(Tag::ImageDescription).ok());
+        if !dec.more_images() {
+            break;
+        }
+        dec.next_image().unwrap();
+    }
+    let want: Vec<_> = (0..3).map(|i| Some(format!("disco {i}"))).collect();
+    // A primeira vem do documento (o EXIF lido na abertura), as outras do disco.
+    assert_eq!(got[1..], want[1..]);
+}
+
+/// Páginas com DPI diferentes: cada uma tem o seu para imprimir, redimensionar e gravar.
+#[test]
+fn cada_pagina_tem_o_proprio_dpi() {
+    use tiff::encoder::Rational;
+    let path = tmp("paginas-dpi").join("t.tiff");
+    let mut out = Cursor::new(Vec::new());
+    let mut e = TiffEncoder::new(&mut out).unwrap();
+    for dpi in [72, 300] {
+        let mut img = e.new_image::<ct::RGB8>(2, 2).unwrap();
+        img.resolution(tiff::tags::ResolutionUnit::Inch, Rational { n: dpi, d: 1 });
+        img.write_data(&[5; 12]).unwrap();
+    }
+    fs::write(&path, out.into_inner()).unwrap();
+    let store = DocStore::new();
+    let id = abre(&store, &path);
+    assert_eq!(store.current_dpi(id, 0).unwrap(), Some((72.0, 72.0)));
+    assert_eq!(store.current_dpi(id, 1).unwrap(), Some((300.0, 300.0)));
+    let items = gera_view_image_lib::commands::print::items(&store, &[id]).unwrap();
+    let dpis: Vec<_> = items.iter().map(|i| i.size.dpi).collect();
+    assert_eq!(dpis, [Some((72.0, 72.0)), Some((300.0, 300.0))]);
+    // Ajustar Tamanho só da página 1 com 150: a 2 continua com o dela ao gravar.
+    let r = Op::Resize { w: 2, h: 2, filter: ResizeFilter::Nearest, dpi: Some(150.0) };
+    store.apply_op_on(id, r, Some(0)).unwrap();
+    salva(&store, id);
+    let outro = DocStore::new();
+    let id = abre(&outro, &path);
+    let gravados = [outro.current_dpi(id, 0).unwrap(), outro.current_dpi(id, 1).unwrap()];
+    assert_eq!(gravados, [Some((150.0, 150.0)), Some((300.0, 300.0))]);
 }
 
 // ---------- o arquivo no disco mudou ----------

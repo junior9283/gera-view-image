@@ -70,10 +70,10 @@ fn is_watched(path: &Path) -> bool {
 /// quando `kwinrc`, `kdeglobals` ou o banco `user` do dconf mudam.
 pub fn watch_config_files(dirs: &[PathBuf], tx: Sender<()>) -> notify::Result<RecommendedWatcher> {
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        if let Ok(ev) = res {
-            if ev.paths.iter().any(|p| is_watched(p)) {
-                let _ = tx.send(());
-            }
+        if let Ok(ev) = res
+            && ev.paths.iter().any(|p| is_watched(p))
+        {
+            let _ = tx.send(());
         }
     })?;
     for d in dirs {
@@ -158,7 +158,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("gvi-watch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let (tx, rx) = mpsc::channel();
-        let _w = watch_config_files(&[dir.clone()], tx).unwrap();
+        let _w = watch_config_files(std::slice::from_ref(&dir), tx).unwrap();
 
         std::fs::write(dir.join("outro.txt"), "x").unwrap();
         assert!(rx.recv_timeout(Duration::from_millis(400)).is_err(), "arquivo irrelevante não deve notificar");
