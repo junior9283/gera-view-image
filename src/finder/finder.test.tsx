@@ -151,9 +151,11 @@ describe("Mover para o Lixo", () => {
     expect(ipc.moveToTrash).toHaveBeenCalledWith(1);
   });
 
-  it("falha no Lixo: o documento continua aberto", async () => {
+  it("falha no Lixo: o documento continua aberto e o erro vira aviso (sem rejeição solta)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     ipc.moveToTrash.mockRejectedValueOnce({ code: "io", message: "sem lixeira" });
-    await expect(moveActiveToTrash()).rejects.toBeTruthy();
+    await expect(moveActiveToTrash()).resolves.toBeUndefined();
+    expect(toasts()).toHaveLength(1);
     expect(ipc.closeDocument).not.toHaveBeenCalled();
     expect(useDocs.getState().docs).toHaveLength(1);
   });

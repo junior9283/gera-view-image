@@ -2,6 +2,24 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Duplicar anotação com coordenada enorme travava a janela (limpeza final)
+- **Sintoma:** colar ou duplicar uma anotação em x/y ≈ 1e18 deixava a interface parada.
+- **Causa:** o laço que desloca a cópia até não cair em cima de uma igual somava 12 px que se perdiam no arredondamento do `double`: a caixa nunca mudava.
+- **Correção:** teto de 1000 voltas (`MAX_OFFSETS`, `src/markup/clipboard.ts`).
+- **Teste:** "coordenada enorme (o passo some no arredondamento) não trava" (`src/markup/clipboard.test.tsx`).
+- **Lição:** laço que espera uma conta de ponto flutuante mudar algo precisa de teto.
+
+## Lixo: fechar que falha contava como falha de mover; uma imagem só rejeitava sem tratamento (limpeza final)
+- **Sintoma:** o arquivo já estava no Lixo, mas o aviso dizia que falhou; pelo menu da miniatura, o erro de uma imagem só virava rejeição solta.
+- **Correção:** `trash` (`src/sidebar/trash.ts`) separa o mover do fechar (que só avisa) e `trashDocs` trata o erro de uma imagem só com `notifyError`.
+- **Teste:** "já no Lixo mas sem poder fechar…" e "uma imagem só que falha…" (`src/sidebar/sidebarFiles.test.tsx`).
+
+## Testes do Lixo em lote falhavam conforme a ordem e a carga (limpeza final)
+- **Sintoma:** "uma falha deixa aquela aberta…" e "com as miniaturas escondidas…" falhavam na suíte (também na base ef438d4) e passavam sozinhos.
+- **Causa:** o `flush` esperava 5 ms fixos; o lote cede a vez entre as imagens e continuava no teste seguinte, chamando `moveToTrash` de novo.
+- **Correção:** o `flush` de `src/sidebar/sidebarFiles.test.tsx` espera o fim do lote (`useBatch.running`).
+- **Lição:** espere a condição, não um prazo.
+
 ## Farbfeld e PNM de 16 bits ocupavam 3 vezes a memória estimada (rodada 3, antes de publicar)
 - **Sintoma (revisão):** um `.ff` de 16384×16384 passava na conta e chegava a ~3 GiB, acima do teto de decodificação.
 - **Causa:** `read_image` e `estimate_bytes` contavam só o RGBA8 final (4 B/px); o buffer de 16 bits fica vivo junto dele.

@@ -127,6 +127,14 @@ describe("teclado", () => {
     expect(useUi.getState().sidebar).toBe("thumbs");
   });
 
+  it("folha vazia: Enter não abre nada nem sai da folha", () => {
+    useDocs.setState({ docs: [], activeId: null });
+    useUi.setState({ sidebar: "contact" });
+    render(<ContactSheet />);
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    expect(useUi.getState().sidebar).toBe("contact");
+  });
+
   it("Delete fecha as selecionadas, perguntando pelas não salvas", async () => {
     useDocs.setState((s) => ({ docs: s.docs.map((d) => (d.id === 2 ? { ...d, dirty: true } : d)) }));
     render(<ContactSheet />);

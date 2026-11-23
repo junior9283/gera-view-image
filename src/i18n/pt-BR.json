@@ -890,6 +890,8 @@
     "trash": {
       "confirmUnsaved": "{{name}} tem alterações não salvas. Mover para o Lixo e descartá-las?",
       "confirmUnsavedMany": "Estas imagens têm alterações não salvas: {{name}}. Mover para o Lixo e descartá-las?",
+      "confirmMany": "Mover {{name}} itens para o Lixo?",
+      "notClosed": "{{name}} foi para o Lixo, mas não pôde ser fechado",
       "ok": "Mover para o Lixo",
       "cancel": "Cancelar",
       "doneMany": "{{count}} imagens foram para o Lixo",

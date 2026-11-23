@@ -60,6 +60,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - EXIF maior que o limite de 64 KB do JPEG saía sem aviso; agora o app avisa, e os avisos de metadados dizem de que documento são.
 - Reiniciar depois de instalar uma atualização descartava as alterações não salvas sem perguntar.
 - O OpenEXR exportado com transparência segue a especificação (cor pré-multiplicada pelo alfa). Antes, outros programas mostravam as bordas claras demais.
+- Mover para o Lixo pelo atalho (Ctrl+Backspace ou Ctrl+Delete) ou pelo menu Arquivo com 2 ou mais imagens pergunta antes ("Mover N itens para o Lixo?", com Cancelar como padrão). Uma imagem que foi para o Lixo mas não pôde ser fechada não conta mais como falha, e o erro de uma imagem só aparece como aviso.
+- Ctrl+C na barra lateral com uma seleção na imagem copia os pixels, como Editar › Copiar.
+- Arrastar arquivos para a janela segue Preferências › Abrir arquivos (abas, mesma janela ou janelas separadas); arrastar texto ou link não faz nada.
+- Duplicar ou colar uma anotação muito longe da imagem não trava mais a janela, e o texto de uma anotação vai até 10 000 caracteres.
 
 ### Limitações conhecidas (o que falta para a 1.0)
 - HDR: OpenEXR, Radiance, PQ e HLG são sempre mostrados em SDR, e gravar por cima perde o alcance original. QOI não abre, do JPEG XL só o primeiro quadro, o JPEG XL em CMYK é recusado e metadados comprimidos (caixas `brob`) do JPEG XL são ignorados.

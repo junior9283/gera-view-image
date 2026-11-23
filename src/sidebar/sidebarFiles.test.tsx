@@ -42,6 +42,7 @@ import { useMarkup } from "../markup/store";
 import { registerAppCommands } from "../shortcuts/appCommands";
 import { runCommand } from "../shortcuts/commands";
 import { matchShortcut } from "../shortcuts/keymap";
+import { useShortcuts } from "../shortcuts/useShortcuts";
 import { resetDocsForTests, useDocs } from "../store/docs";
 import { getPrefs, resetPrefsForTests, setPrefs } from "../store/prefs";
 import { useSelection } from "../store/selection";
@@ -50,6 +51,8 @@ import { useFileDrop } from "../viewer/fileDrop";
 import { useBatch } from "./batch";
 import { useThumbSelection } from "./selection";
 import { Sidebar } from "./Sidebar";
+import { trashDocs } from "./trash";
+import { FinderHost } from "../finder/FinderHost";
 
 const doc = (id: number, over: Partial<DocInfo> = {}): DocInfo => ({
   id, path: `/p/${id}.png`, name: `${id}.png`, format: "png", width: 10, height: 10, frames: 1,
@@ -91,7 +94,12 @@ afterEach(() => {
 
 const item = (n: number) => screen.getByText(`${n}.png`).closest("button") as HTMLButtonElement;
 const order = () => useDocs.getState().docs.map((d) => d.id);
-const flush = () => act(async () => void (await new Promise((r) => setTimeout(r, 5))));
+/** Espera as continuações e o fim de um lote em andamento (que cede a vez entre as imagens). */
+const flush = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, 5));
+    await vi.waitFor(() => expect(useBatch.getState().running).toBe(false));
+  });
 const select = (...ids: number[]) => ids.forEach((n, i) => fireEvent.click(item(n), { ctrlKey: i > 0 }));
 const toasts = () => getToasts().map((t) => t.text);
 
@@ -126,10 +134,29 @@ describe("Mover para o Lixo com várias selecionadas", () => {
     expect(key("Delete")).toBe("file.moveToTrash");
   });
 
+  it("pelo atalho, com 2 ou mais, pergunta antes (o padrão é Cancelar)", async () => {
+    render(
+      <>
+        <Sidebar />
+        <FinderHost />
+      </>,
+    );
+    select(2, 3);
+    act(() => void runCommand("file.moveToTrash"));
+    expect(useFinderUi.getState().confirm).toMatchObject({ text: "finder.trash.confirmMany", ok: "finder.trash.ok" });
+    expect(screen.getByRole("alertdialog", { name: "Mover 2 itens para o Lixo?" })).toBeTruthy();
+    expect(document.activeElement?.textContent).toBe("Cancelar");
+    act(() => answerConfirm(false));
+    await flush();
+    expect(ipc.moveToTrash).not.toHaveBeenCalled();
+    expect(order()).toEqual([1, 2, 3, 4]);
+  });
+
   it("move todas, fecha e dá um aviso só", async () => {
     render(<Sidebar />);
     select(2, 3);
     runCommand("file.moveToTrash");
+    act(() => answerConfirm(true));
     await flush();
     expect(ipc.moveToTrash.mock.calls).toEqual([[2], [3]]);
     expect(order()).toEqual([1, 4]);
@@ -160,9 +187,34 @@ describe("Mover para o Lixo com várias selecionadas", () => {
     render(<Sidebar />);
     select(1, 2, 3);
     runCommand("file.moveToTrash");
+    act(() => answerConfirm(true));
     await flush();
     expect(order()).toEqual([2, 4]);
     expect(toasts()).toEqual(["2 de 3 imagens processadas. Falhou: 2.png."]);
+  });
+
+  it("já no Lixo mas sem poder fechar: não conta como falha de mover, e avisa", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    ipc.closeDocument.mockImplementation(async (id) => {
+      if (id === 2) throw { code: "io", message: "x" };
+    });
+    render(<Sidebar />);
+    select(2, 3);
+    runCommand("file.moveToTrash");
+    act(() => answerConfirm(true));
+    await flush();
+    expect(ipc.moveToTrash.mock.calls).toEqual([[2], [3]]);
+    expect(toasts()).toEqual(["2.png foi para o Lixo, mas não pôde ser fechado", "2 imagens foram para o Lixo"]);
+  });
+
+  it("uma imagem só que falha: avisa o erro, sem rejeição solta", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    ipc.moveToTrash.mockRejectedValue({ code: "permission", message: "x" });
+    render(<Sidebar />);
+    select(2);
+    await act(async () => void (await trashDocs([2])));
+    expect(order()).toEqual([1, 2, 3, 4]);
+    expect(toasts()).toHaveLength(1);
   });
 
   it("com as miniaturas escondidas, só a imagem ativa (a seleção não está à vista)", async () => {
@@ -196,6 +248,25 @@ describe("copiar e colar", () => {
     runCommand("edit.copy");
     await flush();
     expect(ipc.copyFiles).toHaveBeenCalledOnce();
+    expect(ipc.copyRegion).toHaveBeenCalledOnce();
+  });
+
+  it("Ctrl+C na barra lateral com seleção na imagem: os pixels, como Editar › Copiar", async () => {
+    function Keys() {
+      useShortcuts();
+      return null;
+    }
+    render(
+      <>
+        <Sidebar />
+        <Keys />
+      </>,
+    );
+    select(1, 2);
+    useSelection.setState({ selection: { type: "rect", data: { x: 0, y: 0, w: 2, h: 2 } } });
+    fireEvent.keyDown(item(2), { key: "c", code: "KeyC", ctrlKey: true });
+    await flush();
+    expect(ipc.copyFiles).not.toHaveBeenCalled();
     expect(ipc.copyRegion).toHaveBeenCalledOnce();
   });
 
