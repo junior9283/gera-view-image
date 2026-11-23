@@ -2,14 +2,11 @@ import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { subscribe } from "../lib/events";
 import { draggingOut } from "../sidebar/dragOut";
-import { openHere } from "../tabs/open";
-import { activate } from "./actions";
+import { openFiles } from "../file/openFiles";
 
-/** Abre os arquivos soltos na janela e ativa o primeiro. */
+/** Abre os arquivos soltos na janela conforme Preferências › Abrir arquivos e mostra o primeiro. */
 export async function openDropped(paths: string[]): Promise<void> {
-  if (!paths.length) return;
-  const [first] = await openHere(paths);
-  if (first) activate(first.id);
+  if (paths.length) await openFiles(paths);
 }
 
 /** Trata o drop no lugar de abrir (devolve `true`); `at` em px CSS da janela. */
@@ -57,6 +54,7 @@ export function useFileDrop(): boolean {
         if (payload.type === "enter" || payload.type === "over") setOver(files && !hover(at));
         else if (payload.type === "drop") {
           leave();
+          if (!payload.paths.length) return; // texto ou link: nada a abrir nem a colar
           if ([...targets].some((t) => t(payload.paths, at))) return;
           openDropped(payload.paths).catch((e) => console.error("falha ao abrir arquivos soltos:", e));
         }

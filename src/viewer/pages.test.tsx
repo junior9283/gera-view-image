@@ -17,6 +17,14 @@ import { resetPrefsForTests, setPrefs } from "../store/prefs";
 import { useSelection } from "../store/selection";
 import { resetUiForTests, useUi } from "../store/ui";
 import { Viewport } from "./Viewport";
+import "./register";
+import { registerAppCommands } from "../shortcuts/appCommands";
+import { useShortcuts } from "../shortcuts/useShortcuts";
+
+function Keys() {
+  useShortcuts();
+  return null;
+}
 
 const tiff: DocInfo = {
   id: 1, path: "/p/ação.tiff", name: "ação.tiff", format: "tiff", width: 40, height: 30, frames: 2,
@@ -79,5 +87,52 @@ describe("página 2 maior que a primeira", () => {
     const args = invoke.mock.calls.find(([c]) => c === "preview_adjust")![1]!;
     // 800x600 de tela em 1:1 mostram só o alto da página de 600x800.
     expect(args).toMatchObject({ id: 1, frame: 1, region: { x: 0, y: 0, w: 600, h: 600 } });
+  });
+});
+
+describe("teclas de página (como no Pré-Visualização)", () => {
+  const png: DocInfo = { ...tiff, id: 2, path: "/p/b.png", name: "b.png", format: "png", frames: 1, pageSizes: undefined };
+  const press = (key: string, target: EventTarget = window) => {
+    const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+    act(() => void target.dispatchEvent(e));
+    return e;
+  };
+  const state = () => [useDocs.getState().activeId, useUi.getState().page];
+  let off: () => void;
+
+  beforeEach(() => {
+    setPrefs({ browseFolder: false });
+    useDocs.getState().add([png]);
+    act(() => useDocs.getState().setActive(1));
+    useUi.setState({ page: 0 });
+    off = registerAppCommands();
+    render(<Keys />);
+  });
+  afterEach(() => off());
+
+  it("→ e PgDn vão à página seguinte; ← e PgUp à anterior; ↑/↓ trocam de imagem", async () => {
+    expect(press("ArrowRight").defaultPrevented).toBe(true);
+    expect(state()).toEqual([1, 1]);
+    press("PageUp");
+    expect(state()).toEqual([1, 0]);
+    press("PageDown");
+    expect(state()).toEqual([1, 1]);
+    press("ArrowLeft");
+    expect(state()).toEqual([1, 0]);
+    press("ArrowDown");
+    await vi.waitFor(() => expect(useDocs.getState().activeId).toBe(2));
+  });
+
+  it("na última página, → passa para a imagem seguinte", async () => {
+    useUi.setState({ page: 1 });
+    press("ArrowRight");
+    await vi.waitFor(() => expect(state()).toEqual([2, null]));
+  });
+
+  it("com seleção parcial, as setas movem a seleção e não trocam de página", () => {
+    act(() => useSelection.getState().setSelection({ type: "rect", data: { x: 10, y: 10, w: 20, h: 20 } }));
+    press("ArrowRight", vp());
+    expect(state()).toEqual([1, 0]);
+    expect(selection()).toEqual({ type: "rect", data: { x: 11, y: 10, w: 20, h: 20 } });
   });
 });

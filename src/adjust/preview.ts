@@ -16,9 +16,6 @@ interface State {
   failed: boolean;
 }
 
-/** Depois do OK, o máximo que a prévia espera o visor mostrar a imagem ajustada. */
-const HOLD_MS = 3000;
-
 export const useAdjustPreview = create<State>(() => ({ cur: null, failed: false }));
 const { getState: get, setState: set } = useAdjustPreview;
 
@@ -34,11 +31,21 @@ export function freezePreview(docId: DocId): void {
   if (cur?.docId === docId) set({ cur: { ...cur, frozenRev: revOf(docId) } });
 }
 
-/** O painel fechou: some, ou espera o visor mostrar a imagem já ajustada. */
+/**
+ * O painel fechou: some, ou espera o visor desenhar a imagem já ajustada (ou falhar), sem prazo: uma
+ * imagem enorme demora, e sumir antes mostraria a original por um instante. A camada do visor limpa;
+ * aqui só o documento fechado (não há mais o que desenhar).
+ */
 export function endPreview(docId: DocId): void {
   const { cur } = get();
   if (cur?.docId !== docId) return;
   const rev = revOf(docId);
-  if (cur.frozenRev === null || rev === null || rev <= cur.frozenRev) clearPreview();
-  else setTimeout(() => get().cur === cur && clearPreview(), HOLD_MS);
+  if (cur.frozenRev === null || rev === null || rev <= cur.frozenRev) return clearPreview();
+  const off = useDocs.subscribe((s) => {
+    if (get().cur !== cur) return off();
+    if (!s.docs.some((d) => d.id === docId)) {
+      off();
+      clearPreview();
+    }
+  });
 }

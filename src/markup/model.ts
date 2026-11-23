@@ -189,8 +189,12 @@ export const textFont = (a: Annotation): FontStyle => {
   return canHoldText(a) && a.text === undefined ? { ...f, align: "center" } : f;
 };
 
-/** A anotação com o texto trocado; a forma sem texto volta a ser só a forma. */
-export function withText(a: Annotation, text: string): Annotation {
+/** Teto do texto de uma anotação: a quebra de linha mede caractere a caractere a cada desenho. */
+export const MAX_TEXT_CHARS = 10_000;
+
+/** A anotação com o texto trocado (cortado em `MAX_TEXT_CHARS`); a forma sem texto volta a ser só a forma. */
+export function withText(a: Annotation, value: string): Annotation {
+  const text = value.slice(0, MAX_TEXT_CHARS);
   if (a.kind === "text") return { ...a, geom: { ...a.geom, text } };
   if (!canHoldText(a)) return a;
   return text ? { ...a, text, style: { ...a.style, font: textFont(a) } } : { ...a, text: undefined };

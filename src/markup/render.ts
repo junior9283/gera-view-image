@@ -14,7 +14,7 @@ import {
   type Style,
 } from "./model";
 import { cssFont } from "./fontCss";
-import { LINE_HEIGHT, wrapText } from "./textLayout";
+import { LINE_HEIGHT, wrapCached } from "./textLayout";
 import { handlesFor, type HandleColor } from "./tools/handles";
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -215,7 +215,7 @@ function drawShapeText(ctx: Ctx, a: Annotation): void {
   const f = textFont(a);
   ctx.shadowColor = "transparent"; // a sombra é da forma
   ctx.font = cssFont(f);
-  const lines = wrapText(a.text, b.w, (s) => ctx.measureText(s).width);
+  const lines = wrapCached(a.text, b.w, ctx.font, (s) => ctx.measureText(s).width);
   drawLines(ctx, f, lines, { ...b, y: b.y + (b.h - lines.length * f.size * LINE_HEIGHT) / 2 });
 }
 

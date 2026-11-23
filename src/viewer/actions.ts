@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as ipc from "../ipc/commands";
 import type { DocId, DocInfo, Rect } from "../ipc/types";
 import { confirmAndSave } from "../file/unsaved";
-import { pageSize } from "../lib/pages";
+import { hasPages, pageSize } from "../lib/pages";
 import { useDocs } from "../store/docs";
 import { getPrefs } from "../store/prefs";
 import { notElsewhere } from "../tabs/open";
@@ -94,7 +94,12 @@ type Dir = "next" | "prev" | "first" | "last";
 interface NavOpts {
   /** Dá a volta nas pontas (apresentação). */
   wrap?: boolean;
+  /** Vindo da página anterior: a imagem de várias páginas abre na última. */
+  lastPage?: boolean;
 }
+
+/** Página em que `d` abre: a última, se pedida e se ele tem páginas; senão a padrão. */
+const landing = (d: DocInfo, lastPage = false): number | null => (lastPage && hasPages(d) ? d.frames - 1 : null);
 
 function targetIndex(i: number, n: number, dir: Dir, wrap: boolean): number {
   if (dir === "first") return 0;
@@ -134,22 +139,22 @@ function folderTarget(list: string[], doc: DocInfo, dir: Dir, wrap: boolean): nu
   return ins > 0 ? ins - 1 : wrap ? n - 1 : null;
 }
 
-async function goFolder(doc: DocInfo, dir: Dir, wrap: boolean): Promise<void> {
+async function goFolder(doc: DocInfo, dir: Dir, { wrap = false, lastPage }: NavOpts): Promise<void> {
   let list = await ipc.folderImages(doc.path);
   for (;;) {
     const j = folderTarget(list, doc, dir, wrap);
     if (j === null) return;
     const path = list[j];
-    if ((await notElsewhere([path])).length) return goTo(path, doc);
+    if ((await notElsewhere([path])).length) return goTo(path, doc, lastPage);
     // Aberto em outra janela: pula, sem tirar o foco desta.
     list = list.filter((p) => p !== path);
   }
 }
 
-async function goTo(path: string, doc: DocInfo): Promise<void> {
+async function goTo(path: string, doc: DocInfo, lastPage?: boolean): Promise<void> {
   const [opened] = await useDocs.getState().open([path]);
   if (!opened) return;
-  activate(opened.id);
+  activate(opened.id, landing(opened, lastPage));
   await closeDocs([doc.id]);
 }
 
@@ -162,24 +167,42 @@ export function activate(id: DocId, page: number | null = null): void {
 let inFlight: Promise<void> | null = null;
 
 /** Navega; enquanto uma navegação pela pasta está em curso, novos pedidos são ignorados (tecla repetida). */
-function go(dir: Dir, { wrap = false }: NavOpts = {}): Promise<void> {
+function go(dir: Dir, opts: NavOpts = {}): Promise<void> {
   if (inFlight) return inFlight;
   const { docs, activeId } = useDocs.getState();
   if (!docs.length) return Promise.resolve();
+  const wrap = opts.wrap ?? false;
   if (docs.length === 1 && getPrefs().browseFolder) {
-    inFlight = goFolder(docs[0], dir, wrap)
+    inFlight = goFolder(docs[0], dir, opts)
       .catch((e) => console.error("falha ao navegar na pasta:", e))
       .finally(() => (inFlight = null));
     return inFlight;
   }
   const i = Math.max(0, docs.findIndex((d) => d.id === activeId));
   const j = targetIndex(i, docs.length, dir, wrap);
-  if (j !== i || activeId === null) activate(docs[j].id);
+  if (j !== i || activeId === null) activate(docs[j].id, landing(docs[j], opts.lastPage));
   return Promise.resolve();
+}
+
+/**
+ * ←/→ e PgUp/PgDn: a página seguinte/anterior de um TIFF. Na ponta passa para a imagem vizinha, como
+ * a barra lateral do Pré-Visualização, que lista as páginas de cada imagem em sequência; voltando, a
+ * anterior abre na última página. Sem páginas, é o mesmo que ↑/↓.
+ */
+function stepPage(dir: 1 | -1, o: NavOpts = {}): Promise<void> {
+  const d = activeDoc();
+  const page = (useUi.getState().page ?? 0) + dir;
+  if (!inFlight && d && hasPages(d) && page >= 0 && page < d.frames) {
+    useUi.getState().setPage(page);
+    return Promise.resolve();
+  }
+  return go(dir > 0 ? "next" : "prev", { ...o, lastPage: dir < 0 });
 }
 
 export const next = (o?: NavOpts) => go("next", o);
 export const prev = (o?: NavOpts) => go("prev", o);
+export const nextPage = (o?: NavOpts) => stepPage(1, o);
+export const prevPage = (o?: NavOpts) => stepPage(-1, o);
 export const first = () => go("first");
 export const last = () => go("last");
 

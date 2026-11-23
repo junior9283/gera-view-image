@@ -890,6 +890,8 @@
     "trash": {
       "confirmUnsaved": "{{name}} has unsaved changes. Move it to the Trash and discard them?",
       "confirmUnsavedMany": "These images have unsaved changes: {{name}}. Move to Trash and discard them?",
+      "confirmMany": "Move {{name}} items to the Trash?",
+      "notClosed": "{{name}} was moved to the Trash but could not be closed",
       "ok": "Move to Trash",
       "cancel": "Cancel",
       "doneMany": "{{count}} images moved to Trash",

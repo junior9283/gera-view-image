@@ -14,14 +14,45 @@ export const modeFor = (selection: Mask | null, e: { shiftKey: boolean; altKey: 
 
 /** União (`add`) ou diferença (`subtract`) de `a` com `b`; `null` se não sobrar nada. */
 export function combineMasks(a: Mask, b: Mask, mode: "add" | "subtract", w: number, h: number): Mask | null {
+  // Uma cobertura da imagem inteira só (100 MP = 100 MB): `b` entra pela região que ocupa.
   const cov = rasterize(a, w, h);
-  const other = rasterize(b, w, h);
-  let any = false;
-  for (let i = 0; i < cov.length; i++) {
-    cov[i] = mode === "add" ? cov[i] | other[i] : cov[i] & (other[i] ^ 1);
-    any ||= cov[i] === 1;
+  paintInto(cov, b, w, h, mode === "add" ? 1 : 0);
+  return cov.includes(1) ? { type: "bitmap", data: { w, h, rle: coverageToRle(cov) } } : null;
+}
+
+/** Escreve `value` em `cov` (w×h) nos pixels de `m`, sem alocar outra cobertura da imagem inteira. */
+function paintInto(cov: Uint8Array, m: Mask, w: number, h: number, value: 0 | 1): void {
+  if (m.type === "bitmap") {
+    const { w: mw, h: mh, rle } = m.data;
+    let pos = 0;
+    rle.forEach((run, i) => {
+      const end = Math.min(pos + run, mw * mh);
+      for (let at = pos; i % 2 && at < end; ) {
+        const [x, y] = [at % mw, Math.floor(at / mw)];
+        const stop = Math.min(end - at, mw - x); // até o fim da corrida ou da linha
+        if (y < h && x < w) cov.fill(value, y * w + x, y * w + Math.min(w, x + stop));
+        at += stop;
+      }
+      pos = end;
+    });
+    return;
   }
-  return any ? { type: "bitmap", data: { w, h, rle: coverageToRle(cov) } } : null;
+  const box = boundsOf(m, w, h);
+  if (!box) return;
+  const [x0, y0] = [Math.max(0, Math.floor(box.x)), Math.max(0, Math.floor(box.y))];
+  const [x1, y1] = [Math.min(w, Math.ceil(box.x + box.w)), Math.min(h, Math.ceil(box.y + box.h))];
+  if (x1 <= x0 || y1 <= y0) return;
+  // O centro de cada pixel decide: deslocar por inteiros não muda quais ficam dentro.
+  const local: Mask =
+    m.type === "polygon"
+      ? { type: "polygon", data: m.data.map(([px, py]) => [px - x0, py - y0]) }
+      : { type: m.type, data: { ...m.data, x: m.data.x - x0, y: m.data.y - y0 } };
+  const [rw, rh] = [x1 - x0, y1 - y0];
+  const part = rasterize(local, rw, rh);
+  for (let y = 0; y < rh; y++) {
+    const [src, dst] = [y * rw, (y0 + y) * w + x0];
+    for (let x = 0; x < rw; x++) if (part[src + x]) cov[dst + x] = value;
+  }
 }
 
 type Bitmap = Extract<Mask, { type: "bitmap" }>;

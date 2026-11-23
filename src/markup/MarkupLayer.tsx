@@ -12,7 +12,7 @@ import { addAnnotation, commit, deleteSelected, endLive, moveSelectedLive } from
 import { cloneItems, selectedItems } from "./clipboard";
 import { loadSource } from "./flatten";
 import { cssFont } from "./fontCss";
-import { bounds, hitTest, moveItems, normBox, textBox, textFont, textOf, withText, type Annotation, type Point } from "./model";
+import { bounds, hitTest, MAX_TEXT_CHARS, moveItems, normBox, textBox, textFont, textOf, withText, type Annotation, type Point } from "./model";
 import { onCurrentPage, onPage, pageItems, pageSize } from "./pages";
 import { render, renderSelection, type Source, type ViewXf } from "./render";
 import { annotationsFocused, getItems, getSelected, useItems, useMarkup, type ShapeTool, type Tool } from "./store";
@@ -367,6 +367,7 @@ function TextEditor({ docId, item, view }: { docId: number; item: Annotation; vi
       className={`markup-text-editor${inShape ? " in-shape" : ""}`}
       aria-label={t("markup.textEditor")}
       value={value}
+      maxLength={MAX_TEXT_CHARS}
       onChange={(e) => setValue(e.target.value)}
       onBlur={finish}
       onKeyDown={(e) => {

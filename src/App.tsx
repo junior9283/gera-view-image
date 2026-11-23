@@ -19,10 +19,11 @@ import { DialogHost } from "./prefs/DialogHost";
 import { AdjustHost } from "./adjust/AdjustHost";
 import { InspectorHost } from "./inspector/Inspector";
 import { FileHost } from "./file/FileHost";
-import { openIds, separateWindows, showMany } from "./file/openFiles";
+import { openIds, separateWindows } from "./file/openFiles";
 import type { DocId } from "./ipc/types";
 import { MAIN_WINDOW, windowLabel } from "./lib/window";
 import { initDocs, useDocs } from "./store/docs";
+import { autoShowMany } from "./tabs/autoShow";
 import { TAB_PANEL_ID } from "./tabs/TabBar";
 import { receiveDocs } from "./tabs/transfer";
 import { installWindowEvents } from "./tabs/windowEvents";
@@ -53,7 +54,7 @@ function useAutoSidebar() {
   useEffect(() => {
     if (many && !autoShown) {
       autoShown = true;
-      showMany();
+      autoShowMany();
     }
   }, [many]);
 }

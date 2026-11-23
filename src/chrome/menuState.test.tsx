@@ -87,7 +87,7 @@ describe("Arquivo › Abrir Recente", () => {
     expect(recentItem().getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("o comando (Ajuda › Pesquisar) abre o menu Arquivo já no submenu", () => {
+  it("Arquivo › Abrir Recente (pelo comando, como na Ajuda › Pesquisar) abre o menu Arquivo já no submenu", () => {
     setPrefs({ recent: ["/a/b.jpg"] });
     render(<MenuBar />);
     act(() => void window.dispatchEvent(new Event(OPEN_RECENT_EVENT)));

@@ -7,7 +7,7 @@
   --chrome-border: rgba(0, 0, 0, 0.12);
   /* Diálogos, painéis e menus flutuantes. */
   --chrome-panel: #f4f4f4;
-  --chrome-muted: #595959;
+  --chrome-muted: #575757;
   --chrome-hover: rgba(0, 0, 0, 0.09);
   --chrome-selected: rgba(10, 132, 255, 0.25);
   --chrome-field: #ffffff;
@@ -26,7 +26,7 @@
   --chrome-fg: #e6e6e6;
   --chrome-border: rgba(255, 255, 255, 0.12);
   --chrome-panel: #2b2b2b;
-  --chrome-muted: #bdbdbd;
+  --chrome-muted: #c8c8c8;
   --chrome-hover: rgba(255, 255, 255, 0.12);
   --chrome-selected: rgba(80, 140, 255, 0.4);
   --chrome-field: #1e1e1e;

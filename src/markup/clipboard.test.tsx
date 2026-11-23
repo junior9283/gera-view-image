@@ -197,6 +197,13 @@ describe("duplicar e selecionar", () => {
     expect(getSelected(7)).toEqual([getItems(7)[2].id]);
   });
 
+  it("coordenada enorme (o passo some no arredondamento) não trava: o deslocamento tem teto", async () => {
+    addAnnotation(7, rect("longe", 1e18, 1e18), false);
+    act(() => useMarkup.getState().select(7, ["longe"]));
+    await run("edit.duplicate");
+    expect(getItems(7)).toHaveLength(4);
+  });
+
   it("Selecionar Tudo: com uma anotação selecionada, todas as da página; sem, a imagem", async () => {
     await run("edit.selectAll");
     expect(useSelection.getState().selection).not.toBeNull();

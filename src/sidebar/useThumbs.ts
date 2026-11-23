@@ -8,6 +8,7 @@ import { notifyError } from "../chrome/notify";
 import { hasUnsaved } from "../file/dirty";
 import type { DocId, DocInfo } from "../ipc/types";
 import { useDocs } from "../store/docs";
+import { useSelection } from "../store/selection";
 import { activate, closeDocs } from "../viewer/actions";
 import { registerDropHover, registerDropTarget } from "../viewer/fileDrop";
 import { dragItems, dragPlan, isOutside, startDragOut } from "./dragOut";
@@ -186,10 +187,17 @@ export function useThumbs({ list, area, layout, onOpen }: Options) {
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (ctrl && !e.shiftKey && key === "a") selectAllThumbs();
-    else if (ctrl && !e.shiftKey && key === "c") run(copyThumbs(selectedIds));
+    else if (ctrl && !e.shiftKey && key === "c") {
+      // Com seleção na imagem (à vista ao lado da barra), Editar › Copiar copia os pixels.
+      if (layout === "list" && useSelection.getState().selection) return false;
+      run(copyThumbs(selectedIds));
+    }
     else if (ctrl && !e.shiftKey && key === "v") run(pasteThumbs());
     else if (!ctrl && (key === "Delete" || key === "Backspace")) run(closeSelected());
-    else if (onOpen && !ctrl && key === "Enter") onOpen(idOf(document.activeElement) ?? activeId!);
+    else if (onOpen && !ctrl && key === "Enter") {
+      const id = idOf(document.activeElement) ?? activeId;
+      if (id !== null) onOpen(id);
+    }
     else if (layout === "grid" && key === " ") {
       const id = idOf(document.activeElement);
       if (id !== null) apply(selectionAfterClick(docs, activeId, cur(), id, { ctrl: true }));

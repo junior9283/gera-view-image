@@ -1,10 +1,10 @@
 // Ações do Lote 5 (Finder no Linux): Salvar Como, Mover para o Lixo, etiquetas, bloquear e versões.
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { notify } from "../chrome/notify";
 import { defaultOptions, EXTENSIONS, exportFormatOf, heicEncoder } from "../file/estimate";
 import { runBeforeSave } from "../file/beforeSave";
 import { hasUnsaved } from "../file/dirty";
 import { confirmLosses } from "../file/loss";
+import { save as saveDialog } from "../lib/dialogs";
 import { current, dirname, markChanged, settleKeywords, stem, warnLeftOut } from "../file/fileActions";
 import i18n from "../i18n";
 import { clearKeywords, getPendingKeywords } from "../inspector/keywords";
@@ -80,7 +80,7 @@ export async function saveAsActive(): Promise<void> {
 }
 
 /** Mover para o Lixo (Ctrl+Backspace): o ativo ou as miniaturas selecionadas. */
-export const moveActiveToTrash = () => trashDocs(selectedDocs().map((d) => d.id));
+export const moveActiveToTrash = () => trashDocs(selectedDocs().map((d) => d.id), { confirmMany: true });
 
 /** Lê do disco se o arquivo está bloqueado (e guarda no estado da interface). */
 export async function refreshLocked(id: DocId): Promise<boolean> {

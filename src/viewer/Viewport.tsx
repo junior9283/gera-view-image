@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { renderScreen } from "../ipc/commands";
 import type { DocInfo, Rect } from "../ipc/types";
-import { pageSize } from "../lib/pages";
+import { hasPages, pageSize } from "../lib/pages";
 import { useDocs } from "../store/docs";
 import { getPrefs, usePrefs, type Prefs } from "../store/prefs";
 import { useUi } from "../store/ui";
@@ -103,7 +103,7 @@ export function Viewport() {
   const animFrame = useAnimatedFrame(doc, page === null);
   const pixelRatio = usePixelRatio();
   const alt = useImageAlt(doc);
-  const unit = useZoomUnit(doc?.id, doc?.rev, pixelRatio);
+  const unit = useZoomUnit(doc?.id, doc?.rev, pixelRatio, hasPages(doc) ? (page ?? 0) : 0);
   const frame = page ?? animFrame;
   /** Tamanho da página mostrada (o da imagem, fora de um documento de várias páginas). */
   const img = useMemo(() => (doc ? pageSize(doc, page) : null), [doc, page]);
@@ -196,6 +196,8 @@ export function Viewport() {
         paint.current();
       } catch (e) {
         console.error("falha ao desenhar a imagem:", e);
+        // Quem espera esta revisão aparecer (a prévia do Ajustar Cor depois do OK) para de esperar.
+        if (canvas.current) canvas.current.dataset.failed = `${id}:${rev}`;
       }
     }, have ? 40 : 0);
     return () => clearTimeout(timer);

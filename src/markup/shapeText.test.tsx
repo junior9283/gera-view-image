@@ -17,7 +17,8 @@ import { resetHistoryForTests } from "./history";
 import { DEFAULT_FONT, DEFAULT_STYLE, deserialize, serialize, textBox, transformForOp, type Annotation, type Kind } from "./model";
 import { flattenToPng, render } from "./render";
 import { getItems, getSelected, resetMarkupForTests, useMarkup } from "./store";
-import { wrapText } from "./textLayout";
+import { wrapCached, wrapText } from "./textLayout";
+import { MAX_TEXT_CHARS, withText } from "./model";
 
 const info: DocInfo = {
   id: 7, path: "/a.png", name: "a.png", format: "png", width: 400, height: 300, frames: 1,
@@ -220,5 +221,28 @@ describe("modelo", () => {
     fireEvent.change(field, { target: { value: "Tchau" } });
     fireEvent.blur(field);
     expect(shape().text).toBe("Tchau");
+  });
+});
+
+describe("limites do texto", () => {
+  it("até 10 000 caracteres: o editor não aceita mais e o modelo corta o que vier de fora", () => {
+    expect(MAX_TEXT_CHARS).toBe(10_000);
+    open(SHAPES.rect);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).maxLength).toBe(MAX_TEXT_CHARS);
+    const long = "ação ".repeat(4000);
+    expect((withText(SHAPES.rect, long) as { text: string }).text).toHaveLength(MAX_TEXT_CHARS);
+    const t = withText({ id: "t", kind: "text", geom: { ...box, text: "" }, style }, long) as Extract<Annotation, { kind: "text" }>;
+    expect(t.geom.text).toHaveLength(MAX_TEXT_CHARS);
+  });
+
+  it("a quebra de linha é guardada por texto, largura e fonte (não refeita a cada desenho)", () => {
+    const measure = vi.fn((s: string) => s.length * 6);
+    const a = wrapCached("Olá, você não", 40, "10px sans", measure);
+    const n = measure.mock.calls.length;
+    expect(wrapCached("Olá, você não", 40, "10px sans", measure)).toBe(a);
+    expect(measure).toHaveBeenCalledTimes(n);
+    wrapCached("Olá, você não", 41, "10px sans", measure);
+    wrapCached("Olá, você não", 40, "12px sans", measure);
+    expect(measure.mock.calls.length).toBeGreaterThan(n * 2);
   });
 });

@@ -87,6 +87,10 @@ com a opção de recarregar.
 Os atalhos seguem os do Pré-Visualização com Cmd trocado por Ctrl. Diferenças: **Mostrar Barra de Marcação
 é Ctrl+Shift+M** (no macOS é Cmd+Shift+A, mas Ctrl+Shift+A conflita com convenções do Linux), **Ocultar
 Barra de Ferramentas é Ctrl+Shift+T** (Ctrl+Alt+T abre o terminal no GNOME e no KDE) e **Tela Cheia é F11**.
+**Alt+arrastar** (duplicar anotação, subtrair da seleção) pode não chegar ao app: em alguns ambientes (Xfce,
+MATE, Cinnamon, KDE Plasma 5 ou GNOME com a tecla de ação de janela trocada para Alt) o gerenciador de janelas usa
+Alt+arrastar para mover a janela. Troque essa tecla para Super nas configurações do sistema (GNOME: Ajustes ›
+Janelas › Tecla de ação da janela; KDE: Configurações do Sistema › Gerenciamento de janelas › Ações das janelas).
 **Alt** (ou F10) abre a barra de menus. A tabela abaixo é gerada de `src/shortcuts/keymap.ts`.
 
 <!-- atalhos:inicio (gerado por scripts/shortcuts-table.mjs) -->

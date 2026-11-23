@@ -14,6 +14,8 @@ import { annotationsFocused, getItems, getSelected, useMarkup } from "./store";
 
 /** Deslocamento da cópia, em px de tela. */
 const OFFSET_PX = 12;
+/** Voltas do deslocamento das cópias: com coordenadas enormes o passo some no arredondamento. */
+const MAX_OFFSETS = 1000;
 
 /** Documento ativo com anotações selecionadas (o Copiar, Recortar e Apagar são delas), ou `null`. */
 export function focusedDoc(): DocId | null {
@@ -54,7 +56,9 @@ function insert(id: DocId, items: Annotation[]): void {
   const step = OFFSET_PX / (useUi.getState().view?.scale ?? 1);
   const taken = pageItems(id).map(bounds);
   let group = cloneItems(id, items);
-  while (taken.some((b) => sameBox(b, bounds(group[0])))) group = group.map((a) => translate(a, step, step));
+  for (let n = 0; n < MAX_OFFSETS && taken.some((b) => sameBox(b, bounds(group[0]))); n++) {
+    group = group.map((a) => translate(a, step, step));
+  }
   const box = normBox(unionBox(group));
   // Veio de uma imagem (ou página) maior e ficaria fora desta: vai para o centro.
   const { w, h } = shownSize(doc);

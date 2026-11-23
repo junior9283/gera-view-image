@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocInfo } from "../ipc/types";
 
 const invoke = vi.fn();
@@ -30,6 +30,8 @@ beforeEach(() => {
   resetUiForTests();
   resetUnsavedForTests();
 });
+// Mesmo com o teste falhando no meio, as outras janelas não vazam para o seguinte.
+afterEach(() => resetTabsForTests());
 
 describe("navegação entre os abertos", () => {
   beforeEach(() => {
@@ -66,6 +68,46 @@ describe("navegação entre os abertos", () => {
     await actions.next();
     expect(active()).toBe(2);
     await actions.next();
+    expect(active()).toBe(3);
+  });
+});
+
+describe("páginas de um TIFF (←/→, PgUp/PgDn)", () => {
+  const tiff = (id: number) => info(id, { format: "tiff", frames: 3, pageSizes: [[40, 30], [50, 60], [70, 80]] });
+  const page = () => useUi.getState().page;
+
+  beforeEach(() => {
+    useDocs.getState().add([info(1), tiff(2), info(3)]);
+    actions.activate(2);
+  });
+
+  it("anda pelas páginas e, na última, passa para a imagem seguinte", async () => {
+    await actions.nextPage();
+    expect([active(), page()]).toEqual([2, 1]);
+    await actions.nextPage();
+    expect([active(), page()]).toEqual([2, 2]);
+    await actions.nextPage();
+    expect([active(), page()]).toEqual([3, null]);
+  });
+
+  it("voltando, a imagem anterior de várias páginas abre na última", async () => {
+    await actions.prevPage();
+    expect([active(), page()]).toEqual([1, null]);
+    await actions.nextPage();
+    expect([active(), page()]).toEqual([2, null]);
+    actions.activate(3);
+    await actions.prevPage();
+    expect([active(), page()]).toEqual([2, 2]);
+    await actions.prevPage();
+    expect([active(), page()]).toEqual([2, 1]);
+  });
+
+  it("imagem de uma página só (ou animação): troca de imagem como ↑/↓", async () => {
+    actions.activate(1);
+    await actions.nextPage();
+    expect(active()).toBe(2);
+    useDocs.getState().update({ ...tiff(2), delaysMs: [100, 100, 100] });
+    await actions.nextPage();
     expect(active()).toBe(3);
   });
 });
@@ -116,7 +158,6 @@ describe("navegação na pasta", () => {
     expect(invoke.mock.calls.filter(([c]) => c === "focus_open_paths").every(([, a]) => a.focus === false)).toBe(true);
     await actions.prev();
     expect(ids()).toEqual([10]);
-    resetTabsForTests();
   });
 
   it("todos os vizinhos em outras janelas: fica onde está", async () => {
@@ -126,7 +167,6 @@ describe("navegação na pasta", () => {
     useDocs.getState().add([info(1, { path: "/pasta/1.png" })]);
     await actions.next();
     expect(ids()).toEqual([1]);
-    resetTabsForTests();
   });
 
   it("na ponta da pasta não faz nada", async () => {
