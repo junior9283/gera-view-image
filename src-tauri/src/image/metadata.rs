@@ -223,8 +223,9 @@ fn gps_of(exif: &exif::Exif) -> Option<Gps> {
         exif.get_field(Tag::GPSAltitudeRef, In::PRIMARY).map(|f| &f.value),
         Some(Value::Byte(b)) if b.first() == Some(&1)
     );
-    let alt = match &exif.get_field(Tag::GPSAltitude, In::PRIMARY)?.value {
-        Value::Rational(v) => v.first().map(|r| r.to_f64()),
+    // A altitude é opcional: sem ela a localização continua valendo.
+    let alt = match exif.get_field(Tag::GPSAltitude, In::PRIMARY).map(|f| &f.value) {
+        Some(Value::Rational(v)) => v.first().map(|r| r.to_f64()),
         _ => None,
     }
     .filter(|a| a.is_finite())

@@ -2,6 +2,11 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Foto com GPS sem altitude aparecia como "Sem dados de localização" (antes da 0.5.0)
+- **Sintoma:** fotos com latitude e longitude, mas sem `GPSAltitude` (comum em celulares e editores), não mostravam o mapa no Inspetor.
+- **Causa:** `gps_of` usava `?` na altitude, que é opcional.
+- **Correção:** a altitude vira `None` quando falta. **Teste:** `gps_sem_altitude_ainda_tem_localizacao` (`tests/metadata.rs`).
+
 ## Scanner de rede hostil sem teto de saída (auditoria final do backend, P2)
 - **Sintoma:** um dispositivo eSCL/sane-airscan anunciado pelo mDNS podia escrever sem parar na saída do `scanimage` (o disco enchia) e o arquivo era lido inteiro com `std::fs::read`; qualquer formato que o decodificador aceitasse virava documento.
 - **Causa:** o laço do `Scans::run` só olhava o tempo; `scan_image` usava `decode::decode` (sem teto e por extensão/assinatura de qualquer formato).

@@ -36,6 +36,17 @@ fn metadata_jpeg_exif() {
 }
 
 #[test]
+fn gps_sem_altitude_ainda_tem_localizacao() {
+    // Muitas câmeras e celulares gravam só latitude e longitude.
+    let mut t = make_fixtures::exif_tiff_gps();
+    let alt = (8..t.len() - 1).find(|&i| t[i..i + 4] == [6, 0, 5, 0]).expect("entrada GPSAltitude");
+    t[alt] = 0xFF; // vira etiqueta desconhecida (ordem crescente mantida)
+    let gps = parse_blocks(b"", Some(&t)).gps.expect("lat/lon sem altitude");
+    assert!((gps.lat - 48.858333).abs() < 1e-5, "lat {}", gps.lat);
+    assert_eq!(gps.alt, None);
+}
+
+#[test]
 fn png_sem_exif_retorna_vazio() {
     let m = meta("alpha.png");
     assert!(m.exif.is_empty());

@@ -50,6 +50,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Arquivo › Abrir Recente: o app não guarda mais a lista de arquivos abertos, e a lista antiga é apagada das preferências.
 
 ### Corrigido
+- Inspetor: fotos com latitude e longitude mas sem altitude mostram a localização (antes apareciam como "Sem dados de localização").
 - Importar do Scanner: um scanner (de rede ou não) que mande dados sem parar é interrompido em 1 GiB, e só uma imagem PNG é aceita; antes o arquivo crescia até encher o disco e era lido inteiro na memória. Uma digitalização que sobrou de uma sessão anterior que caiu não impede mais a próxima ("File exists"), a pasta temporária não segue um link plantado no lugar dela e reiniciar pelo atualizador também encerra o scanner e apaga os temporários.
 - Privacidade: editar as palavras-chave tira do EXIF também o `XPKeywords` antigo (as "Marcas" do Windows), e editar a descrição tira o `XPSubject`; antes o valor antigo continuava no arquivo, inclusive nas gravações seguintes.
 - Abrir arquivos pelo gerenciador de arquivos muitas vezes seguidas não cria mais uma thread por pedido: os pedidos entram numa fila curta (o excesso é descartado). Uma imagem recém-aberta não pode mais ser tomada por outra janela antes de chegar à dela, e mover abas ou copiar anotações com dados grandes demais é recusado em vez de ocupar memória sem limite.
