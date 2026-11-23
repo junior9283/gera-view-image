@@ -2,6 +2,13 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Farbfeld e PNM de 16 bits ocupavam 3 vezes a memória estimada (rodada 3, antes de publicar)
+- **Sintoma (revisão):** um `.ff` de 16384×16384 passava na conta e chegava a ~3 GiB, acima do teto de decodificação.
+- **Causa:** `read_image` e `estimate_bytes` contavam só o RGBA8 final (4 B/px); o buffer de 16 bits fica vivo junto dele.
+- **Correção:** `read_image` soma o buffer decodificado (salvo RGBA8/RGB8) e `estimate_bytes` conta 12 B/px para Farbfeld e PNM com `maxval` > 255.
+- **Teste:** `dezesseis_bits_contam_a_memoria_de_trabalho` (`tests/formatos.rs`).
+- **Lição:** o teto de memória vale para o pico, não para o resultado.
+
 ## Apagar e Recortar do menu agiam na imagem com anotação selecionada (rodada 3)
 - **Sintoma:** com uma anotação selecionada e uma seleção na imagem, Editar › Apagar ou Recortar apagava pixels da imagem; sem seleção, ficavam desabilitados.
 - **Causa:** os comandos de edição só conheciam a seleção da imagem; só a tecla Delete, tratada na camada de Marcação, chegava às anotações.

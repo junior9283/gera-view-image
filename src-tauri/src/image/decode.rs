@@ -113,6 +113,9 @@ pub fn estimate_bytes(path: &Path, bytes: &[u8]) -> usize {
         // PQ/HLG: RGBA16 de trabalho (e, no HEIF, o plano de 16 bits) antes do RGBA8.
         Some(SourceFormat::Png) if matches!(cicp::png_color(bytes), Some(cicp::Color::Hdr(..))) => 12,
         Some(SourceFormat::Heic | SourceFormat::Avif) if cicp::isobmff_is_hdr(bytes) => 20,
+        // 16 bits por canal (Farbfeld sempre): o RGBA16 vivo junto do RGBA8.
+        Some(SourceFormat::Farbfeld) => 12,
+        Some(SourceFormat::Pnm) if pnm_maxval(bytes).is_some_and(|m| m > 255) => 12,
         _ => 4,
     };
     let est = if format == Some(SourceFormat::Raw) {
@@ -123,6 +126,28 @@ pub fn estimate_bytes(path: &Path, bytes: &[u8]) -> usize {
             .unwrap_or(by_file)
     };
     est.min(MAX_DECODE_BYTES)
+}
+
+/// `maxval` do cabeçalho PNM (P2/P3/P5/P6, ou `MAXVAL` do PAM); bitmaps (P1/P4) valem 1.
+fn pnm_maxval(bytes: &[u8]) -> Option<u32> {
+    let head = &bytes[..bytes.len().min(1024)];
+    let mut words = head
+        .split(|&b| b == b'\n' || b == b'\r')
+        .flat_map(|line| {
+            let line = line.split(|&b| b == b'#').next().unwrap_or_default();
+            line.split(|b| b.is_ascii_whitespace()).filter(|w| !w.is_empty())
+        });
+    let num = |w: &[u8]| std::str::from_utf8(w).ok()?.parse::<u32>().ok();
+    match words.next()? {
+        b"P1" | b"P4" => Some(1),
+        b"P2" | b"P3" | b"P5" | b"P6" => words.nth(2).and_then(num),
+        b"P7" => {
+            let mut words = words.skip_while(|w| *w != b"MAXVAL");
+            words.next()?;
+            words.next().and_then(num)
+        }
+        _ => None,
+    }
 }
 
 /// Maior largura x altura entre os IFDs de um RAW baseado em TIFF (DNG, NEF, ARW, CR2...),
@@ -391,7 +416,13 @@ fn read_image(bytes: &[u8], fmt: ImageFormat) -> AppResult<Raw> {
     let icc = dec.icc_profile().ok().flatten();
     let exif = dec.exif_metadata().ok().flatten();
     let (w, h) = dec.dimensions();
-    check_budget(w, h, 0)?;
+    // O buffer decodificado (16 bits, cinza...) fica vivo junto do RGBA8 final; RGBA8 é o próprio, e
+    // RGB8 é expandido no lugar (`into_rgba`).
+    let decoded = match dec.color_type() {
+        image::ColorType::Rgba8 | image::ColorType::Rgb8 => 0,
+        _ => usize::try_from(dec.total_bytes()).unwrap_or(usize::MAX),
+    };
+    check_budget(w, h, decoded)?;
     let mut img = DynamicImage::from_decoder(dec)?;
     img.apply_orientation(orientation);
     Ok((img, icc, exif))

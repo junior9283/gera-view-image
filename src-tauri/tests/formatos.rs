@@ -326,6 +326,26 @@ fn dds_e_farbfeld() {
     assert!(matches!(decode_bytes(Path::new("g.ff"), &ff), Err(AppError::Unsupported(_))));
 }
 
+#[test]
+fn dezesseis_bits_contam_a_memoria_de_trabalho() {
+    // Farbfeld (sempre 16 bits) e PNM com maxval > 255: o buffer de 16 bits fica vivo junto do
+    // RGBA8 final (~12 B/px). 15000² passa na conta de 4 B/px, mas não na real.
+    let mut ff = b"farbfeld".to_vec();
+    for v in [15_000u32, 15_000] {
+        ff.extend(v.to_be_bytes());
+    }
+    let grande = |r: Result<_, AppError>| matches!(r, Err(AppError::Unsupported(m)) if m.contains("grande demais"));
+    assert!(grande(decode_bytes(Path::new("g.ff"), &ff)), "farbfeld recusado antes de alocar");
+    assert!(grande(decode_bytes(Path::new("g.ppm"), b"P6\n15000 15000\n65535\n")), "ppm de 16 bits");
+    assert!(!grande(decode_bytes(Path::new("p.ppm"), b"P6\n15000 15000\n255\n")), "ppm de 8 bits continua na conta de 4 B/px");
+    let mut ff16 = b"farbfeld".to_vec();
+    for v in [16u32, 16] {
+        ff16.extend(v.to_be_bytes());
+    }
+    assert_eq!(estimate_bytes(Path::new("a.ff"), &ff16), 16 * 16 * 12);
+    assert_eq!(estimate_bytes(Path::new("a.ppm"), b"P6\n16 16\n65535\n"), 16 * 16 * 12);
+}
+
 // ---------- ICNS ----------
 
 fn icns(itens: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
