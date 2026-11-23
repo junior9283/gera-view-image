@@ -50,6 +50,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Arquivo › Abrir Recente: o app não guarda mais a lista de arquivos abertos, e a lista antiga é apagada das preferências.
 
 ### Corrigido
+- Importar do Scanner: um scanner (de rede ou não) que mande dados sem parar é interrompido em 1 GiB, e só uma imagem PNG é aceita; antes o arquivo crescia até encher o disco e era lido inteiro na memória. Uma digitalização que sobrou de uma sessão anterior que caiu não impede mais a próxima ("File exists"), a pasta temporária não segue um link plantado no lugar dela e reiniciar pelo atualizador também encerra o scanner e apaga os temporários.
+- Privacidade: editar as palavras-chave tira do EXIF também o `XPKeywords` antigo (as "Marcas" do Windows), e editar a descrição tira o `XPSubject`; antes o valor antigo continuava no arquivo, inclusive nas gravações seguintes.
+- Abrir arquivos pelo gerenciador de arquivos muitas vezes seguidas não cria mais uma thread por pedido: os pedidos entram numa fila curta (o excesso é descartado). Uma imagem recém-aberta não pode mais ser tomada por outra janela antes de chegar à dela, e mover abas ou copiar anotações com dados grandes demais é recusado em vez de ocupar memória sem limite.
 - Editar › Apagar e Recortar agiam na imagem mesmo com uma anotação selecionada.
 - TIFF com resolução sem unidade (só a proporção) não é mais lido como 1 ppp, o que fazia as páginas impressas e em PDF terem metros de lado.
 - Em documentos de várias páginas (TIFF), cada anotação pertence à página em que foi feita: aparece, é editada, impressa, exportada em PDF e achatada só nela. Antes era carimbada em todas. Exportar, Salvar Como e Copiar usam a página exibida (o Exportar diz qual); as anotações das outras páginas continuam editáveis e não salvas, com aviso, e Duplicar as leva para a cópia. Em GIF e WebP animados continua valendo para todos os quadros.

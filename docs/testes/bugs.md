@@ -2,6 +2,25 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## Scanner de rede hostil sem teto de saída (auditoria final do backend, P2)
+- **Sintoma:** um dispositivo eSCL/sane-airscan anunciado pelo mDNS podia escrever sem parar na saída do `scanimage` (o disco enchia) e o arquivo era lido inteiro com `std::fs::read`; qualquer formato que o decodificador aceitasse virava documento.
+- **Causa:** o laço do `Scans::run` só olhava o tempo; `scan_image` usava `decode::decode` (sem teto e por extensão/assinatura de qualquer formato).
+- **Correção:** o laço confere o tamanho do arquivo de saída a cada 40 ms e mata o grupo acima de `MAX_SCAN_BYTES` (1 GiB: um A4 em 1200 ppp com 16 bits por canal tem ~840 MB crus); a leitura (`read_png`) também tem o teto e só aceita `detect_format == Png`. De quebra: a pasta `scan/<pid>` herdada de um processo antigo com o mesmo pid começa vazia (`drag::fresh_temp`), `private_dir` abre a pasta com `O_NOFOLLOW` e corrige a permissão pelo descritor (link plantado = erro) e a limpeza da saída também roda quando o Tauri esvazia a tabela de recursos (`commands::OnDrop`), caminho do reinício do atualizador que pula o `RunEvent::Exit`.
+- **Teste:** `saida_sem_fim_e_interrompida_no_teto`, `png_acima_do_teto_que_terminou_antes_da_olhada_e_recusado`, `saida_que_nao_e_png_e_recusada`, `cancelar_mata_o_grupo_inteiro_com_o_neto`, `link_plantado_no_lugar_da_saida_nao_e_seguido` (`commands/scan.rs`, `scanimage` falso com `fake:flood`, `fake:jpeg` e `fake:tree`); `pasta_do_proprio_pid_herdada_comeca_vazia`, `pasta_privada_nao_segue_link_plantado` (`commands/drag.rs`); `limpeza_roda_quando_a_tabela_de_recursos_e_esvaziada` (`commands/mod.rs`).
+- **Lição:** processo externo que fala com a rede é entrada hostil também no tamanho; teto no laço que espera e teto na leitura.
+
+## XPKeywords e XPSubject antigos ficavam no EXIF (auditoria final do backend, P3, privacidade)
+- **Sintoma:** trocar as palavras-chave (ou a descrição) gravava as novas no IPTC/XMP, mas o `XPKeywords` (0x9C9E) e o `XPSubject` (0x9C9F) do IFD0, que o Windows mostra como "Marcas" e "Assunto", continuavam com o valor antigo, também nas gravações seguintes.
+- **Causa:** `scrub_texts` (`image/metaedit.rs`) só conhecia XPTitle, XPComment e XPAuthor; as palavras-chave nem chegavam ao conjunto de limpeza.
+- **Correção:** descrição editada tira `XPSubject`; palavras-chave editadas (`MetaCarry::exif_keywords`) tiram `XPKeywords`, e o `DocStore` guarda que já as gravou (`keywords_written`, herdado no Duplicar e trocado com a origem como os outros marcadores).
+- **Teste:** `exif_perde_xpkeywords_e_xpsubject_antigos` (`image/metaedit.rs`), `palavras_chave_e_descricao_editadas_tiram_xpkeywords_e_xpsubject_do_exif` (`tests/inspetor.rs`: Salvar, 2º Salvar sem edição, Exportar e Duplicar).
+- **Lição:** cada campo editável tem cópias em vários blocos; a lista de cópias a limpar acompanha a lista de campos.
+
+## Posse de documento sem dono e entradas sem teto (auditoria final do backend, P3)
+- **Sintoma:** `WindowRegistry::access` dava o documento sem dono à primeira janela que o usasse: entre criar e `claimed`, outra janela (com XSS) podia tomá-lo. `on_second_instance` criava uma thread por mensagem D-Bus; `copy_annotations` decodificava o PNG sem o teto de memória; o `state` de `new_window`/`move_documents` não tinha teto.
+- **Correção:** `access` só aceita a dona (só `claim` dá posse); uma thread de trabalho com fila de 16 (`instance::Worker`, excesso descartado com log); `annotations_image` lê as dimensões e passa por `check_budget` antes de alocar; `transfer` recusa `state` acima de 64 MiB (`MAX_STATE`, o mesmo teto das anotações copiadas).
+- **Teste:** `documento_sem_dono_nao_e_de_ninguem`, `estado_grande_demais_nao_entra_na_caixa` (`doc/windows.rs`), `pedidos_vao_para_uma_thread_so_com_fila_limitada`, `tetos_de_quantidade_e_tamanho` (agora com caminho que existe) (`commands/instance.rs`), `desenho_das_anotacoes_respeita_o_teto_antes_de_alocar` (`commands/paste.rs`).
+
 ## E2E "Exportar para WebP cria o arquivo" falhava no CI desde o Abrir Recente em submenu (rodada 3)
 - **Sintoma:** "item de menu não encontrado: Abrir Recente / Open Recent" (mesmo esperando 5 s) e, depois, `invalid session id`.
 - **Causa:** b990ba7 pôs `overflow: hidden; text-overflow: ellipsis` no `.menu-label`; com isso o `getText` do WebKitWebDriver devolve `""` para todos os itens (o menu estava aberto e os rótulos no DOM). O `invalid session id` vinha da consulta do `waitUntil` ainda pendente quando a sessão fechou; o app não caiu nem fechou a janela.
