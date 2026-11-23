@@ -52,6 +52,12 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
 - **Instância única.** O app segura `io.github.junior9283.geraviewimage.SingleInstance` no barramento de sessão:
   com o app do usuário aberto (ou outro E2E rodando) no mesmo barramento, a execução do teste entrega os arquivos
   à outra e sai na hora (o WebDriver perde a sessão). Rode cada E2E com o próprio `dbus-run-session`.
+- **`getText` devolve `""` em elemento com `overflow: hidden`** (WebKitWebDriver). O `.menu-label` tem
+  reticências (`overflow: hidden; text-overflow: ellipsis`): o texto está na tela, mas o `getText` volta vazio.
+  Leia `getProperty("textContent")` e confira `isDisplayed()` à parte. Um `waitUntil` que ainda está consultando
+  quando o teste falha gera um `invalid session id` depois do erro real: é efeito do fim da sessão, não queda do app.
+- **Rodar o E2E local isolado:** sem `http_proxy`/`https_proxy` no ambiente (o WebKitWebDriver passa pelo proxy para
+  falar com o inspetor do WebView e a criação da sessão estoura o tempo) e com `NO_AT_BRIDGE=1`.
 - **Portas.** Execuções paralelas colidem na 4444 do WebKitWebDriver: use `GVI_E2E_PORT` (4445/4446/4447; as
   capturas usam 4448).
 - **Movimentos do WebKitWebDriver depois do `down` chegam com coordenadas erradas** (e `origin: elemento` é

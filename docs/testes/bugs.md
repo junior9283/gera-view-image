@@ -2,6 +2,13 @@
 
 Formato: sintoma, causa, correção, teste, lição.
 
+## E2E "Exportar para WebP cria o arquivo" falhava no CI desde o Abrir Recente em submenu (rodada 3)
+- **Sintoma:** "item de menu não encontrado: Abrir Recente / Open Recent" (mesmo esperando 5 s) e, depois, `invalid session id`.
+- **Causa:** b990ba7 pôs `overflow: hidden; text-overflow: ellipsis` no `.menu-label`; com isso o `getText` do WebKitWebDriver devolve `""` para todos os itens (o menu estava aberto e os rótulos no DOM). O `invalid session id` vinha da consulta do `waitUntil` ainda pendente quando a sessão fechou; o app não caiu nem fechou a janela.
+- **Correção:** o helper `menuItem` (`e2e/specs/file.e2e.ts`) lê `textContent` e exige o item visível. O Abrir Recente saiu do app; o spec reabre o arquivo por uma segunda execução do binário (instância única), que chega ao `open_documents` como o Abrir.
+- **Teste:** o próprio `file.e2e.ts`; o diagnóstico (rótulos vazios pelo `getText`, cheios pelo `innerText`, e o `getText` volta com `overflow: visible`) está em `armadilhas.md`.
+- **Lição:** no E2E, não dependa do `getText` para achar elemento por texto: CSS de apresentação muda o resultado.
+
 ## Duplicar anotação com coordenada enorme travava a janela (limpeza final)
 - **Sintoma:** colar ou duplicar uma anotação em x/y ≈ 1e18 deixava a interface parada.
 - **Causa:** o laço que desloca a cópia até não cair em cima de uma igual somava 12 px que se perdiam no arredondamento do `double`: a caixa nunca mudava.
