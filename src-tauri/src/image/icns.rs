@@ -12,6 +12,8 @@ use std::path::Path;
 const MAX_SIDE: usize = 2048;
 /// Elementos lidos de um arquivo (um ícone real tem perto de 20).
 const MAX_ELEMENTS: usize = 256;
+/// Ícones tentados, do maior para o menor: cada quebrado custa uma decodificação.
+const MAX_TRIES: usize = 3;
 
 /// Lado em pixels e, nos clássicos de 24 bits, o tipo da máscara. `None` = não é imagem colorida.
 fn side_of(kind: &[u8]) -> Option<(usize, Option<&'static [u8; 4]>)> {
@@ -61,6 +63,7 @@ pub fn decode(bytes: &[u8]) -> AppResult<Decoded> {
     icons.sort_by_key(|&(side, ..)| std::cmp::Reverse(side));
     icons
         .into_iter()
+        .take(MAX_TRIES)
         .find_map(|(side, mask, data)| match mask {
             None => embedded(data).or_else(|| argb(data, side)),
             Some(m) => {
