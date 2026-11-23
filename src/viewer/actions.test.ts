@@ -70,6 +70,46 @@ describe("navegação entre os abertos", () => {
   });
 });
 
+describe("páginas de um TIFF (←/→, PgUp/PgDn)", () => {
+  const tiff = (id: number) => info(id, { format: "tiff", frames: 3, pageSizes: [[40, 30], [50, 60], [70, 80]] });
+  const page = () => useUi.getState().page;
+
+  beforeEach(() => {
+    useDocs.getState().add([info(1), tiff(2), info(3)]);
+    actions.activate(2);
+  });
+
+  it("anda pelas páginas e, na última, passa para a imagem seguinte", async () => {
+    await actions.nextPage();
+    expect([active(), page()]).toEqual([2, 1]);
+    await actions.nextPage();
+    expect([active(), page()]).toEqual([2, 2]);
+    await actions.nextPage();
+    expect([active(), page()]).toEqual([3, null]);
+  });
+
+  it("voltando, a imagem anterior de várias páginas abre na última", async () => {
+    await actions.prevPage();
+    expect([active(), page()]).toEqual([1, null]);
+    await actions.nextPage();
+    expect([active(), page()]).toEqual([2, null]);
+    actions.activate(3);
+    await actions.prevPage();
+    expect([active(), page()]).toEqual([2, 2]);
+    await actions.prevPage();
+    expect([active(), page()]).toEqual([2, 1]);
+  });
+
+  it("imagem de uma página só (ou animação): troca de imagem como ↑/↓", async () => {
+    actions.activate(1);
+    await actions.nextPage();
+    expect(active()).toBe(2);
+    useDocs.getState().update({ ...tiff(2), delaysMs: [100, 100, 100] });
+    await actions.nextPage();
+    expect(active()).toBe(3);
+  });
+});
+
 describe("navegação na pasta", () => {
   let folder: string[];
 

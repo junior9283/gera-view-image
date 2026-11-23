@@ -6,7 +6,9 @@ import { registerCommand, runCommand } from "../shortcuts/commands";
 import { isTyping } from "../shortcuts/keymap";
 import { useDocs } from "../store/docs";
 import { getPrefs, setPrefs } from "../store/prefs";
-import { activeDoc, closeDocs, viewable } from "./actions";
+import { hasPages } from "../lib/pages";
+import { useUi } from "../store/ui";
+import { activeDoc, closeDocs, nextPage, prevPage, viewable } from "./actions";
 import { back, canBack, canForward, forward, installHistory } from "./history";
 import { Magnifier, toggleMagnifier } from "./Magnifier";
 
@@ -35,4 +37,18 @@ window.addEventListener("keydown", (e) => {
   if (document.querySelector('[aria-modal="true"]')) return;
   const grave = (e.code === "BracketLeft" && e.shiftKey) || (e.code === "Backquote" && !e.shiftKey);
   if (grave && runCommand("tools.magnifier")) e.preventDefault();
+});
+
+/**
+ * ←/→ e PgUp/PgDn num TIFF de várias páginas trocam de página (↑/↓ continuam trocando de imagem, pelo
+ * keymap). Antes do `useShortcuts`; quem já tratou a tecla (seleção parcial, anotação, miniaturas) vence.
+ */
+const PAGE_KEYS: Record<string, 1 | -1> = { ArrowRight: 1, PageDown: 1, ArrowLeft: -1, PageUp: -1 };
+window.addEventListener("keydown", (e) => {
+  const dir = PAGE_KEYS[e.key];
+  if (!dir || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || isTyping(e.target)) return;
+  const { slideshow, sidebar } = useUi.getState();
+  if (slideshow || sidebar === "contact" || !hasPages(activeDoc()) || document.querySelector('[aria-modal="true"]')) return;
+  e.preventDefault();
+  void (dir > 0 ? nextPage() : prevPage());
 });
