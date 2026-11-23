@@ -20,7 +20,7 @@ async function spread(docs: DocInfo[]): Promise<void> {
 }
 
 /** Mostra os documentos recém-abertos; `before` são os que a janela já tinha. */
-export async function placeOpened(infos: DocInfo[], before: DocId[]): Promise<void> {
+async function placeOpened(infos: DocInfo[], before: DocId[]): Promise<void> {
   if (getPrefs().openFilesIn === "windows") {
     const fresh = infos.filter((d) => !before.includes(d.id) && !d.error);
     await spread(before.length ? fresh : fresh.slice(1));

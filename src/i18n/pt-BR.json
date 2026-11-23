@@ -461,7 +461,6 @@
       "title": "Arquivo",
       "newFromClipboard": "Novo da Área de Transferência",
       "open": "Abrir…",
-      "openRecent": "Abrir Recente",
       "close": "Fechar",
       "save": "Salvar",
       "duplicate": "Duplicar",
@@ -491,8 +490,7 @@
       "share": "Compartilhar",
       "shareEmail": "E-mail…",
       "shareDevice": "KDE Connect…",
-      "importScanner": "Importar do Scanner…",
-      "clearMenu": "Limpar Menu"
+      "importScanner": "Importar do Scanner…"
     },
     "edit": {
       "title": "Editar",
@@ -783,9 +781,6 @@
       "name": "Novo nome",
       "ok": "Renomear",
       "cancel": "Cancelar"
-    },
-    "recent": {
-      "missing": "“{{name}}” não foi encontrado e saiu dos recentes."
     },
     "disk": {
       "changed": "O arquivo “{{name}}” foi alterado fora do app.",

@@ -9,7 +9,7 @@ export type AnnotateKind = (typeof ANNOTATE_KINDS)[number];
 
 export const COMMAND_IDS = [
   // Arquivo
-  "file.newFromClipboard", "file.open", "file.openRecent", "file.close", "file.save", "file.duplicate",
+  "file.newFromClipboard", "file.open", "file.close", "file.save", "file.duplicate",
   "file.rename", "file.moveTo", "file.showInFolder", "file.revertLastSaved", "file.revertOriginal", "file.export",
   "file.exportSelected", "file.captureSelection", "file.captureWindow", "file.captureScreen", "file.print",
   "file.openWith", "file.quit",

@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { basename, dirname, openRecent } from "../file/fileActions";
 import * as ipc from "../ipc/commands";
 import { useWindowEvent } from "../lib/events";
 import { windowLabel } from "../lib/window";
 import { commandState, commandStates, subscribeCommandState, type CommandState } from "../shortcuts/commandState";
 import { COMMAND_IDS, commandsVersion, isEnabled, runCommand, type CommandId } from "../shortcuts/commands";
-import { OPEN_RECENT_EVENT } from "../shortcuts/events";
 import { subscribeEnabled } from "../shortcuts/useEnabled";
 import { KEYMAP, formatShortcut } from "../shortcuts/keymap";
-import { setPrefs, usePrefs } from "../store/prefs";
 import { useTabs } from "../tabs/store";
 import { useDynamicMenu } from "./dynamicMenus";
 import { MENUS, type MenuItem } from "./menus";
@@ -20,8 +17,6 @@ import { notifyError } from "./notify";
 export interface ActionItem {
   text: string;
   run: () => void;
-  /** Dica (caminho do arquivo recente). */
-  title?: string;
   /** Texto à direita (no lugar do atalho). */
   hint?: string;
   disabled?: boolean;
@@ -41,28 +36,12 @@ const enabled = (i: Entry): boolean =>
 /** Ajuda › Pesquisar (Ctrl+?): abre o menu Ajuda com o foco no campo de busca. */
 export const HELP_SEARCH_EVENT = "gvi:help-search";
 const HELP = MENUS.findIndex((m) => m.label === "menu.help.title");
-const FILE = MENUS.findIndex((m) => m.label === "menu.file.title");
 const WINDOW = MENUS.findIndex((m) => m.label === "menu.window.title");
-
-const isRecent = (it: MenuItem) => "command" in it && it.command === "file.openRecent";
-/** Linha do Abrir Recente no menu Arquivo. */
-const RECENT_ROW = MENUS[FILE].items.filter((it) => !("separator" in it)).findIndex(isRecent);
 
 /** O menu aberto acompanha a habilitação e o estado (✓, Mostrar/Ocultar) dos comandos. */
 function subscribeMenu(l: () => void): () => void {
   const offs = [subscribeEnabled(l), subscribeCommandState(l)];
   return () => offs.forEach((off) => off());
-}
-
-/** Arquivo › Abrir Recente ▸: os arquivos (com a pasta, se o nome se repete) e Limpar Menu. */
-function recentItems(paths: string[], clear: string): ListItem[] {
-  const names = paths.map(basename);
-  const files = paths.map((p, i) => ({
-    text: names.indexOf(names[i]) === names.lastIndexOf(names[i]) ? names[i] : `${names[i]} — ${basename(dirname(p)) || "/"}`,
-    title: p,
-    run: () => void openRecent(p).catch(notifyError),
-  }));
-  return [...files, { separator: true }, { text: clear, disabled: !paths.length, run: () => setPrefs({ recent: [] }) }];
 }
 
 /** ✓ e rótulo atuais do item. */
@@ -81,8 +60,6 @@ interface ListProps {
   /** 0 = menu da barra; >0 = submenu. */
   level: number;
   autoFocus: boolean;
-  /** Linha cujo submenu já abre, com o foco nele. */
-  openRow?: number;
   onRun: (id: CommandId) => void;
   /** Fecha esta lista (no submenu, volta ao item pai). */
   onClose: () => void;
@@ -93,18 +70,18 @@ interface ListProps {
 }
 
 /** Lista de menu acessível (também usada pelo botão Compartilhar da barra de ferramentas). */
-export function MenuList({ label, menuKey, items: fixed, header, level, autoFocus, openRow, onRun, onClose, onCloseAll, onSwitch }: ListProps) {
+export function MenuList({ label, menuKey, items: fixed, header, level, autoFocus, onRun, onClose, onCloseAll, onSwitch }: ListProps) {
   const { t } = useTranslation();
   const ul = useRef<HTMLUListElement>(null);
-  const [sub, setSub] = useState<{ index: number; focus: boolean } | null>(openRow === undefined ? null : { index: openRow, focus: true });
+  const [sub, setSub] = useState<{ index: number; focus: boolean } | null>(null);
   const dynamic = useDynamicMenu(menuKey);
   // Só os submenus de `menus.ts` têm `menuKey`: os itens são `MenuItem`.
   const items = dynamic ? dynamic.build(fixed as MenuItem[]) : fixed;
   useEffect(() => dynamic?.onOpen?.(), [dynamic]);
 
   useEffect(() => {
-    if (autoFocus && openRow === undefined && ul.current) rows(ul.current)[0]?.focus();
-  }, [autoFocus, openRow]);
+    if (autoFocus && ul.current) rows(ul.current)[0]?.focus();
+  }, [autoFocus]);
 
   const activate = (it: Entry, index: number, focus: boolean) => {
     if (!enabled(it)) return;
@@ -170,7 +147,7 @@ export function MenuList({ label, menuKey, items: fixed, header, level, autoFocu
             aria-haspopup={it.submenu ? "menu" : undefined}
             aria-expanded={it.submenu ? sub?.index === i : undefined}
             className="menu-item"
-            title={isAction(it) ? it.title : state.title && t(state.title)}
+            title={!isAction(it) && state.title ? t(state.title) : undefined}
             onMouseEnter={() => setSub(it.submenu && on ? { index: i, focus: false } : null)}
             onClick={(e) => {
               e.stopPropagation();
@@ -271,16 +248,12 @@ export function MenuBar() {
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
 
-  /** Abriu pelo comando Abrir Recente: já no submenu. */
-  const [atRecent, setAtRecent] = useState(false);
-
-  const show = (i: number, recentOpen = false) => {
+  const show = (i: number) => {
     if (open === null && !bar.current?.contains(document.activeElement)) {
       restore.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     }
     setOpen((i + MENUS.length) % MENUS.length);
     setQuery("");
-    setAtRecent(recentOpen);
   };
 
   const close = (refocus = true) => {
@@ -329,8 +302,6 @@ export function MenuBar() {
     else show(HELP);
   });
 
-  useWindowEvent(OPEN_RECENT_EVENT, () => show(FILE, true));
-
   // Com o Pesquisar registrado, o item vira o campo e os resultados entram no topo do menu Ajuda.
   const hits = searchMenus(query, MENUS, t);
   const helpItems = (items: MenuItem[]): ListItem[] => {
@@ -342,9 +313,6 @@ export function MenuBar() {
       : [{ text: t("helpSearch.noResults"), run: () => {}, disabled: true }];
     return [...found, { separator: true }, ...rest];
   };
-  const recent = usePrefs((p) => p.recent);
-  const fileItems = (items: MenuItem[]): ListItem[] =>
-    items.map((it) => (isRecent(it) ? { label: "menu.file.openRecent", submenu: recentItems(recent, t("menu.file.clearMenu")) } : it));
   // Janelas abertas, no fim do menu Janela.
   const windows = useTabs((s) => s.windows);
   const windowItems = (items: MenuItem[]): ListItem[] => {
@@ -356,7 +324,7 @@ export function MenuBar() {
   };
   const searching = open === HELP && isEnabled("help.search");
   const itemsOf = (i: number, items: MenuItem[]): ListItem[] =>
-    searching && i === HELP ? helpItems(items) : i === WINDOW ? windowItems(items) : i === FILE ? fileItems(items) : items;
+    searching && i === HELP ? helpItems(items) : i === WINDOW ? windowItems(items) : items;
 
   return (
     <div ref={bar} className="menubar" role="menubar" aria-label={t("menu.bar")}>
@@ -376,7 +344,6 @@ export function MenuBar() {
           </button>
           {open === i && (
             <MenuList
-              key={atRecent ? "recent" : i}
               label={t(m.label)}
               items={itemsOf(i, m.items)}
               header={
@@ -396,7 +363,6 @@ export function MenuBar() {
               }
               level={0}
               autoFocus={!(searching && i === HELP)}
-              openRow={i === FILE && atRecent ? RECENT_ROW : undefined}
               onRun={run}
               onClose={close}
               onCloseAll={close}

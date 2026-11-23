@@ -28,7 +28,7 @@ export const MENUS: Menu[] = [
   {
     label: "menu.file.title",
     items: [
-      ...items("file", "newFromClipboard", "open", "openRecent"),
+      ...items("file", "newFromClipboard", "open"),
       SEP,
       ...items("file", "close", "closeAll", "closeWindow", "save", "duplicate", "saveAs", "rename", "moveTo", "moveToTrash"),
       ...items("file", "tags", "lock", "showInFolder", "openWith"),

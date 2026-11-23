@@ -9,11 +9,12 @@ vi.mock("@tauri-apps/plugin-store", () => ({
       get: async (k: string) => disk.get(k),
       set: async (k: string, v: unknown) => void disk.set(k, v),
       save: async () => {},
+      delete: async (k: string) => disk.delete(k),
     };
   }),
 }));
 
-import { DEFAULT_PREFS, addRecent, getPrefs, loadPrefs, resetPrefsForTests, setPrefs } from "./prefs";
+import { DEFAULT_PREFS, getPrefs, loadPrefs, resetPrefsForTests, setPrefs } from "./prefs";
 
 beforeEach(() => {
   disk.clear();
@@ -45,14 +46,13 @@ describe("prefs", () => {
     expect(p).not.toHaveProperty("chaveNova");
   });
 
-  it("recent sem duplicatas e máx 20", async () => {
-    await loadPrefs();
-    for (let i = 0; i < 25; i++) addRecent(`/img/${i}.png`);
-    addRecent("/img/10.png");
-    const r = getPrefs().recent;
-    expect(r).toHaveLength(20);
-    expect(new Set(r).size).toBe(20);
-    expect(r[0]).toBe("/img/10.png");
+  it("Abrir Recente saiu: a lista antiga do prefs.json é descartada sem erro e apagada do disco", async () => {
+    disk.set("recent", ["/fotos/Férias/Praia.jpg"]);
+    disk.set("language", "en");
+    const p = await loadPrefs();
+    expect(p).not.toHaveProperty("recent");
+    expect(p.language).toBe("en");
+    await vi.waitFor(() => expect(disk.has("recent")).toBe(false));
   });
 
   it("persiste alterações no store", async () => {

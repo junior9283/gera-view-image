@@ -12,8 +12,6 @@ export interface Prefs {
   skippedVersion: string | null;
   nativeDecorations: boolean;
   language: "system" | "pt-BR" | "en";
-  /** Arquivos recentes, o mais novo primeiro (máx. 20). */
-  recent: string[];
   // Campos dos lotes de paridade (criados pelo Lote 0; cada lote só lê e grava o seu).
   /** Lote 1: converte o perfil ICC da imagem para o do monitor na exibição. */
   colorManagement: boolean;
@@ -43,10 +41,11 @@ export interface Prefs {
   openFilesIn: "tabs" | "window" | "windows";
 }
 
-export const MAX_RECENT = 20;
 export const MAX_RECENT_COLORS = 16;
 export const MAX_VERSIONS_MB = 100_000;
 const FILE = "prefs.json";
+/** Chaves que saíram do app (Arquivo › Abrir Recente): apagadas do `prefs.json` ao carregar. */
+const REMOVED = ["recent"];
 
 export const DEFAULT_PREFS: Prefs = {
   background: "window",
@@ -59,7 +58,6 @@ export const DEFAULT_PREFS: Prefs = {
   skippedVersion: null,
   nativeDecorations: false,
   language: "system",
-  recent: [],
   colorManagement: true,
   liveText: true,
   versionsMaxMb: 500,
@@ -93,7 +91,6 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => v is Prefs[K] } = {
   skippedVersion: isStrOrNull,
   nativeDecorations: isBool,
   language: oneOf("system", "pt-BR", "en"),
-  recent: isStrList,
   colorManagement: isBool,
   liveText: isBool,
   versionsMaxMb: (v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_VERSIONS_MB,
@@ -117,7 +114,6 @@ const KEYS = Object.keys(DEFAULT_PREFS) as (keyof Prefs)[];
 export function sanitize(raw: Record<string, unknown>): Prefs {
   const out: Record<string, unknown> = { ...DEFAULT_PREFS };
   for (const k of KEYS) if (k in raw && VALID[k](raw[k])) out[k] = raw[k];
-  out.recent = [...new Set(out.recent as string[])].slice(0, MAX_RECENT);
   return out as unknown as Prefs;
 }
 
@@ -193,7 +189,8 @@ async function doLoad(): Promise<Prefs> {
       }
     }
     await Promise.all(Object.entries(migrated).map(([k, v]) => shared.set(k, v)));
-    if (Object.keys(migrated).length) await shared.save();
+    const removed = (await Promise.all(REMOVED.map((k) => s.delete(k)))).some(Boolean);
+    if (Object.keys(migrated).length || removed) await shared.save();
     clearLegacy();
   } catch {
     // Sem store (ex.: fora do Tauri): segue em memória, e o localStorage continua intacto.
@@ -239,11 +236,6 @@ export function setPrefs(patch: Partial<Prefs>): void {
   emit();
   if (loaded) persist(changed);
   else for (const k of changed) (dirty as Record<string, unknown>)[k] = clean[k];
-}
-
-/** Põe o arquivo no topo dos recentes, sem duplicatas e no máximo 20. */
-export function addRecent(path: string): void {
-  setPrefs({ recent: [path, ...state.recent.filter((p) => p !== path)].slice(0, MAX_RECENT) });
 }
 
 /** Só para testes. */
