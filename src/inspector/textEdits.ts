@@ -5,7 +5,8 @@ import { registerDocState } from "../lib/docState";
 
 /**
  * Título, descrição, autor e texto alternativo editados no Inspetor, por documento, só em memória
- * (como as palavras-chave). Contam como alteração não salva; `register.ts` os entrega ao Rust antes
+ * (como as palavras-chave). O texto do arquivo é lido por página (num TIFF, cada página tem o seu);
+ * a edição é do documento e, como no Rust, vale em todas as páginas que têm o campo. Contam como alteração não salva; `register.ts` os entrega ao Rust antes
  * de cada gravação (`editMetadata`) e `clearKeywords` os descarta depois de gravados ou ao reverter.
  */
 export type TextField = "title" | "description" | "author" | "altText";
@@ -13,7 +14,9 @@ export const TEXT_FIELDS: readonly TextField[] = ["title", "description", "autho
 
 type Edits = Partial<Record<TextField, string>>;
 
-const originals = new Map<DocId, MetaTexts>();
+/** Textos do arquivo, por documento e página. */
+const originals = new Map<DocId, Map<number, MetaTexts>>();
+const original = (id: DocId, page: number) => originals.get(id)?.get(page);
 const edits = new Map<DocId, Edits>();
 const listeners = new Set<() => void>();
 let version = 0;
@@ -23,25 +26,25 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
-/** Registra os textos lidos do arquivo (não sobrescreve edição já feita). */
-export function seedTexts(id: DocId, fromFile: MetaTexts) {
-  if (originals.has(id)) return;
-  originals.set(id, fromFile);
+/** Registra os textos lidos da página `page` do arquivo (uma vez; nunca mexe na edição pendente). */
+export function seedTexts(id: DocId, fromFile: MetaTexts, page = 0) {
+  if (original(id, page)) return;
+  originals.set(id, new Map(originals.get(id)).set(page, fromFile));
   emit();
 }
 
-/** Texto atual do campo: o editado, ou o do arquivo, ou vazio. */
-export function currentText(id: DocId, field: TextField): string {
-  return edits.get(id)?.[field] ?? originals.get(id)?.[field] ?? "";
+/** Texto atual do campo na página `page`: o editado (vale em todas), ou o do arquivo, ou vazio. */
+export function currentText(id: DocId, field: TextField, page = 0): string {
+  return edits.get(id)?.[field] ?? original(id, page)?.[field] ?? "";
 }
 
-/** Os textos do arquivo já foram lidos? */
-export const hasTexts = (id: DocId) => originals.has(id);
+/** Os textos da página `page` do arquivo já foram lidos? */
+export const hasTexts = (id: DocId, page = 0) => !!original(id, page);
 
-/** Edita um campo; voltar ao valor do arquivo desfaz a pendência. */
-export function setText(id: DocId, field: TextField, value: string) {
+/** Edita um campo (vista na página `page`); voltar ao valor do arquivo nela desfaz a pendência. */
+export function setText(id: DocId, field: TextField, value: string, page = 0) {
   const next: Edits = { ...edits.get(id) };
-  if (value === (originals.get(id)?.[field] ?? "")) delete next[field];
+  if (value === (original(id, page)?.[field] ?? "")) delete next[field];
   else next[field] = value;
   if (Object.keys(next).length === 0) edits.delete(id);
   else edits.set(id, next);
@@ -71,11 +74,11 @@ function subscribeTexts(l: () => void): () => void {
 registerDirtySource((id) => edits.has(id), subscribeTexts, "texts");
 // Vão junto quando o documento muda de janela.
 registerDocState("texts", {
-  dump: (id) => (edits.has(id) ? { edits: edits.get(id), original: originals.get(id) } : undefined),
+  dump: (id) => (edits.has(id) ? { edits: edits.get(id), pages: [...(originals.get(id) ?? [])] } : undefined),
   load: (id, data) => {
-    const { edits: e, original } = data as { edits: Edits; original?: MetaTexts };
+    const { edits: e, pages } = data as { edits: Edits; pages?: [number, MetaTexts][] };
     edits.set(id, e);
-    if (original) originals.set(id, original);
+    if (pages?.length) originals.set(id, new Map(pages));
     emit();
   },
   drop: clearTextEdits,
@@ -87,12 +90,7 @@ export function resetTextEditsForTests() {
   emit();
 }
 
-export function useTexts(id: DocId): Record<TextField, string> {
+export function useTexts(id: DocId, page = 0): Record<TextField, string> {
   useSyncExternalStore(subscribeTexts, () => version);
-  return {
-    title: currentText(id, "title"),
-    description: currentText(id, "description"),
-    author: currentText(id, "author"),
-    altText: currentText(id, "altText"),
-  };
+  return Object.fromEntries(TEXT_FIELDS.map((f) => [f, currentText(id, f, page)])) as Record<TextField, string>;
 }

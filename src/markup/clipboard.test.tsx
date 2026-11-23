@@ -165,6 +165,20 @@ describe("copiar e colar", () => {
     expect(invoke.mock.calls.filter((c) => c[0] === "apply_op")).toEqual([]);
   });
 
+  it("documento que saiu da janela durante a cópia não é recortado", async () => {
+    let copied: () => void = () => {};
+    invoke.mockImplementation((cmd: string) => (cmd === "copy_annotations" ? new Promise<void>((r) => (copied = r)) : Promise.resolve()));
+    act(() => useMarkup.getState().select(7, ["a"]));
+    await run("edit.cut");
+    const items = getItems(7);
+    // Saiu (outra janela) e o estado dele ainda não foi descartado aqui.
+    act(() => useDocs.setState((s) => ({ docs: s.docs.filter((d) => d.id !== 7), activeId: 8 })));
+    act(() => useMarkup.getState().setItems(7, items));
+    await act(async () => copied());
+    await flush();
+    expect(getItems(7).map((a) => a.id)).toEqual(["a", "t"]);
+  });
+
   it("se a cópia falha, o Recortar não apaga nada", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     invoke.mockImplementation(async (cmd: string) => {

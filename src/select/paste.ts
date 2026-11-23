@@ -5,10 +5,11 @@ import { notifyError } from "../chrome/notify";
 import { SUPPORTED_EXTENSIONS } from "../file/extensions";
 import { newFromClipboard } from "../file/fileActions";
 import * as ipc from "../ipc/commands";
+import type { DocId } from "../ipc/types";
 import { addAnnotation } from "../markup/actions";
 import { pasteAnnotations } from "../markup/clipboard";
 import { DEFAULT_STYLE, newId, type Box } from "../markup/model";
-import { shownSize } from "../markup/pages";
+import { shownPage, shownSize } from "../markup/pages";
 import { useMarkup } from "../markup/store";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
@@ -53,14 +54,31 @@ function toImage(img: Size, at?: Point): Point {
   return [(sx - view.panX) / view.scale, (sy - view.panY) / view.scale];
 }
 
-/** Insere o PNG como camada selecionada no documento ativo, centrada em `at` (px do Viewport). */
-async function insertLayer(png: Uint8Array, at?: Point): Promise<void> {
+/** Documento e página em que o colar começou. */
+interface Target { id: DocId; page: number }
+
+function shownTarget(): Target | null {
+  const doc = activeDoc();
+  return viewable(doc) ? { id: doc.id, page: shownPage(doc.id) } : null;
+}
+
+/** O alvo ainda é o que está na tela (depois de um `await`, o usuário pode ter trocado de aba ou de página). */
+const stillShown = (t: Target) => {
+  const now = shownTarget();
+  return now?.id === t.id && now.page === t.page;
+};
+
+/** Insere o PNG como camada selecionada em `to`, centrada em `at` (px do Viewport); desiste se `to` saiu da tela. */
+async function insertLayer(png: Uint8Array, to: Target, at?: Point): Promise<void> {
   const doc = activeDoc();
   const size = pngSize(png);
-  if (!viewable(doc)) return;
+  if (!viewable(doc) || !stillShown(to)) return;
   if (!size) throw { code: "clipboard_empty", message: "não é PNG" };
   const img = shownSize(doc);
-  const geom = { ...layerBox(size, img, toImage(img, at)), src: await dataUrl(png) };
+  const box = layerBox(size, img, toImage(img, at));
+  const src = await dataUrl(png);
+  if (!stillShown(to)) return;
+  const geom = { ...box, src };
   useSelection.getState().setSelection(null);
   const mk = useMarkup.getState();
   mk.setVisible(true);
@@ -71,9 +89,10 @@ async function insertLayer(png: Uint8Array, at?: Point): Promise<void> {
 /** Editar › Colar: as anotações copiadas ou, se a última cópia for uma imagem, uma camada flutuante na
  *  imagem aberta; sem imagem aberta, um documento novo. */
 export async function pasteAsLayer(): Promise<void> {
-  if (!viewable(activeDoc())) return newFromClipboard();
+  const to = shownTarget();
+  if (!to) return newFromClipboard();
   if (await pasteAnnotations()) return;
-  await insertLayer(await ipc.clipboardImage());
+  await insertLayer(await ipc.clipboardImage(), to);
 }
 
 const isImagePath = (p: string) => {
@@ -92,6 +111,7 @@ export function dropOnImage(paths: string[], at: Point): boolean {
   const img = shownSize(doc);
   const [x, y] = toImage(img, at);
   if (x < 0 || y < 0 || x >= img.w || y >= img.h) return false;
-  ipc.imageFilePng(paths[0]).then((png) => insertLayer(png, at)).catch(notifyError);
+  const to = { id: doc.id, page: shownPage(doc.id) };
+  ipc.imageFilePng(paths[0]).then((png) => insertLayer(png, to, at)).catch(notifyError);
   return true;
 }

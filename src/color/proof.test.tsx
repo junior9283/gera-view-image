@@ -13,11 +13,12 @@ vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 
 import { MenuBar } from "../chrome/MenuBar";
 import { getToasts, resetToastsForTests } from "../chrome/notify";
+import { nativeDialogOpen } from "../lib/dialogs";
 import { dropDocs, dumpDocs, loadDocs } from "../lib/docState";
 import { isEnabled, runCommand } from "../shortcuts/commands";
 import { useDocs } from "../store/docs";
 import { setPrefs } from "../store/prefs";
-import { proofOf, resetProofForTests } from "./proof";
+import { proofOf, resetProofForTests, setProof } from "./proof";
 
 const doc = (id: number): DocInfo => ({
   id, path: `/fotos/Ação ${id}.jpg`, name: `Ação ${id}.jpg`, format: "jpeg", width: 40, height: 20, frames: 1,
@@ -134,5 +135,30 @@ describe("Prova de Cor com Perfil", () => {
     useDocs.setState({ docs: [{ ...doc(1), error: "corrupt" }], activeId: 1 });
     expect(isEnabled("view.softProofNone")).toBe(false);
     expect(isEnabled("view.softProofChoose")).toBe(false);
+  });
+
+  it("o seletor de arquivo conta como diálogo aberto (nenhuma aba muda de janela enquanto isso)", async () => {
+    let during = false;
+    dialog.open.mockImplementation(async () => {
+      during = nativeDialogOpen();
+      return null;
+    });
+    await act(async () => void runCommand("view.softProofChoose"));
+    expect(during).toBe(true);
+    expect(nativeDialogOpen()).toBe(false);
+  });
+
+  it("documento que saiu da janela durante a troca não deixa perfil guardado aqui", async () => {
+    let reply: (p: ColorProfile | null) => void = () => {};
+    ipc.setProofProfile.mockImplementation(() => new Promise((r) => (reply = r)));
+    let done!: Promise<void>;
+    act(() => void (done = setProof(1, PROFILES[0].id)));
+    act(() => useDocs.setState({ docs: [doc(2)], activeId: 2 }));
+    await act(async () => {
+      reply(PROFILES[0]);
+      await done;
+    });
+    expect(proofOf(1)).toBeNull();
+    expect(dumpDocs([1])[1]).toEqual({});
   });
 });

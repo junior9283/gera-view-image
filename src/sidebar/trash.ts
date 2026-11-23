@@ -20,7 +20,7 @@ async function trash(id: DocId): Promise<void> {
 
 /**
  * Move os arquivos de `ids` para o Lixo e fecha os documentos. Com alterações não salvas, pergunta
- * uma vez por todos; `confirmMany` (atalho e menu Arquivo, que não dizem quantos) pergunta também
+ * uma vez por todos (com o total e as que têm alterações); `confirmMany` (atalho e menu Arquivo, que não dizem quantos) pergunta também
  * com 2 ou mais limpos, com Cancelar como padrão. Um arquivo que falha continua aberto e não impede
  * os demais; os erros viram aviso (nunca rejeição).
  */
@@ -28,11 +28,14 @@ export async function trashDocs(ids: DocId[], { confirmMany = false } = {}): Pro
   const docs = useDocs.getState().docs.filter((d) => ids.includes(d.id) && d.path);
   if (!docs.length) return;
   const dirty = docs.filter(hasUnsaved);
-  if (dirty.length) {
-    const text = dirty.length > 1 ? "finder.trash.confirmUnsavedMany" : "finder.trash.confirmUnsaved";
-    if (!(await askDiscard(dirty[0].id, nameList(dirty.map((d) => d.name)), text, "finder.trash.ok"))) return;
-  } else if (confirmMany && docs.length > 1) {
-    if (!(await askDiscard(docs[0].id, String(docs.length), "finder.trash.confirmMany", "finder.trash.ok"))) return;
+  if (docs.length === 1 && dirty.length) {
+    if (!(await askDiscard(docs[0].id, docs[0].name, "finder.trash.confirmUnsaved", "finder.trash.ok"))) return;
+  } else if (dirty.length || (confirmMany && docs.length > 1)) {
+    // A pergunta diz quantos vão ao Lixo e, à parte, quais têm alterações que se perdem.
+    const unsaved = dirty.length
+      ? [i18n.t("finder.trash.unsavedOf", { count: dirty.length, names: nameList(dirty.map((d) => d.name)) })]
+      : [];
+    if (!(await askDiscard(docs[0].id, String(docs.length), "finder.trash.confirmMany", "finder.trash.ok", unsaved))) return;
   }
   if (docs.length === 1) {
     try {

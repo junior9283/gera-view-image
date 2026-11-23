@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { hasUnsaved } from "../file/dirty";
 import type { DocInfo } from "../ipc/types";
+import { dumpDocs, loadDocs, pack, unpack, type DocStates } from "../lib/docState";
 import { clearKeywords } from "./keywords";
 import {
   clearTextEdits, currentText, getPendingTextEdits, resetTextEditsForTests, seedTexts, setText,
@@ -51,5 +52,24 @@ describe("textos editados no Inspetor", () => {
     expect(getPendingTextEdits(1)).toBeNull();
     expect(hasUnsaved(doc(1))).toBe(false);
     clearTextEdits(1);
+  });
+
+  it("por página: cada uma mostra o seu texto até editar; a edição vale em todas e vai com a aba", () => {
+    seedTexts(1, { ...file, description: "Praia de Copacabana" }, 0);
+    seedTexts(1, { ...file, description: "Serra da Mantiqueira" }, 1);
+    expect(currentText(1, "description", 1)).toBe("Serra da Mantiqueira");
+    setText(1, "description", "Céu", 1);
+    seedTexts(1, { ...file, description: "outra" }, 1);
+    expect([currentText(1, "description", 0), currentText(1, "description", 1)]).toEqual(["Céu", "Céu"]);
+    // Voltar ao texto da página exibida desfaz a pendência.
+    setText(1, "description", "Serra da Mantiqueira", 1);
+    expect(getPendingTextEdits(1)).toBeNull();
+    setText(1, "title", "Mar", 1);
+    const moved = unpack(pack(dumpDocs([1]))) as DocStates;
+    resetTextEditsForTests();
+    loadDocs(moved);
+    expect(currentText(1, "description", 1)).toBe("Serra da Mantiqueira");
+    expect(currentText(1, "description", 0)).toBe("Praia de Copacabana");
+    expect(getPendingTextEdits(1)).toEqual({ title: "Mar" });
   });
 });

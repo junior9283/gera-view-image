@@ -99,14 +99,15 @@ function Veil({ kind }: { kind: VeilKind }) {
 /** Pergunta de sim ou não; Cancelar é o padrão. */
 function AskDialog({ title, body, ok, cancel }: Question) {
   const titleId = useId();
+  const bodyId = useId();
   const dialog = useRef<HTMLDivElement>(null);
   const first = useRef<HTMLButtonElement>(null);
   useModal(dialog, { initialFocus: first, onClose: () => answerQuestion(false) });
   return (
     <div className="file-backdrop tabs-question" role="presentation">
-      <div ref={dialog} className="file-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
+      <div ref={dialog} className="file-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={bodyId}>
         <h3 id={titleId}>{title}</h3>
-        <p>{body}</p>
+        <p id={bodyId}>{body}</p>
         <div className="file-actions">
           <button type="button" onClick={() => answerQuestion(true)}>{ok}</button>
           <span className="file-spacer" />

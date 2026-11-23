@@ -5,8 +5,9 @@ import { opsHistory, setHistoryProvider, type HistoryProvider } from "../edit/hi
 import type { DocId } from "../ipc/types";
 import { registerDocState } from "../lib/docState";
 import { useDocs } from "../store/docs";
+import { useUi } from "../store/ui";
 import { transformForOp, type Annotation } from "./model";
-import { onPage, pageSize, shownPage } from "./pages";
+import { hasPages, onPage, pageSize, shownPage } from "./pages";
 import { getItems, useMarkup } from "./store";
 
 /** Anotações antes e depois de um passo. */
@@ -17,8 +18,9 @@ type Entry = { ts: number } & (
   /**
    * `Op` aplicada no Rust (o Rust guarda a própria pilha; aqui só a posição na ordem).
    * `items`: anotações que mudaram junto (girar/recortar as leva; achatar as consome).
+   * `frame`: página em que agiu (documento de várias páginas).
    */
-  | { kind: "op"; items?: ItemsChange }
+  | { kind: "op"; items?: ItemsChange; frame?: number }
 );
 
 interface Stacks { undo: Entry[]; redo: Entry[] }
@@ -45,7 +47,13 @@ function record(id: DocId, e: Entry): void {
 
 export const pushMarkup = (id: DocId, before: Annotation[], after: Annotation[]) =>
   record(id, { ts: Date.now(), kind: "markup", before, after });
-export const pushOp = (id: DocId, items?: ItemsChange) => record(id, { ts: Date.now(), kind: "op", items });
+export const pushOp = (id: DocId, items?: ItemsChange, frame?: number) => record(id, { ts: Date.now(), kind: "op", items, frame });
+
+/** Como o Pré-Visualização, a vista vai à página em que o desfazer/refazer agiu (só no documento exibido). */
+function showFrame(id: DocId, frame: number | undefined): void {
+  const ui = useUi.getState();
+  if (frame !== undefined && useDocs.getState().activeId === id && (ui.page ?? 0) !== frame) ui.setPage(frame);
+}
 
 function serial(id: DocId, f: () => Promise<void>): Promise<void> {
   const next = (chains.get(id) ?? Promise.resolve()).catch(() => {}).then(f);
@@ -76,6 +84,7 @@ async function step(id: DocId, dir: "undo" | "redo"): Promise<void> {
   }
   const change = e.kind === "markup" ? e : e.items;
   if (change) setItems(id, dir === "undo" ? change.before : change.after);
+  if (e.kind === "op") showFrame(id, e.frame);
   to.push(e);
   notify();
 }
@@ -120,10 +129,11 @@ export function installHistory(): () => void {
     const byId = new Map(moved?.map((a) => [a.id, a]));
     const after = moved && before.map((a) => byId.get(a.id) ?? a);
     const info = await orig(id, op, page);
+    const frame = hasPages(doc) ? page : undefined;
     if (after) {
-      pushOp(id, { before, after });
+      pushOp(id, { before, after }, frame);
       setItems(id, after);
-    } else pushOp(id);
+    } else pushOp(id, undefined, frame);
     return info;
   };
   useDocs.setState({ applyOp: tracked });

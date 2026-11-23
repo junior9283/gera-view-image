@@ -265,7 +265,7 @@ describe("Mostrar Todas as Abas", () => {
     render(<TabsOverlays />);
     let answer!: Promise<boolean>;
     act(() => void (answer = ask({ title: "Janela travada", body: "Sair?", ok: "Sair sem esperar", cancel: "Cancelar" })));
-    expect(screen.getByRole("alertdialog", { name: "Janela travada" }).textContent).toContain("Sair?");
+    expect(screen.getByRole("alertdialog", { name: "Janela travada", description: "Sair?" })).toBeTruthy();
     expect(document.activeElement?.textContent).toBe("Cancelar");
     fireEvent.keyDown(document, { key: "Escape" });
     expect(await answer).toBe(false);

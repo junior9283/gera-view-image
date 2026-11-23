@@ -1,15 +1,16 @@
 // Visualizar › Prova de Cor com Perfil (L12): mostra como a imagem sairia em outro perfil (CMYK, cinza
 // ou RGB). Só na tela e por documento: o perfil fica no Rust com o documento; aqui vai uma cópia do
 // nome, para marcar o item do menu, que acompanha a aba ao mudar de janela.
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { refreshDynamicMenus, registerDynamicMenu } from "../chrome/dynamicMenus";
 import type { ActionItem, ListItem } from "../chrome/MenuBar";
 import { notifyError } from "../chrome/notify";
 import i18n from "../i18n";
 import * as ipc from "../ipc/commands";
 import type { ColorProfile, DocId } from "../ipc/types";
+import { open as openDialog } from "../lib/dialogs";
 import { registerDocState } from "../lib/docState";
 import { registerCommand } from "../shortcuts/commands";
+import { useDocs } from "../store/docs";
 import { activeDoc, viewable } from "../viewer/actions";
 
 const proofs = new Map<DocId, ColorProfile>();
@@ -25,9 +26,13 @@ function remember(id: DocId, p: ColorProfile | null) {
 /** Perfil de prova do documento, ou `null`. */
 export const proofOf = (id: DocId): ColorProfile | null => proofs.get(id) ?? null;
 
-/** Troca o perfil de prova do documento (`null` = nenhum). */
+/**
+ * Troca o perfil de prova do documento (`null` = nenhum). Se o documento saiu desta janela durante
+ * a troca, a resposta não é guardada aqui (ficaria uma entrada sem dono).
+ */
 export async function setProof(id: DocId, profile: string | null): Promise<void> {
-  remember(id, await ipc.setProofProfile(id, profile));
+  const p = await ipc.setProofProfile(id, profile);
+  if (useDocs.getState().docs.some((d) => d.id === id)) remember(id, p);
 }
 
 const set = (profile: string | null) => {

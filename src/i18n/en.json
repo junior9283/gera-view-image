@@ -885,7 +885,7 @@
     },
     "trash": {
       "confirmUnsaved": "{{name}} has unsaved changes. Move it to the Trash and discard them?",
-      "confirmUnsavedMany": "These images have unsaved changes: {{name}}. Move to Trash and discard them?",
+      "unsavedOf": "{{count}} with unsaved changes, which will be discarded: {{names}}",
       "confirmMany": "Move {{name}} items to the Trash?",
       "notClosed": "{{name}} was moved to the Trash but could not be closed",
       "ok": "Move to Trash",
@@ -1005,6 +1005,7 @@
     "dpi": "{{value}} dpi",
     "area": "Scans the whole glass area.",
     "searching": "Looking for scanners…",
+    "reading": "Reading scanner options…",
     "scanning": "Scanning…",
     "scan": "Scan",
     "cancel": "Cancel",

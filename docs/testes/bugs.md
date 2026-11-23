@@ -20,6 +20,31 @@ Formato: sintoma, causa, correção, teste, lição.
 - **Sintoma:** `WindowRegistry::access` dava o documento sem dono à primeira janela que o usasse: entre criar e `claimed`, outra janela (com XSS) podia tomá-lo. `on_second_instance` criava uma thread por mensagem D-Bus; `copy_annotations` decodificava o PNG sem o teto de memória; o `state` de `new_window`/`move_documents` não tinha teto.
 - **Correção:** `access` só aceita a dona (só `claim` dá posse); uma thread de trabalho com fila de 16 (`instance::Worker`, excesso descartado com log); `annotations_image` lê as dimensões e passa por `check_budget` antes de alocar; `transfer` recusa `state` acima de 64 MiB (`MAX_STATE`, o mesmo teto das anotações copiadas).
 - **Teste:** `documento_sem_dono_nao_e_de_ninguem`, `estado_grande_demais_nao_entra_na_caixa` (`doc/windows.rs`), `pedidos_vao_para_uma_thread_so_com_fila_limitada`, `tetos_de_quantidade_e_tamanho` (agora com caminho que existe) (`commands/instance.rs`), `desenho_das_anotacoes_respeita_o_teto_antes_de_alocar` (`commands/paste.rs`).
+## Achados da auditoria final do frontend (rodada 3)
+
+### Pergunta das perdas do Salvar escondida sob o véu "Salvando…"
+- **Sintoma:** AVIF/HEIC com XMP (ou JP2/EXR com EXIF), girar, fechar/sair → Salvar: a pergunta das perdas ficava atrás do véu, inalcançável pelo mouse.
+- **Causa:** `saveAll` põe o véu (z 1100) e só então `saveDoc` pergunta via `askDiscard`; o `ConfirmDiscard` usava `.file-backdrop` (z 1000).
+- **Correção:** `askDiscard` (`src/finder/store.ts`) marca `aboveVeil` quando a janela já está sob o véu: a pergunta é da operação em curso e sobe para a camada das perguntas (`tabs-question`, z 1200). Uma confirmação aberta antes de um véu continua embaixo dele. Escolhida por valer para qualquer pergunta feita sob qualquer véu, sem reordenar o Salvar nem esconder o véu.
+- **Teste:** "o aviso de perdas do Salvar fica acima do véu…" e "uma confirmação aberta antes do véu continua embaixo dele" (`src/file/unsaved.test.tsx`, lê os `z-index` dos CSS).
+- **Lição:** diálogo pedido por quem pôs o véu precisa estar acima dele.
+
+### Lixo em lote: a pergunta citava só as não salvas
+- **Correção:** `trashDocs` (`src/sidebar/trash.ts`) pergunta "Mover N itens…" e lista à parte as não salvas. **Teste:** `src/sidebar/sidebarFiles.test.tsx`.
+
+### Inspetor semeava textos e palavras-chave por documento
+- **Sintoma:** num TIFF de 2 páginas, a página 2 mostrava a descrição e as palavras-chave da 1ª página lida.
+- **Correção:** originais por página em `textEdits.ts`/`keywords.ts`; a edição continua do documento e vale em todas as páginas (como `render_for_write`); `imageAlt.ts` lê a página exibida. **Teste:** `Inspector.test.tsx` (TIFF de 2 páginas), `textEdits.test.ts`, `src/viewer/imageAlt.test.tsx`.
+
+### Prova de Cor: seletor fora de `lib/dialogs` e perfil órfão
+- **Correção:** `proof.ts` usa `src/lib/dialogs`; `setProof` não guarda resposta de documento que saiu da janela. **Teste:** `src/color/proof.test.tsx`.
+
+### Corridas no colar, no recortar e no desfazer por página
+- **Correção:** `insertLayer` (`src/select/paste.ts`) captura documento e página antes dos `await` e desiste se mudaram; `cutAnnotations` decide o que apagar antes da cópia e ignora documento que saiu; o desfazer de uma `Op` guarda `frame` e leva a vista a ela (`src/markup/history.ts`). **Teste:** `paste.test.ts`, `clipboard.test.tsx`, `history.test.ts`.
+- **Lição:** o que depende da tela se captura antes de qualquer `await`.
+
+### Scanner: opções `null` deixavam o diálogo ocupado
+- **Correção:** `ScanDialog.tsx` libera o `busy` também com `null` (opções e dispositivos) e anuncia a leitura das opções (`role="status"`). **Teste:** `src/file/scan.test.tsx`.
 
 ## E2E "Exportar para WebP cria o arquivo" falhava no CI desde o Abrir Recente em submenu (rodada 3)
 - **Sintoma:** "item de menu não encontrado: Abrir Recente / Open Recent" (mesmo esperando 5 s) e, depois, `invalid session id`.

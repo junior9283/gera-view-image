@@ -9,7 +9,7 @@ import { activeDoc, viewable } from "../viewer/actions";
 import { commit } from "./actions";
 import { itemsPng } from "./flatten";
 import { bounds, boxOf, clamp, deserialize, newId, normBox, serialize, translate, type Annotation, type Box } from "./model";
-import { onCurrentPage, pageItems, shownSize } from "./pages";
+import { docOf, onCurrentPage, pageItems, shownSize } from "./pages";
 import { annotationsFocused, getItems, getSelected, useMarkup } from "./store";
 
 /** Deslocamento da cópia, em px de tela. */
@@ -34,9 +34,14 @@ export async function copyAnnotations(id: DocId): Promise<Annotation[]> {
   return items;
 }
 
-/** Só apaga depois de a cópia dar certo, e só o que foi copiado (a seleção pode ter mudado). */
+/**
+ * Só apaga depois de a cópia dar certo, e só o que foi copiado (a seleção pode ter mudado); o que
+ * apagar é decidido antes de esperar a cópia. Documento que saiu da janela nesse meio-tempo fica como está.
+ */
 export async function cutAnnotations(id: DocId): Promise<void> {
-  const cut = new Set((await copyAnnotations(id)).map((a) => a.id));
+  const cut = new Set(selectedItems(id).map((a) => a.id));
+  await copyAnnotations(id);
+  if (!cut.size || !docOf(id)) return;
   commit(id, getItems(id).filter((a) => !cut.has(a.id)));
 }
 
