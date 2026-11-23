@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocInfo } from "../ipc/types";
 
 const ipc = vi.hoisted(() => ({
+  // registerFileCommands também liga a instância única e o scanner.
+  takeOpenRequests: async () => [], scanAvailable: async () => false,
   duplicate: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   applyOp: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   closeDocument: vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => {}),

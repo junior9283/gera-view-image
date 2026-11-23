@@ -120,7 +120,8 @@ registerSlot("viewport-overlay", "magnifier", Magnifier);
 - **Lote 12.** A barra de abas entra pelo slot `above-content`, que fica entre a barra de título e
   o corpo da janela e também é renderizado em tela cheia. `file.closeWindow` é Ctrl+Shift+W;
   `window.nextTab`/`prevTab` são Ctrl+Tab/Ctrl+Shift+Tab.
-  Implementado (o scanner, `file.importScanner`/`scan_image`, ainda não): ver "Várias janelas" abaixo.
+  Implementado: ver "Várias janelas" abaixo. Importar do Scanner (`file.importScanner`) está em
+  `src/file/scan.ts`/`ScanDialog.tsx` e `commands/scan.rs` (ver "Scanner").
 
 ## Várias janelas (Lote 12)
 
@@ -157,6 +158,41 @@ entrega volta para uma janela viva. Fechar tem duas fases: a janela pergunta, se
 numerada: respostas e cancelamentos de uma rodada não valem para outra, e cancelar não solta uma
 janela que está fechando por si (`Seal::Close`). Antes de perguntar, um ping (`ping-window`/`pong`)
 acha as que não respondem; sair sem elas é escolha explícita (`skip`).
+
+## Instância única
+
+`tauri-plugin-single-instance` (primeiro plugin do `Builder`) segura o nome
+`<identifier>.SingleInstance` no D-Bus de sessão; o `identifier` do `tauri.conf.json` é o mesmo
+no .deb, .rpm e AppImage. Uma segunda execução manda `argv` e o `cwd` dela e sai sem abrir janela
+(`--version` responde antes, no `main.rs`). Na primeira, `commands/instance.rs`:
+
+- `requested_paths` (pura, testada) trata os argumentos como entrada não confiável: só arquivos
+  regulares locais existentes, canonicalizados, sem repetir, no máximo `MAX_PATHS` (1000)
+  argumentos de até `MAX_ARG` (4096) bytes; relativos só com `cwd` absoluto; opções e URIs são
+  ignoradas, nunca interpretadas. Sem shell, sem executar nada.
+- A janela que recebe é a última com foco (`WindowEvent::Focused`) que não esteja selada; os
+  caminhos esperam na fila dela (`OpenRequests`) e ela os retira com `take_open_requests` ao
+  receber `open-request` e também ao ligar o ouvinte (pedido que chegou antes de a página abrir).
+  Uma janela destruída passa a fila adiante. No JS, `src/file/instance.ts` chama `openFiles`
+  (preferência `openFilesIn`, teto `MAX_NEW_WINDOWS`, `openHere` para o que já está noutra janela).
+- A janela vem para a frente por `window::raise` (`show`, `unminimize`, `set_focus`). No Wayland,
+  o compositor pode recusar o foco a quem não tem token de ativação e só destacar a janela.
+- O nome é solto no `cleanup_before_exit` do Tauri, antes de `restart()` criar o processo novo:
+  o reinício do atualizador não é barrado pela instância que está saindo. Sem barramento de sessão,
+  o app abre normalmente (sem instância única).
+
+## Scanner
+
+Arquivo › Importar do Scanner roda o `scanimage` externo (sane-utils), sem ligar a libsane:
+`std::process::Command` com argumentos em vetor e `--opção=valor`, nunca shell. `scan_available`
+procura o programa no `PATH` (sem ele, o item fica desabilitado com a dica `scan.missing` do
+`CommandState.title`). `scan_devices` (`--formatted-device-list`, 15 s) guarda a lista por janela;
+`scan_options` (`--all-options`, 15 s) e `scan_image` só aceitam dispositivo dessa lista, e o modo
+é escolhido entre os valores que o próprio dispositivo deu (nome com controle ou começando por
+`-` é descartado). `scan_image` (5 min) grava o PNG em `<cache>/scan/<pid>` (0700, arquivo 0600,
+`create_new`), decodifica pelo `decode::decode` (tetos do app), apaga o arquivo e abre por
+`insert_untitled` + `claimed_one`. `scan_cancel`, fechar a janela e sair matam o processo; a
+pasta sai no `RunEvent::Exit` e as de processos mortos na abertura seguinte.
 
 ## Testes do Lote 0
 

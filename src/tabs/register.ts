@@ -1,5 +1,5 @@
 // Lote 12 (Janelas e Abas): ponto de registro exclusivo deste lote, importado uma vez no `main.tsx`.
-// Importar do Scanner (`file.importScanner`) ainda não existe e continua desabilitado.
+// Importar do Scanner (`file.importScanner`) fica em `src/file/scan.ts`.
 import * as ipc from "../ipc/commands";
 import { registerSlot } from "../lib/slots";
 import { registerCommand } from "../shortcuts/commands";

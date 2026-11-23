@@ -12,6 +12,8 @@ import { useDocs } from "../store/docs";
 import { addRecent, getPrefs } from "../store/prefs";
 import { registerBeforeSave } from "./beforeSave";
 import { hasUnsaved } from "./dirty";
+import { registerOpenRequests } from "./instance";
+import { registerScanner } from "./scan";
 import * as file from "./fileActions";
 import { DiskBanner } from "./DiskBanner";
 import { setSaveHandler } from "./unsaved";
@@ -76,6 +78,8 @@ export function registerFileCommands(): () => void {
   offs.push(registerBeforeSave(async (id, page) => void (await flattenAnnotations(id, page))));
   offs.push(registerSlot("below-toolbar", "disk-banner", DiskBanner));
   offs.push(trackRecents());
+  offs.push(registerOpenRequests());
+  offs.push(registerScanner());
   offs.push(
     subscribe(listenHere<DiskChanged>(DOC_CHANGED_ON_DISK_EVENT, (c) => file.markChanged(c.id, c.removed))),
   );

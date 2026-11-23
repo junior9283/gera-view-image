@@ -1,0 +1,23 @@
+#!/bin/sh
+# `scanimage` falso dos testes de commands/scan.rs (sem hardware nem SANE). O comportamento vem
+# do dispositivo pedido; nada aqui passa argumento por `eval` ou shell.
+dir=$(dirname "$0")
+case "$1" in
+  --formatted-device-list=*)
+    printf 'fake:ok\037Fake Scanner\n'
+    printf 'fake:slow\037Lento\n'
+    printf 'fake:fail;$(id)\037Falha\n'
+    printf -- '-fake:flag\037Opção\n'
+    printf 'fake:bell\a\037Controle\n'
+    exit 0 ;;
+esac
+device=${1#--device-name=}
+if [ "$2" = "--all-options" ]; then
+  printf '  Scan Mode:\n    --mode Lineart|Gray|Color [Lineart]\n    --resolution 75|150|300|600dpi [75]\n'
+  exit 0
+fi
+case "$device" in
+  fake:ok) cat "$dir/alpha.png" ;;
+  fake:slow) exec sleep 30 ;;
+  *) printf 'scanimage: open of device %s failed: Invalid argument\n' "$device" >&2; exit 1 ;;
+esac

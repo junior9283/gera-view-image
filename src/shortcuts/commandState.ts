@@ -1,5 +1,6 @@
 // Estado dos comandos de alternância: o rótulo certo (Mostrar/Ocultar) ou o ✓ do menu.
 import { inspectorOpen, subscribeInspector } from "../inspector/toggle";
+import { scannerHint } from "../file/scan";
 import { useMarkup, type BarMenu } from "../markup/store";
 import { getPrefs, subscribePrefs, type Prefs } from "../store/prefs";
 import { useUi, type SidebarMode } from "../store/ui";
@@ -13,6 +14,8 @@ export interface CommandState {
   label?: string;
   /** Item de escolha única. */
   checked?: boolean;
+  /** Dica do item (chave de i18n), ex.: por que está desabilitado. */
+  title?: string;
 }
 
 const NONE: CommandState = {};
@@ -53,6 +56,7 @@ const STATES: Partial<Record<CommandId, () => CommandState>> = {
   "tools.showColors": panel("tools.showColors", "colors"),
   "tools.showFonts": panel("tools.showFonts", "fonts"),
   "tools.markupInspector": panel("tools.markupInspector", "properties"),
+  "file.importScanner": () => ({ title: scannerHint() }),
 };
 
 export const commandState = (id: CommandId): CommandState => STATES[id]?.() ?? NONE;

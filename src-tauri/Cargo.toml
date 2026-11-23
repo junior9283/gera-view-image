@@ -56,6 +56,9 @@ tauri-plugin-opener = "2.7.3"
 tauri-plugin-store = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2.8"
+# Instância única (MIT/Apache-2.0): no Linux, um nome no D-Bus de sessão pelo zbus que já usamos
+# (Rust puro, sem libdbus); nada novo no NEEDED.
+tauri-plugin-single-instance = "2.5.5"
 kamadak-exif = "0.6.2"
 quick-xml = "0.42" # Lote 9: leitura/edição de XMP com resolução de namespace
 # WebP com perda (libwebp compilada estática pelo libwebp-sys; nada novo no NEEDED).

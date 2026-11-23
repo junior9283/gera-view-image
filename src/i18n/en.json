@@ -993,5 +993,26 @@
     "busy": "Close the panel or finish the current operation before moving the images.",
     "pending": "Save the changes to “{{name}}” before moving the image to another window.",
     "timeout": "The image is still being processed. Try moving it again in a moment."
+  },
+  "scan": {
+    "title": "Import from Scanner",
+    "device": "Device",
+    "mode": "Mode",
+    "resolution": "Resolution",
+    "modes": {
+      "color": "Color",
+      "gray": "Grayscale",
+      "lineart": "Black & White"
+    },
+    "dpi": "{{value}} dpi",
+    "area": "Scans the whole glass area.",
+    "searching": "Looking for scanners…",
+    "scanning": "Scanning…",
+    "scan": "Scan",
+    "cancel": "Cancel",
+    "noDevice": "No scanner found.",
+    "failed": "Couldn't scan: {{message}}",
+    "timeout": "The scanner took too long and scanning was stopped.",
+    "missing": "Requires scanimage (sane-utils or sane-backends package), which wasn't found."
   }
 }

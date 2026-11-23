@@ -1,9 +1,9 @@
-//! Lote 12 (Janelas e Abas): janelas de documento, passagem de documentos entre elas, fechar/sair
-//! e Importar do Scanner (ainda um stub). A posse dos documentos está em `doc::windows`.
+//! Lote 12 (Janelas e Abas): janelas de documento, passagem de documentos entre elas e fechar/sair
+//! (Importar do Scanner está em `scan.rs`). A posse dos documentos está em `doc::windows`.
 //!
 //! A janela que age é sempre a que chamou (`WebviewWindow`, dada pelo Tauri); rótulos recebidos da
 //! interface só valem se forem de uma janela de documento viva.
-use super::{blocking, not_yet};
+use super::blocking;
 use crate::{
     doc::{
         model::{DocId, DocInfo},
@@ -175,7 +175,7 @@ fn build_window(app: &AppHandle, label: &str) -> AppResult<()> {
     Ok(())
 }
 
-fn raise(app: &AppHandle, label: &str) {
+pub(crate) fn raise(app: &AppHandle, label: &str) {
     if let Some(w) = app.get_webview_window(label) {
         let _ = w.show();
         let _ = w.unminimize();
@@ -816,17 +816,13 @@ pub fn on_event(window: &tauri::Window, event: &WindowEvent) {
             super::camera::forget(label);
             super::ocr::cancel(label);
             super::segment::cancel(label);
+            app.state::<super::scan::Scans>().forget(label);
+            super::instance::window_gone(app, label);
             windows_changed(app);
         }
+        WindowEvent::Focused(true) => app.state::<super::instance::OpenRequests>().focused(label),
         _ => {}
     }
-}
-
-/// Importar do Scanner (SANE); `None` = cancelado.
-#[tauri::command]
-pub fn scan_image(name: String) -> AppResult<Option<DocInfo>> {
-    let _ = name;
-    not_yet("scan_image")
 }
 
 #[cfg(test)]

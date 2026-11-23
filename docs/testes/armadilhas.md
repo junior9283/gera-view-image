@@ -49,6 +49,9 @@ Complementa a seção "Armadilhas" de `guia.md`. Formato: sintoma → causa → 
 - **`markup.e2e.ts` só passa no build com `VITE_E2E=1`** (gancho `window.__gviMarkup`). O mesmo build expõe
   `window.__gviE2E` (comandos e diálogo de atualização) para `scripts/screenshots.mjs`. O build normal não tem
   nenhum dos dois.
+- **Instância única.** O app segura `io.github.junior9283.geraviewimage.SingleInstance` no barramento de sessão:
+  com o app do usuário aberto (ou outro E2E rodando) no mesmo barramento, a execução do teste entrega os arquivos
+  à outra e sai na hora (o WebDriver perde a sessão). Rode cada E2E com o próprio `dbus-run-session`.
 - **Portas.** Execuções paralelas colidem na 4444 do WebKitWebDriver: use `GVI_E2E_PORT` (4445/4446/4447; as
   capturas usam 4448).
 - **Movimentos do WebKitWebDriver depois do `down` chegam com coordenadas erradas** (e `origin: elemento` é

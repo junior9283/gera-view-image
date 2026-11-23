@@ -51,7 +51,8 @@
         ],
         "recommends": [
           "libde265-0",
-          "libkvazaar7"
+          "libkvazaar7",
+          "sane-utils"
         ],
         "desktopTemplate": "linux/gera-view-image.desktop.hbs",
         "files": {
@@ -64,7 +65,8 @@
         ],
         "recommends": [
           "libde265",
-          "libkvazaar.so.7()(64bit)"
+          "libkvazaar.so.7()(64bit)",
+          "sane-backends"
         ],
         "desktopTemplate": "linux/gera-view-image.desktop.hbs",
         "files": {
