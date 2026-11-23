@@ -246,27 +246,31 @@ pub fn texts_of(xmp: Option<&str>, iptc: &[(String, String)], exif: &[(String, S
 // ---------- EXIF ----------
 
 /// Bloco EXIF sem o valor antigo dos campos editados em `e`: título (XPTitle, ImageTitle),
-/// descrição (ImageDescription, XPComment, UserComment) e autor (Artist, XPAuthor, Photographer),
+/// descrição (ImageDescription, XPComment, XPSubject, UserComment) e autor (Artist, XPAuthor, Photographer),
 /// no IFD0, no IFD1 e no sub-IFD Exif. O resto do EXIF fica. `None` quando a limpeza não pode ser
 /// feita com segurança: quem chama descarta o EXIF inteiro em vez de deixar o texto antigo passar.
 pub fn exif_without_text(tiff: &[u8], e: &MetadataEdits) -> Option<Vec<u8>> {
-    scrub_texts(tiff, e, false)
+    scrub_texts(tiff, e, false, false)
 }
 
 /// Bloco EXIF a gravar: sem o texto antigo dos campos de `e` (como `exif_without_text`) e sem a
-/// miniatura embutida, que mostraria a imagem de antes das edições.
-pub fn exif_for_write(tiff: &[u8], e: &MetadataEdits) -> Option<Vec<u8>> {
-    scrub_texts(tiff, e, true)
+/// miniatura embutida, que mostraria a imagem de antes das edições. `keywords`: as palavras-chave
+/// foram editadas, então o XPKeywords antigo também sai.
+pub fn exif_for_write(tiff: &[u8], e: &MetadataEdits, keywords: bool) -> Option<Vec<u8>> {
+    scrub_texts(tiff, e, keywords, true)
 }
 
-fn scrub_texts(tiff: &[u8], e: &MetadataEdits, drop_thumb: bool) -> Option<Vec<u8>> {
+fn scrub_texts(tiff: &[u8], e: &MetadataEdits, keywords: bool, drop_thumb: bool) -> Option<Vec<u8>> {
     let (mut tiff_tags, mut exif_tags): (Vec<u16>, Vec<u16>) = (Vec::new(), Vec::new());
+    if keywords {
+        tiff_tags.push(0x9C9E); // XPKeywords
+    }
     if e.title.is_some() {
         tiff_tags.push(0x9C9B);
         exif_tags.push(0xA436);
     }
     if e.description.is_some() {
-        tiff_tags.extend([0x010E, 0x9C9C]);
+        tiff_tags.extend([0x010E, 0x9C9C, 0x9C9F]); // + XPComment, XPSubject
         exif_tags.push(0x9286);
     }
     if e.author.is_some() {
@@ -313,7 +317,7 @@ pub fn notes(meta: &MetaCarry, opts: &ExportOptions) -> Vec<&'static str> {
     let set = exif_clear_set(meta.text_edits.as_ref(), meta.exif_cleared.as_ref(), carries);
     // Sem limpeza segura, ou com uma resolução nova que não pode ir para ele: o EXIF sai inteiro.
     let new_dpi = opts.dpi.filter(|d| d.is_finite());
-    let dropped = |e: &[u8]| match exif_for_write(e, &set) {
+    let dropped = |e: &[u8]| match exif_for_write(e, &set, meta.exif_keywords) {
         None => true,
         Some(w) => new_dpi.is_some_and(|d| super::container::exif_with_dpi(Some(&w), d).is_none()),
     };
@@ -603,6 +607,22 @@ mod tests {
         assert!(r.get_field(exif::Tag::Make, exif::In::PRIMARY).is_some());
         assert!(r.get_field(exif::Tag::Artist, exif::In::PRIMARY).is_none());
         assert!(r.get_field(exif::Tag::ImageDescription, exif::In::PRIMARY).is_none());
+    }
+
+    #[test]
+    fn exif_perde_xpkeywords_e_xpsubject_antigos() {
+        let orig = crate::image::test_util::tiff_le(&[
+            ent(0x010F, 2, ascii("Gera")),
+            ent(0x9C9E, 1, utf16("segredo;outro")),
+            ent(0x9C9F, 1, utf16("Assunto XP antigo")),
+        ]);
+        let desc = MetadataEdits { description: Some("nova".into()), ..Default::default() };
+        let out = exif_for_write(&orig, &desc, false).unwrap();
+        assert!(!tem(&out, "Assunto XP antigo"), "XPSubject é a descrição no Windows");
+        assert!(tem(&out, "segredo"), "palavras-chave não editadas ficam");
+        let out = exif_for_write(&orig, &MetadataEdits::default(), true).unwrap();
+        assert!(!tem(&out, "segredo"), "XPKeywords antigo sobrou");
+        assert!(tem(&out, "Assunto XP antigo") && tem(&out, "Gera"));
     }
 
     #[test]
