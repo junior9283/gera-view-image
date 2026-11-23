@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocInfo } from "../ipc/types";
 
 const handlers: Record<string, () => unknown> = {};
@@ -58,6 +58,8 @@ const requestClose = () => {
 };
 
 await installWindowEvents();
+
+afterEach(() => vi.useRealTimers());
 
 beforeEach(() => {
   for (const k of Object.keys(handlers)) delete handlers[k];
@@ -173,8 +175,11 @@ describe("fechar a janela", () => {
     handlers.new_window = () => new Promise<void>((r) => (moved = r));
     const move = moveTabToNewWindow();
     await vi.waitFor(() => expect(moved).toBeDefined());
+    // Relógio falso: passa do prazo da operação em andamento (1,5 s) sem dormir de verdade.
+    vi.useFakeTimers();
     requestClose();
-    await new Promise((r) => setTimeout(r, 1700));
+    await vi.advanceTimersByTimeAsync(2000);
+    vi.useRealTimers();
     expect(names()).not.toContain("seal_window");
     expect(useTabs.getState().question, "mover não é operação a interromper").toBeNull();
     expect(useTabs.getState().veil).toBe("moving");
@@ -239,8 +244,11 @@ describe("fechar a janela", () => {
       handlers.new_window = () => new Promise<void>((r) => (moved = r));
       const move = moveTabToNewWindow();
       await vi.waitFor(() => expect(moved).toBeDefined());
+      vi.useFakeTimers();
       answerQuestion(true);
-      await new Promise((r) => setTimeout(r, 60));
+      // Bem mais que as voltas de espera (30 ms cada): selar agora seria sem esperar a mudança de janela.
+      await vi.advanceTimersByTimeAsync(2000);
+      vi.useRealTimers();
       expect(names()).not.toContain("seal_window");
       moved();
       await move;

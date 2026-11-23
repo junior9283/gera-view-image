@@ -33,7 +33,11 @@ beforeEach(() => {
   uninstall = installHistory();
 });
 
-afterEach(() => uninstall());
+afterEach(() => {
+  uninstall();
+  // Mesmo com o teste falhando no meio, as outras janelas não vazam para o seguinte.
+  resetTabsForTests();
+});
 
 describe("Voltar / Avançar", () => {
   beforeEach(async () => {
@@ -144,6 +148,5 @@ describe("navegando pela pasta (um só documento aberto)", () => {
     await back();
     expect(useDocs.getState().docs.map((d) => d.path)).toEqual(["/pasta/1.png"]);
     expect(invoke).not.toHaveBeenCalledWith("focus_open_paths", expect.objectContaining({ focus: true }));
-    resetTabsForTests();
   });
 });

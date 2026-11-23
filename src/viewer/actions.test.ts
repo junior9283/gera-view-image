@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocInfo } from "../ipc/types";
 
 const invoke = vi.fn();
@@ -30,6 +30,8 @@ beforeEach(() => {
   resetUiForTests();
   resetUnsavedForTests();
 });
+// Mesmo com o teste falhando no meio, as outras janelas não vazam para o seguinte.
+afterEach(() => resetTabsForTests());
 
 describe("navegação entre os abertos", () => {
   beforeEach(() => {
@@ -156,7 +158,6 @@ describe("navegação na pasta", () => {
     expect(invoke.mock.calls.filter(([c]) => c === "focus_open_paths").every(([, a]) => a.focus === false)).toBe(true);
     await actions.prev();
     expect(ids()).toEqual([10]);
-    resetTabsForTests();
   });
 
   it("todos os vizinhos em outras janelas: fica onde está", async () => {
@@ -166,7 +167,6 @@ describe("navegação na pasta", () => {
     useDocs.getState().add([info(1, { path: "/pasta/1.png" })]);
     await actions.next();
     expect(ids()).toEqual([1]);
-    resetTabsForTests();
   });
 
   it("na ponta da pasta não faz nada", async () => {
