@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+/** Tamanho (w×h) de cada cobertura rasterizada, para contar as da imagem inteira. */
+const sizes = vi.hoisted(() => [] as number[]);
+vi.mock("./lasso", async (orig) => {
+  const m = await orig<typeof import("./lasso")>();
+  return { ...m, rasterize: (mask: Mask, w: number, h: number) => (sizes.push(w * h), m.rasterize(mask, w, h)) };
+});
 import type { Mask } from "../ipc/types";
 import { maskArea, maskBounds, rasterize } from "./lasso";
 import { combineMasks, maskContains, modeFor, moveMask } from "./mask";
@@ -33,6 +40,26 @@ describe("somar e subtrair seleções", () => {
     expect(modeFor(rect(0, 0, 1, 1), { ...none, altKey: true })).toBe("subtract");
     expect(modeFor(null, { ...none, shiftKey: true })).toBe("replace");
     expect(modeFor(null, { ...none, altKey: true })).toBe("replace");
+  });
+});
+
+describe("somar e subtrair sem duas coberturas da imagem inteira", () => {
+  const poly: Mask = { type: "polygon", data: [[1, 1], [10, 2], [6, 9]] };
+  const others: Record<string, Mask> = {
+    retângulo: rect(-3, 5, 8, 9),
+    elipse: { type: "ellipse", data: { x: 4, y: -2, w: 9, h: 7 } },
+    polígono: { type: "polygon", data: [[0, 9], [11, 0], [11, 9]] },
+    bitmap: bitmap(rect(2, 3, 5, 4)),
+  };
+  it.each(Object.keys(others))("%s: mesmo resultado, uma cobertura w×h só", (name) => {
+    for (const mode of ["add", "subtract"] as const) {
+      const [a, b] = [rasterize(poly, W, H), rasterize(others[name], W, H)];
+      const want = a.map((v, i) => (mode === "add" ? v | b[i] : v & (b[i] ^ 1)));
+      sizes.length = 0;
+      const got = combineMasks(poly, others[name], mode, W, H)!;
+      expect(sizes.filter((n) => n === W * H), mode).toHaveLength(1);
+      expect([...rasterize(got, W, H)], mode).toEqual([...want]);
+    }
   });
 });
 
