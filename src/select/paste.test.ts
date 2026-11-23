@@ -100,4 +100,53 @@ describe("colar como camada", () => {
     expect(dropOnImage(["/x/b.png"], [30, 30])).toBe(false);
     expect(invoke).not.toHaveBeenCalled();
   });
+
+  describe("a página ou o documento muda durante o colar", () => {
+    const tiff = info({ id: 9, path: "/x/páginas.tiff", name: "páginas.tiff", format: "tiff", frames: 2 });
+    beforeEach(() => {
+      useDocs.setState({ docs: [tiff, info()], activeId: 9 });
+      useUi.setState({ page: 1, view: null, viewSize: { w: 0, h: 0 } });
+    });
+    /** Faz `change` no instante em que o PNG começa a virar data URL (o `await` do colar). */
+    const duringRead = (change: () => void) => {
+      const read = FileReader.prototype.readAsDataURL;
+      return vi.spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function (this: FileReader, b: Blob) {
+        change();
+        read.call(this, b);
+      });
+    };
+
+    it("sem mudança, a camada vai para a página exibida", async () => {
+      invoke.mockImplementation(answer(png(20, 10)));
+      await pasteAsLayer();
+      expect(getItems(9).map((a) => a.page)).toEqual([1]);
+    });
+
+    it("trocar de página no meio não põe a camada na página nova", async () => {
+      invoke.mockImplementation(answer(png(20, 10)));
+      const spy = duringRead(() => useUi.getState().setPage(0));
+      await pasteAsLayer();
+      spy.mockRestore();
+      expect(getItems(9)).toEqual([]);
+    });
+
+    it("trocar de documento no meio não cola em nenhum dos dois", async () => {
+      invoke.mockImplementation(answer(png(20, 10)));
+      const spy = duringRead(() => useDocs.setState({ activeId: 1 }));
+      await pasteAsLayer();
+      spy.mockRestore();
+      expect([getItems(9), getItems(1)]).toEqual([[], []]);
+    });
+
+    it("soltar um arquivo e trocar de página antes de ele chegar não cola na página nova", async () => {
+      let give: (b: ArrayBuffer) => void = () => {};
+      invoke.mockImplementation((cmd: string) => (cmd === "image_file_png" ? new Promise((r) => (give = r)) : answer(png(10, 10))(cmd)));
+      useUi.setState({ view: { scale: 1, panX: 0, panY: 0, mode: "free" }, viewSize: { w: 100, h: 80 } });
+      expect(dropOnImage(["/x/ação.png"], [30, 30])).toBe(true);
+      useUi.getState().setPage(0);
+      give(png(10, 10).buffer as ArrayBuffer);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(getItems(9)).toEqual([]);
+    });
+  });
 });
