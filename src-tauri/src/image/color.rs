@@ -36,7 +36,7 @@ fn luma_u8(p: &[u8]) -> usize {
 /// Histograma de pixels RGBA crus (ex.: o RGBA de um buffer do IPC).
 pub fn histogram(rgba: &[u8]) -> Histogram {
     let mut h = Histogram { r: vec![0; 256], g: vec![0; 256], b: vec![0; 256], l: vec![0; 256] };
-    for p in rgba.chunks_exact(4) {
+    for p in rgba.as_chunks::<4>().0 {
         h.r[p[0] as usize] += 1;
         h.g[p[1] as usize] += 1;
         h.b[p[2] as usize] += 1;
@@ -123,7 +123,7 @@ fn adjust_in_place<T: Sample>(px: &mut [T], w: u32, h: u32, a: &ColorAdjust) {
     // Só a nitidez ligada: pula a passada por pixel.
     if (ColorAdjust { sharpness: 0.0, ..*a }) != ColorAdjust::default() {
         px.par_chunks_exact_mut(4 * w.max(1) as usize).for_each(|row| {
-            for p in row.chunks_exact_mut(4) {
+            for p in row.as_chunks_mut::<4>().0 {
                 let c = pixel(a, [p[0], p[1], p[2]].map(|v| Into::<f32>::into(v) / T::MAX));
                 for (d, v) in p.iter_mut().zip(c) {
                     *d = T::from_f32(v * T::MAX + 0.5);
