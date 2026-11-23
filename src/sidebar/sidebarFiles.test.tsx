@@ -163,13 +163,25 @@ describe("Mover para o Lixo com várias selecionadas", () => {
     expect(toasts()).toEqual(["2 imagens foram para o Lixo"]);
   });
 
-  it("as não salvas são perguntadas uma vez; Cancelar não move nada", async () => {
-    useDocs.setState((s) => ({ docs: s.docs.map((d) => (d.id < 3 ? { ...d, dirty: true } : d)) }));
-    render(<Sidebar />);
-    select(1, 2);
+  it("as não salvas são perguntadas uma vez, com o total que vai ao Lixo; Cancelar não move nada", async () => {
+    useDocs.setState((s) => ({ docs: s.docs.map((d) => (d.id < 3 ? { ...d, dirty: true, name: `ação ${d.id}.png` } : d)) }));
+    render(
+      <>
+        <Sidebar />
+        <FinderHost />
+      </>,
+    );
+    fireEvent.click(screen.getByText("ação 1.png").closest("button")!);
+    fireEvent.click(screen.getByText("ação 2.png").closest("button")!, { ctrlKey: true });
     fireEvent.click(item(3), { ctrlKey: true });
-    runCommand("file.moveToTrash");
-    expect(useFinderUi.getState().confirm).toMatchObject({ name: "1.png, 2.png", text: "finder.trash.confirmUnsavedMany" });
+    act(() => void runCommand("file.moveToTrash"));
+    // Vão 3 ao Lixo, não só as 2 com alterações.
+    expect(
+      screen.getByRole("alertdialog", {
+        name: "Mover 3 itens para o Lixo?",
+        description: "2 com alterações não salvas, que serão descartadas: ação 1.png, ação 2.png",
+      }),
+    ).toBeTruthy();
     act(() => answerConfirm(false));
     await flush();
     expect(ipc.moveToTrash).not.toHaveBeenCalled();
