@@ -101,7 +101,11 @@ function ScanForm() {
     setBusy("scanning");
     try {
       const info = await ipc.scanImage(device, mode, dpi, t("file.untitled"));
-      if (!alive.current) return;
+      if (!alive.current) {
+        // Cancelado depois de o scanimage sair (decodificando): o documento já existe no Rust.
+        if (info) void ipc.closeDocument(info.id).catch(() => {});
+        return;
+      }
       if (info) {
         useDocs.getState().add([info]);
         activate(info.id);

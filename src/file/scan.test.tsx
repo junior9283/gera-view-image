@@ -10,6 +10,7 @@ const ipc = vi.hoisted(() => ({
   scanOptions: vi.fn<(device: string) => Promise<ScanOptions | null>>(),
   scanImage: vi.fn<(...a: unknown[]) => Promise<DocInfo | null>>(),
   scanCancel: vi.fn(async () => {}),
+  closeDocument: vi.fn(async () => {}),
 }));
 vi.mock("../ipc/commands", () => ipc);
 
@@ -110,6 +111,19 @@ describe("Importar do Scanner", () => {
     await act(async () => finish(null));
     await flush();
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(useDocs.getState().docs).toEqual([]);
+  });
+
+  it("Cancelar quando a digitalização já acabou (decodificando) fecha o documento que chega", async () => {
+    let finish: (v: DocInfo | null) => void = () => {};
+    ipc.scanImage.mockImplementation(() => new Promise((r) => (finish = r)));
+    await openDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Digitalizar" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await act(async () => finish(scanned));
+    await flush();
+    expect(ipc.closeDocument).toHaveBeenCalledWith(scanned.id);
     expect(useDocs.getState().docs).toEqual([]);
   });
 

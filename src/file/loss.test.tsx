@@ -73,7 +73,7 @@ beforeEach(() => {
     if (cmd === "save") return { type: "saved", data: { ...base, rev: ++rev } };
     if (cmd === "save_as") return { ...base, path: a.dest, name: "n", rev: ++rev };
     if (cmd === "apply_op" || cmd === "export") return { ...base, rev: ++rev };
-    if (cmd === "take_meta_notes") return [];
+    if (cmd === "take_meta_notes" || cmd === "take_open_requests") return [];
     if (cmd === "path_exists") return false;
     if (cmd === "estimate_size") return 10;
     return null;
@@ -213,7 +213,8 @@ describe("Salvar e Exportar", () => {
   });
 
   it("os avisos depois de gravar dizem de que documento são", async () => {
-    invoke.mockImplementation(async () => ["exifTooBig", "exifDropped"]);
+    // Só o comando dos avisos: os demais (pedidos da 2ª instância etc.) seguem vazios.
+    invoke.mockImplementation(async (cmd: string) => (cmd === "take_meta_notes" ? ["exifTooBig", "exifDropped"] : []));
     await reportMetaNotes(6);
     const texts = getToasts().map((t) => t.text);
     expect(texts).toHaveLength(2);
