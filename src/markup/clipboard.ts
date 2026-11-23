@@ -3,6 +3,7 @@
 // só devolve as anotações enquanto esse desenho ainda estiver lá: a última cópia é que vale.
 import * as ipc from "../ipc/commands";
 import type { DocId } from "../ipc/types";
+import { useDocs } from "../store/docs";
 import { useSelection } from "../store/selection";
 import { useUi } from "../store/ui";
 import { activeDoc, viewable } from "../viewer/actions";
@@ -34,9 +35,14 @@ export async function copyAnnotations(id: DocId): Promise<Annotation[]> {
   return items;
 }
 
-/** Só apaga depois de a cópia dar certo, e só o que foi copiado (a seleção pode ter mudado). */
+/**
+ * Só apaga depois de a cópia dar certo, e só o que foi copiado (a seleção pode ter mudado); o que
+ * apagar é decidido antes de esperar a cópia. Documento que saiu da janela nesse meio-tempo fica como está.
+ */
 export async function cutAnnotations(id: DocId): Promise<void> {
-  const cut = new Set((await copyAnnotations(id)).map((a) => a.id));
+  const cut = new Set(selectedItems(id).map((a) => a.id));
+  await copyAnnotations(id);
+  if (!cut.size || !useDocs.getState().docs.some((d) => d.id === id)) return;
   commit(id, getItems(id).filter((a) => !cut.has(a.id)));
 }
 
