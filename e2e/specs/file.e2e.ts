@@ -24,12 +24,21 @@ const scale = async () => Number(await $('[data-testid="zoom-level"]').getAttrib
 
 async function menuItem(menu: number, labels: string[]) {
   await $$(".menubar-button")[menu].click();
-  const items = await $$(".menu-level-0 .menu-item");
-  for (const it of items) {
-    const text = (await it.$(".menu-label").getText()).trim();
-    if (labels.includes(text)) return it.click();
-  }
-  throw new Error(`item de menu não encontrado: ${labels.join(" / ")}`);
+  // O menu monta seus itens depois do clique (itens dinâmicos): espera o item aparecer.
+  let found: { click(): Promise<unknown> } | undefined;
+  await browser
+    .waitUntil(
+      async () => {
+        for (const it of await $$(".menu-level-0 .menu-item")) {
+          if (labels.includes((await it.$(".menu-label").getText()).trim())) return (found = it), true;
+        }
+        return false;
+      },
+      { timeout: 5000 },
+    )
+    .catch(() => {});
+  if (!found) throw new Error(`item de menu não encontrado: ${labels.join(" / ")}`);
+  return found.click();
 }
 
 describe("arquivo", () => {

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocInfo } from "../ipc/types";
 
@@ -40,7 +40,6 @@ afterEach(cleanup);
 
 const item = (n: number) => screen.getByText(`${n}.png`).closest("button") as HTMLButtonElement;
 const active = () => useDocs.getState().activeId;
-const flush = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
 
 describe("multisseleção", () => {
   it("Ctrl-clique alterna e Shift-clique estende a partir da âncora", () => {
@@ -93,7 +92,8 @@ describe("menu de contexto da miniatura", () => {
     expect(menu.getByText("Abrir").closest("li")!.getAttribute("aria-disabled")).toBe("true");
     expect(menu.getByText("Mostrar na Pasta").closest("li")!.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(menu.getByText("Girar à Direita"));
-    await flush();
+    // O lote cede à interface entre as imagens: espera ele terminar (prazo fixo vaza para o teste seguinte).
+    await waitFor(() => expect(useBatch.getState().running).toBe(false));
     const calls = invoke.mock.calls.filter(([c]) => c === "apply_op").map(([, a]) => [(a as { id: number }).id, (a as { op: unknown }).op]);
     expect(calls).toEqual([
       [1, { type: "rotate", data: { quarterTurns: 1 } }],
@@ -126,10 +126,10 @@ describe("menu de contexto da miniatura", () => {
     fireEvent.click(item(3), { shiftKey: true });
     open(2);
     fireEvent.click(within(screen.getByRole("menu")).getByText("Espelhar Horizontalmente"));
-    await flush();
+    await waitFor(() => expect(useBatch.getState().running).toBe(false));
     expect(invoke.mock.calls.filter(([c]) => c === "apply_op")).toHaveLength(3);
     const { getToasts } = await import("../chrome/notify");
-    expect(getToasts().map((t) => t.text)).toEqual(["2 de 3 imagens processadas. Falhou: 2.png."]);
+    await waitFor(() => expect(getToasts().map((t) => t.text)).toEqual(["2 de 3 imagens processadas. Falhou: 2.png."]));
   });
 });
 
