@@ -150,4 +150,32 @@ describe("Viewport", () => {
     expect(view().scale).toBeCloseTo(1 / 3, 4);
     expect(screen.getByTestId("zoom-level").dataset.scale).toBe("1");
   });
+
+  it("ao voltar o foco à janela (talvez em outro monitor), relê o ppi da tela", async () => {
+    render(<Viewport />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 20))));
+    expect(zoomUnit()).toBeCloseTo(3, 9);
+    ppi = 200;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(zoomUnit()).toBeCloseTo(1.5, 9);
+  });
+
+  it("TIFF: cada página tem o próprio ppp", async () => {
+    invoke.mockImplementation(async (cmd: string, args?: { frame?: number }) =>
+      cmd === "document_dpi" ? ((args?.frame ?? 0) === 1 ? 150 : 300) : cmd === "screen_ppi" ? ppi : undefined,
+    );
+    resetDocsForTests();
+    useDocs.getState().add([info(1, { format: "tiff", frames: 2, pageSizes: [[4000, 3000], [400, 300]] })]);
+    render(<Viewport />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 20))));
+    expect(zoomUnit()).toBeCloseTo(3, 9);
+    await act(async () => {
+      useUi.setState({ page: 1 });
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(zoomUnit()).toBeCloseTo(1.5, 9);
+  });
 });

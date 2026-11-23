@@ -54,6 +54,15 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Inspector", () => {
+  it("enquanto os metadados carregam, a lista de abas continua alcançável pelo Tab (aba do fabricante pedida)", async () => {
+    metadata.mockReset().mockReturnValue(new Promise(() => {}));
+    render(createElement(InspectorHost));
+    act(() => openInspectorTab("maker"));
+    await screen.findByRole("tab", { name: "Geral" });
+    const reachable = screen.getAllByRole("tab").filter((t) => t.tabIndex === 0);
+    expect(reachable.map((t) => t.textContent)).toEqual(["Geral"]);
+  });
+
   it("fica oculto até toggleInspector() e alterna", async () => {
     render(createElement(InspectorHost));
     expect(screen.queryByRole("complementary")).toBeNull();

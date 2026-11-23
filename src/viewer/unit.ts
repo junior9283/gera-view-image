@@ -32,9 +32,9 @@ export function zoomUnit(): number {
   return ((id !== null && dpis.get(id)) || DEFAULT_DPI) / screenPpi;
 }
 
-/** Pergunta a resolução do documento e a da tela (o que falhar fica no padrão). */
-export async function loadUnit(id: DocId): Promise<void> {
-  const [dpi, ppi] = await Promise.all([ipc.documentDpi(id).catch(() => null), ipc.screenPpi().catch(() => null)]);
+/** Pergunta a resolução do documento (da página `page`) e a da tela (o que falhar fica no padrão). */
+export async function loadUnit(id: DocId, page = 0): Promise<void> {
+  const [dpi, ppi] = await Promise.all([ipc.documentDpi(id, page).catch(() => null), ipc.screenPpi().catch(() => null)]);
   const open = new Set(useDocs.getState().docs.map((d) => d.id));
   for (const k of dpis.keys()) if (!open.has(k)) dpis.delete(k);
   dpis.set(id, sane(dpi, DEFAULT_DPI));
@@ -42,12 +42,19 @@ export async function loadUnit(id: DocId): Promise<void> {
   listeners.forEach((l) => l());
 }
 
-/** Unidade atual, relida quando mudam o documento, a revisão, a preferência ou a tela. */
-export function useZoomUnit(id: DocId | undefined, rev: number | undefined, pixelRatio: number): number {
+/**
+ * Unidade atual, relida quando mudam o documento, a página, a revisão, a preferência ou a escala, e
+ * ao voltar o foco à janela: levada a outro monitor de mesma escala, só o ppi muda.
+ */
+export function useZoomUnit(id: DocId | undefined, rev: number | undefined, pixelRatio: number, page = 0): number {
   const print = usePrefs((p) => p.actualSize === "print");
   useEffect(() => {
-    if (print && id !== undefined) void loadUnit(id);
-  }, [print, id, rev, pixelRatio]);
+    if (!print || id === undefined) return;
+    const load = () => void loadUnit(id, page);
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [print, id, rev, pixelRatio, page]);
   return useSyncExternalStore(subscribe, zoomUnit);
 }
 

@@ -7,6 +7,7 @@ import { loadSignatures, removeSignature, signatureSrc, useSignatures } from "..
 import { runCommand } from "../shortcuts/commands";
 import { useEnabled } from "../shortcuts/useEnabled";
 import { MAX_VERSIONS_MB, setPrefs, usePrefs, type Prefs } from "../store/prefs";
+import { setTabBar } from "../tabs/autoShow";
 import { commitEditing } from "../tabs/transfer";
 import "./prefs.css";
 
@@ -25,11 +26,11 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Check({ label, pref }: { label: string; pref: KeysOf<boolean> }) {
+function Check({ label, pref, set }: { label: string; pref: KeysOf<boolean>; set?: (on: boolean) => void }) {
   const on = usePrefs((p) => p[pref]);
   return (
     <Row label={label}>
-      <input type="checkbox" checked={on} onChange={(e) => setPrefs({ [pref]: e.target.checked })} />
+      <input type="checkbox" checked={on} onChange={(e) => (set ? set(e.target.checked) : setPrefs({ [pref]: e.target.checked }))} />
     </Row>
   );
 }
@@ -95,7 +96,7 @@ function General() {
     <>
       <Select label={t("prefs.language")} pref="language" values={["system", "pt-BR", "en"]} options="prefs.lang" />
       <Select label={t("prefs.openFilesIn")} pref="openFilesIn" values={["tabs", "window", "windows"]} options="prefs.openIn" />
-      <Check label={t("prefs.tabBar")} pref="tabBar" />
+      <Check label={t("prefs.tabBar")} pref="tabBar" set={setTabBar} />
       <Check label={t("prefs.browseFolder")} pref="browseFolder" />
       <Check label={t("prefs.dragPans")} pref="dragPans" />
       <NumberField label={t("prefs.slideshowSeconds")} pref="slideshowSeconds" min={1} max={60} />

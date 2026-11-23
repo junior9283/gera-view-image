@@ -45,12 +45,12 @@ test("o .desktop tem palavras-chave nos dois idiomas", () => {
   assert.match(template, /^Keywords\[pt_BR\]=.*;$/m);
 });
 
-test("appstreamcli aceita o metainfo", { skip: !has("appstreamcli") }, () => {
+test("appstreamcli aceita o metainfo", { skip: has("appstreamcli") ? false : "appstreamcli não instalado" }, () => {
   const r = spawnSync("appstreamcli", ["validate", "--no-net", join(root, "src-tauri", FILE)], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
 
-test("desktop-file-validate aceita o .desktop", { skip: !has("desktop-file-validate") }, () => {
+test("desktop-file-validate aceita o .desktop", { skip: has("desktop-file-validate") ? false : "desktop-file-validate não instalado" }, () => {
   const f = join(mkdtempSync(join(tmpdir(), "gvi-desktop-")), "app.desktop");
   writeFileSync(f, template.replace("{{exec}}", "gera-view-image").replace("{{icon}}", "gera-view-image"));
   const r = spawnSync("desktop-file-validate", [f], { encoding: "utf8" });

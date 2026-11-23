@@ -88,6 +88,8 @@ function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) 
   const tabs = tabsFor(load.state === "ok" ? load.meta : null);
   // Aba que este arquivo não tem (ex.: PNG depois de trocar de documento): volta para Geral.
   const tab = tabs.includes(wanted) || load.state !== "ok" ? wanted : "general";
+  // A aba que recebe o Tab: a pedida, se já existe; carregando, a do fabricante ainda não existe.
+  const focusable = tabs.includes(tab) ? tab : tabs[0];
 
   return (
     <aside className="inspector" role="complementary" aria-label={t("inspector.title")}>
@@ -99,7 +101,7 @@ function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) 
       </header>
       <div className="inspector-tabs" role="tablist" aria-label={t("inspector.title")} onKeyDown={onTabKeys}>
         {tabs.map((k) => (
-          <button key={k} id={`inspector-tab-${k}`} role="tab" aria-selected={tab === k} aria-controls="inspector-panel" tabIndex={tab === k ? 0 : -1} onClick={() => onTab(k)}>
+          <button key={k} id={`inspector-tab-${k}`} role="tab" aria-selected={tab === k} aria-controls="inspector-panel" tabIndex={focusable === k ? 0 : -1} onClick={() => onTab(k)}>
             {k === "maker" && load.state === "ok" ? load.meta.maker?.name : t(`inspector.tab.${k}`)}
           </button>
         ))}

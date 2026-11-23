@@ -33,6 +33,8 @@ export interface Prefs {
   recentColors: string[];
   /** Lote 12: barra de abas visível. */
   tabBar: boolean;
+  /** O usuário ocultou a barra de abas: ela não volta sozinha ao abrir várias imagens. */
+  tabBarHidden: boolean;
   /** Arrastar na imagem a move, em vez de selecionar um retângulo. */
   dragPans: boolean;
   /** 100%: um pixel da tela por pixel da imagem, ou o tamanho impresso (ppp do documento e da tela). */
@@ -68,6 +70,7 @@ export const DEFAULT_PREFS: Prefs = {
   showImageBackground: true,
   recentColors: [],
   tabBar: false,
+  tabBarHidden: false,
   dragPans: false,
   actualSize: "pixel",
   openFilesIn: "window",
@@ -102,6 +105,7 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => v is Prefs[K] } = {
   recentColors: (v): v is string[] =>
     Array.isArray(v) && v.length <= MAX_RECENT_COLORS && v.every((s) => typeof s === "string" && /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)),
   tabBar: isBool,
+  tabBarHidden: isBool,
   dragPans: isBool,
   actualSize: oneOf("pixel", "print"),
   openFilesIn: oneOf("tabs", "window", "windows"),

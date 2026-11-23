@@ -64,6 +64,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Ctrl+C na barra lateral com uma seleção na imagem copia os pixels, como Editar › Copiar.
 - Arrastar arquivos para a janela segue Preferências › Abrir arquivos (abas, mesma janela ou janelas separadas); arrastar texto ou link não faz nada.
 - Duplicar ou colar uma anotação muito longe da imagem não trava mais a janela, e o texto de uma anotação vai até 10 000 caracteres.
+- Ajustar Cor numa imagem enorme: depois do OK, a prévia fica até a imagem ajustada aparecer, sem piscar a original.
+- Barra de abas ocultada (Visualizar ou Preferências) não volta sozinha ao abrir várias imagens no modo abas.
+- "100% corresponde ao tamanho impresso" relê a resolução do monitor ao voltar à janela (levada a outro monitor) e usa a resolução de cada página do TIFF.
+- O Inspetor continua alcançável pelo Tab enquanto os metadados carregam.
+- Texto secundário um pouco mais forte nos dois temas, para passar no contraste AA também sobre itens selecionados; a cor de destaque do sistema em `rgb()` ou `#rgb` também recebe texto legível.
 
 ### Limitações conhecidas (o que falta para a 1.0)
 - HDR: OpenEXR, Radiance, PQ e HLG são sempre mostrados em SDR, e gravar por cima perde o alcance original. QOI não abre, do JPEG XL só o primeiro quadro, o JPEG XL em CMYK é recusado e metadados comprimidos (caixas `brob`) do JPEG XL são ignorados.
