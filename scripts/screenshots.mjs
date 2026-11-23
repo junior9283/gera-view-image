@@ -2,11 +2,14 @@
 // Prints do README a partir do app real (build release com VITE_E2E=1) sob X virtual.
 //
 //   env -u WAYLAND_DISPLAY GDK_BACKEND=x11 xvfb-run -a -s "-screen 0 1440x900x24" \
-//     node scripts/screenshots.mjs
+//     sh -c 'openbox & node scripts/screenshots.mjs'
 //
-// Binário: $GVI_BINARY ou $CARGO_TARGET_DIR/release/gera-view-image. Imagens: e2e/demo (geradas
-// por scripts/demo-images.mjs). Saída: docs/screenshots/*.png e docs/screenshots/fluxo.gif
-// (se houver ffmpeg). Preferências e cache vão para uma pasta temporária (não toca nas do usuário).
+// Rode com HOME, XDG_RUNTIME_DIR e o barramento (dbus-run-session) próprios, nunca os da sessão do
+// usuário; um gerenciador de janelas (openbox) posiciona a segunda janela. Binário: $GVI_BINARY ou
+// $CARGO_TARGET_DIR/release/gera-view-image. Imagens: e2e/demo (scripts/demo-images.mjs), copiadas
+// para $GVI_SHOTS_DIR (padrão ~/Imagens), que é o caminho que aparece nos diálogos. Perfil CMYK da
+// Prova de Cor: $GVI_SHOTS_ICC (opcional), copiado para ~/.local/share/icc. Saída:
+// docs/screenshots/*.png e docs/screenshots/fluxo.gif (se houver ffmpeg).
 import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -22,10 +25,27 @@ const binary =
   path.join(process.env.CARGO_TARGET_DIR ?? path.join(root, "src-tauri", "target"), "release", "gera-view-image");
 const PORT = Number(process.env.GVI_E2E_PORT ?? 4448);
 const driverPath = process.env.TAURI_DRIVER ?? path.join(os.homedir(), ".cargo", "bin", "tauri-driver");
+const isDemo = (f) => /\.(png|tif)$/.test(f);
 
 if (!existsSync(binary)) throw new Error(`binário não encontrado: ${binary}`);
-if (!readdirSync(demo).some((f) => f.endsWith(".png"))) spawnSync("node", [path.join(root, "scripts", "demo-images.mjs")]);
+if (!readdirSync(demo).some(isDemo)) spawnSync("node", [path.join(root, "scripts", "demo-images.mjs")]);
 mkdirSync(out, { recursive: true });
+
+// Imagens numa pasta de nome neutro (o caminho aparece no Exportar e no Inspetor).
+const shotsDir = process.env.GVI_SHOTS_DIR ?? path.join(os.homedir(), "Imagens");
+mkdirSync(shotsDir, { recursive: true });
+const files = readdirSync(demo)
+  .filter(isDemo)
+  .sort()
+  .map((f) => {
+    copyFileSync(path.join(demo, f), path.join(shotsDir, f));
+    return path.join(shotsDir, f);
+  });
+if (process.env.GVI_SHOTS_ICC) {
+  const icc = path.join(os.homedir(), ".local", "share", "icc");
+  mkdirSync(icc, { recursive: true });
+  copyFileSync(process.env.GVI_SHOTS_ICC, path.join(icc, path.basename(process.env.GVI_SHOTS_ICC)));
+}
 
 // Preferências e cache isolados numa pasta temporária própria.
 const home = mkdtempSync(path.join(os.tmpdir(), "gvi-shots-"));
@@ -45,10 +65,6 @@ process.on("exit", () => {
 });
 await new Promise((r) => setTimeout(r, 1500));
 
-const files = readdirSync(demo)
-  .filter((f) => f.endsWith(".png"))
-  .sort()
-  .map((f) => path.join(demo, f));
 const browser = await remote({
   hostname: "127.0.0.1",
   port: PORT,
@@ -60,19 +76,24 @@ const $ = (s) => browser.$(s);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const run = (id) => browser.execute((id) => window.__gviE2E.run(id), id);
 const repaint = () => sleep(700);
+const xdo = (...args) => spawnSync("xdotool", args.map(String), { encoding: "utf8" });
 /**
  * Captura a janela pelo X (ImageMagick `import`), não pelo WebDriver: o snapshot do WebKitWebDriver
- * devolve o canvas desatualizado sem compositing. Sem `import`, cai no WebDriver.
+ * devolve o canvas desatualizado sem compositing. Sem `import`, cai no WebDriver. `screen` captura a
+ * tela inteira (várias janelas).
  */
-async function capture(file) {
+async function capture(file, { screen = false } = {}) {
+  if (screen) {
+    if (spawnSync("import", ["-window", "root", file]).status === 0) return;
+  }
   const r = await browser.getWindowRect().catch(() => null);
   const geo = r ? `${r.width}x${r.height}+${Math.max(0, r.x)}+${Math.max(0, r.y)}` : null;
   const ok = geo && spawnSync("import", ["-window", "root", "-crop", geo, "+repage", file]).status === 0;
   if (!ok) await browser.saveScreenshot(file);
 }
-const shot = async (name) => {
+const shot = async (name, opts) => {
   await repaint();
-  await capture(path.join(out, `${name}.png`));
+  await capture(path.join(out, `${name}.png`), opts);
   console.log("print:", name);
 };
 const setTheme = (t) => browser.execute((t) => (document.documentElement.dataset.theme = t), t);
@@ -89,37 +110,57 @@ async function goTo(name) {
   await run("go.first");
   await sleep(300);
   for (let i = 0; i < files.length && (await activeName()) !== name; i++) {
-    await browser.keys(Key.ArrowRight);
+    await browser.keys(Key.ArrowDown);
     await sleep(300);
   }
   await browser.waitUntil(async () => Number(await $('[data-testid="zoom-level"]').getAttribute("data-scale")) > 0);
 }
-/**
- * Arrasta sobre o viewport, em px relativos ao centro dele, com eventos reais do X (`xdotool`):
- * os movimentos do WebKitWebDriver depois do `down` chegam com coordenadas erradas.
- */
-async function drag(from, to, { release = true } = {}) {
+/** Abre um menu da barra e clica nos itens pelo rótulo (submenus incluídos). */
+async function menu(top, ...items) {
+  await $(`//button[contains(@class,"menubar-button")][normalize-space()="${top}"]`).click();
+  for (const label of items) {
+    const it = await $(`//*[contains(@class,"menu-item")][.//span[contains(@class,"menu-label")][normalize-space()="${label}"]]`);
+    await it.waitForExist({ timeout: 5000 });
+    await it.click();
+    await sleep(400);
+  }
+}
+/** Centro do viewport na tela e escala da imagem. */
+async function viewportCenter() {
   const [cx, cy] = await browser.execute(() => {
     const r = document.querySelector('[data-testid="viewport"]').getBoundingClientRect();
     return [r.left + r.width / 2, r.top + r.height / 2];
   });
   const win = await browser.getWindowRect().catch(() => ({ x: 0, y: 0 }));
-  const abs = (p, k = 1) => [
-    Math.round(Math.max(0, win.x) + cx + from[0] + (p[0] - from[0]) * k),
-    Math.round(Math.max(0, win.y) + cy + from[1] + (p[1] - from[1]) * k),
-  ];
-  const xdo = (...args) => spawnSync("xdotool", args.map(String));
-  xdo("mousemove", ...abs(from));
+  return [Math.max(0, win.x) + cx, Math.max(0, win.y) + cy];
+}
+/**
+ * Arrasta pelos pontos dados (px relativos ao centro do viewport) com eventos reais do X
+ * (`xdotool`): os movimentos do WebKitWebDriver depois do `down` chegam com coordenadas erradas.
+ */
+async function stroke(points, { release = true } = {}) {
+  const [cx, cy] = await viewportCenter();
+  const abs = ([x, y]) => [Math.round(cx + x), Math.round(cy + y)];
+  xdo("mousemove", ...abs(points[0]));
   await sleep(100);
   xdo("mousedown", 1);
-  for (let i = 1; i <= 8; i++) {
-    xdo("mousemove", ...abs(to, i / 8));
-    await sleep(30);
+  for (const p of points.slice(1)) {
+    xdo("mousemove", ...abs(p));
+    await sleep(25);
   }
   await sleep(100);
   if (release) xdo("mouseup", 1);
 }
-const releaseMouse = () => spawnSync("xdotool", ["mouseup", "1"]);
+const drag = (from, to, opts) =>
+  stroke([from, ...Array.from({ length: 8 }, (_, i) => [from[0] + ((to[0] - from[0]) * (i + 1)) / 8, from[1] + ((to[1] - from[1]) * (i + 1)) / 8])], opts);
+const releaseMouse = () => xdo("mouseup", 1);
+/** Janelas X visíveis do app: `[id, título]`. */
+const appWindows = () =>
+  xdo("search", "--onlyvisible", "--name", ".")
+    .stdout.trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((id) => [id, xdo("getwindowname", id).stdout.trim()]);
 
 // Quadros do GIF (abrir → anotar → exportar).
 const frames = path.join(home, "frames");
@@ -194,6 +235,21 @@ try {
   await goTo("01-por-do-sol.png");
   await run("tools.adjustColor");
   await sleep(1200);
+  // Prévia ao vivo: mais saturação e temperatura mais quente na própria imagem.
+  await browser.execute(() => {
+    const set = (el, v) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, String(v));
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const rows = [...document.querySelectorAll("label.adjust-row")];
+    const slider = (re) => rows.find((r) => re.test(r.querySelector("span")?.textContent ?? ""))?.querySelector("input");
+    const sat = slider(/Satura/);
+    const temp = slider(/Temperatura/);
+    if (sat) set(sat, Number(sat.max) * 0.6);
+    if (temp) set(temp, Number(temp.max) * 0.4);
+  });
+  await sleep(1200);
   await shot("05-ajustar-cor");
   await cancel();
 
@@ -202,10 +258,37 @@ try {
   await shot("06-ajustar-tamanho");
   await cancel();
 
+  // Inspetor: EXIF, GPS e palavras-chave do pôr do sol (metadados fictícios de demo-images.mjs).
   await run("tools.inspector");
-  await sleep(800);
+  await sleep(1000);
+  await $("#inspector-tab-exif").click();
   await shot("07-inspetor");
+  await $("#inspector-tab-gps").click();
+  await shot("11-inspetor-gps");
+  await $("#inspector-tab-keywords").click();
+  await shot("12-inspetor-palavras-chave");
   await run("tools.inspector");
+
+  // Prova de Cor com um perfil CMYK instalado (só na tela).
+  if (process.env.GVI_SHOTS_ICC) {
+    const proofSubmenu = "Prova de Cor com Perfil";
+    await menu("Visualizar", proofSubmenu);
+    const cmyk = await $(`//*[@role="menuitemradio"][.//span[contains(normalize-space(),"FOGRA")]]`);
+    if (await cmyk.isExisting()) {
+      await cmyk.click();
+      await sleep(1500);
+      await menu("Visualizar", proofSubmenu);
+      await shot("16-prova-de-cor");
+      await browser.keys(Key.Escape);
+      await browser.keys(Key.Escape);
+      await sleep(300);
+      await run("view.softProofNone");
+    } else {
+      console.log("sem perfil FOGRA no menu: print da Prova de Cor pulado");
+      await browser.keys(Key.Escape);
+      await browser.keys(Key.Escape);
+    }
+  }
 
   await goTo("05-estrela-fundo-liso.png");
   await run("tools.instantAlpha");
@@ -215,12 +298,77 @@ try {
   await shot("09-alfa-instantaneo");
   releaseMouse();
   await browser.keys(Key.Escape);
+  await browser.keys(Key.Escape);
+  await sleep(300);
+
+  // Laço Inteligente: um contorno solto em volta da estrela gruda na borda ao soltar.
+  await run("tools.selectSmartLasso");
+  await sleep(300);
+  const scale = Number(await $('[data-testid="zoom-level"]').getAttribute("data-scale"));
+  const star = Array.from({ length: 73 }, (_, i) => {
+    const a = (i / 72) * 2 * Math.PI;
+    const r = (180 + 120 * Math.cos(5 * a) + 12) * scale;
+    return [r * Math.cos(a), r * Math.sin(a)];
+  });
+  await stroke(star);
+  await sleep(1200);
+  await shot("18-laco-inteligente");
+  await browser.keys(Key.Escape);
+  await browser.keys(Key.Escape);
+  await sleep(300);
+
+  // TIFF de várias páginas: as páginas aparecem na barra lateral.
+  await goTo("06-tres-paginas.tif");
+  const page2 = await $('//button[contains(@class,"sidebar-page")][.//span[normalize-space()="Página 2"]]');
+  if (await page2.isExisting()) {
+    await page2.scrollIntoView();
+    await page2.click();
+  }
+  await sleep(1200);
+  await shot("17-tiff-paginas");
+
+  // Abas: barra de abas e Mostrar Todas as Abas.
+  await goTo("04-cartao-postal.png");
+  await run("view.tabBar");
+  await sleep(800);
+  await shot("13-barra-de-abas");
+  await run("view.allTabs");
+  await sleep(1500);
+  await shot("14-todas-as-abas");
+  await browser.keys(Key.Escape);
+  await sleep(400);
+
+  // Duas janelas: a aba ativa vai para uma janela nova; as duas lado a lado na tela.
+  await goTo("02-formas.png");
+  await run("window.moveTabToNewWindow");
+  await sleep(4000);
+  const wins = appWindows();
+  const mine = await activeName();
+  const first = wins.find(([, t]) => t === mine)?.[0];
+  const second = wins.find(([id, t]) => id !== first && t)?.[0];
+  if (first && second) {
+    xdo("windowsize", first, 920, 640);
+    xdo("windowmove", first, 30, 30);
+    xdo("windowsize", second, 920, 640);
+    xdo("windowmove", second, 490, 230);
+    xdo("windowactivate", "--sync", second);
+    await sleep(2500);
+    await shot("15-varias-janelas", { screen: true });
+  } else {
+    console.log("janela nova não encontrada: print das várias janelas pulado", wins);
+  }
+  await run("window.mergeAllWindows");
+  await sleep(2000);
+  await browser.setWindowSize(1280, 800).catch(() => {});
+  await browser.setWindowRect(0, 0, 1280, 800).catch(() => {});
+  await run("view.tabBar");
+  await sleep(600);
 
   await browser.execute(() =>
     window.__gviE2E.showUpdate({
-      version: "0.3.0",
+      version: "0.5.0",
       date: null,
-      notes: "## Novidades\n- Exemplo de nota de versão\n- Correções de desempenho",
+      notes: "## Novidades\n- Várias janelas e abas\n- Prova de Cor com Perfil\n- Importar do Scanner",
     }),
   );
   await shot("10-atualizacao");
