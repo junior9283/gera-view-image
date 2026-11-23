@@ -50,6 +50,14 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Arquivo › Abrir Recente: o app não guarda mais a lista de arquivos abertos, e a lista antiga é apagada das preferências.
 
 ### Corrigido
+- Ao fechar a janela, a aba ou sair com uma imagem que perde metadados ao salvar (AVIF/HEIC com XMP, JPEG 2000/EXR com EXIF), a pergunta das perdas ficava escondida atrás do aviso "Salvando…" e não podia ser respondida pelo mouse.
+- Mover para o Lixo com várias imagens, algumas não salvas: a pergunta citava só as não salvas, mas todas iam para o Lixo; agora diz quantas vão e quais têm alterações.
+- Inspetor num TIFF de várias páginas: descrição, demais textos e palavras-chave mostram os da página exibida (antes, sempre os da primeira lida); editar vale em todas as páginas, e o texto alternativo anunciado segue a página.
+- Prova de Cor: escolher o perfil por arquivo agora impede que abas mudem de janela enquanto o seletor está aberto.
+- Colar ou soltar uma imagem e trocar de página ou de imagem antes de ela entrar não a coloca mais no lugar errado; Recortar anotações de uma imagem que mudou de janela não as apaga.
+- Desfazer e refazer num TIFF de várias páginas levam a vista à página em que a mudança aconteceu.
+- Importar do Scanner não fica mais ocupado para sempre quando a leitura das opções é cancelada, e anuncia "Lendo as opções do scanner…" enquanto lê.
+- Leitores de tela leem o texto das perguntas de confirmação, não só o título.
 - Editar › Apagar e Recortar agiam na imagem mesmo com uma anotação selecionada.
 - TIFF com resolução sem unidade (só a proporção) não é mais lido como 1 ppp, o que fazia as páginas impressas e em PDF terem metros de lado.
 - Em documentos de várias páginas (TIFF), cada anotação pertence à página em que foi feita: aparece, é editada, impressa, exportada em PDF e achatada só nela. Antes era carimbada em todas. Exportar, Salvar Como e Copiar usam a página exibida (o Exportar diz qual); as anotações das outras páginas continuam editáveis e não salvas, com aviso, e Duplicar as leva para a cópia. Em GIF e WebP animados continua valendo para todos os quadros.
