@@ -981,5 +981,26 @@
     "busy": "Feche o painel ou termine a operação em andamento antes de mover as imagens.",
     "pending": "Salve as alterações de “{{name}}” antes de mover a imagem para outra janela.",
     "timeout": "A imagem ainda está sendo processada. Tente mover de novo em instantes."
+  },
+  "scan": {
+    "title": "Importar do Scanner",
+    "device": "Dispositivo",
+    "mode": "Modo",
+    "resolution": "Resolução",
+    "modes": {
+      "color": "Cor",
+      "gray": "Tons de cinza",
+      "lineart": "Preto e branco"
+    },
+    "dpi": "{{value}} ppp",
+    "area": "Digitaliza a área inteira do vidro.",
+    "searching": "Procurando scanners…",
+    "scanning": "Digitalizando…",
+    "scan": "Digitalizar",
+    "cancel": "Cancelar",
+    "noDevice": "Nenhum scanner encontrado.",
+    "failed": "Não foi possível digitalizar: {{message}}",
+    "timeout": "O scanner demorou demais e a digitalização foi interrompida.",
+    "missing": "Requer o scanimage (pacote sane-utils ou sane-backends), que não foi encontrado."
   }
 }

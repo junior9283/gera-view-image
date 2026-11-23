@@ -32,6 +32,10 @@ pub fn run() {
     );
 
     tauri::Builder::default()
+        // Primeiro: uma segunda execução entrega os arquivos a esta e sai antes de abrir janela.
+        // O nome no D-Bus vem do `identifier` (o mesmo em .deb, .rpm e AppImage) e é solto no
+        // `cleanup_before_exit`, antes do reinício do atualizador.
+        .plugin(tauri_plugin_single_instance::init(commands::instance::on_second_instance))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
@@ -44,6 +48,8 @@ pub fn run() {
         .manage(commands::window::Quitting::default())
         .manage(commands::paste::AnnotationClipboard::default())
         .manage(commands::window::Pongs::default())
+        .manage(commands::instance::OpenRequests::default())
+        .manage(commands::scan::Scans::default())
         .on_window_event(commands::window::on_event)
         .invoke_handler(commands::window::guard(tauri::generate_handler![
             commands::docs::open_documents,
@@ -139,7 +145,6 @@ pub fn run() {
             commands::window::list_windows,
             commands::window::focus_window,
             commands::window::merge_windows,
-            commands::window::scan_image,
             commands::window::move_documents,
             commands::window::take_documents,
             commands::window::set_window_title,
@@ -154,7 +159,13 @@ pub fn run() {
             commands::window::pong,
             commands::window::decline_merge,
             commands::window::cancel_quit,
-            commands::window::quit_app
+            commands::window::quit_app,
+            commands::instance::take_open_requests,
+            commands::scan::scan_available,
+            commands::scan::scan_devices,
+            commands::scan::scan_options,
+            commands::scan::scan_image,
+            commands::scan::scan_cancel
         ]))
         .setup(|app| {
             let handle = app.handle().clone();
@@ -169,6 +180,12 @@ pub fn run() {
             commands::drag::sweep_stale(&drag_root, commands::drag::pid_alive);
             app.manage(commands::drag::DragTemp(
                 drag_root.join(std::process::id().to_string()),
+            ));
+            // Digitalizações: PNG temporário numa pasta 0700 deste processo (some ao abrir).
+            let scan_root = app.path().app_cache_dir()?.join("scan");
+            commands::drag::sweep_stale(&scan_root, commands::drag::pid_alive);
+            app.manage(commands::scan::ScanTemp(
+                scan_root.join(std::process::id().to_string()),
             ));
             // Lote 5: versões guardadas a cada Salvar (~/.local/share/gera-view-image/versions).
             doc::versions::configure(app.path().data_dir()?.join("gera-view-image").join("versions"));
@@ -185,10 +202,14 @@ pub fn run() {
         .build(context)
         .expect("erro ao executar o aplicativo Tauri")
         .run(|app, event| {
-            if let RunEvent::Exit = event
-                && let Some(temp) = app.try_state::<commands::drag::DragTemp>()
-            {
-                commands::drag::cleanup(&temp.0);
+            if let RunEvent::Exit = event {
+                if let Some(temp) = app.try_state::<commands::drag::DragTemp>() {
+                    commands::drag::cleanup(&temp.0);
+                }
+                app.state::<commands::scan::Scans>().cancel_all();
+                if let Some(temp) = app.try_state::<commands::scan::ScanTemp>() {
+                    commands::drag::cleanup(&temp.0);
+                }
             }
         });
 }

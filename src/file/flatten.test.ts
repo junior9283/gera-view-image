@@ -4,6 +4,8 @@ import type { DocInfo } from "../ipc/types";
 
 const order: string[] = [];
 const ipc = vi.hoisted(() => ({
+  // registerFileCommands também liga a instância única e o scanner.
+  takeOpenRequests: async () => [], scanAvailable: async () => false,
   save: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   exportDoc: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
 }));

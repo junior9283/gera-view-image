@@ -284,3 +284,18 @@ export type QuitOutcome =
   | { kind: "cancelled" }
   | { kind: "opening"; title: string }
   | { kind: "unresponsive"; label: string; title: string };
+
+/** Instância única: outra execução do app pediu arquivos a esta janela (`take_open_requests`). */
+export const OPEN_REQUEST_EVENT = "open-request";
+
+/** Importar do Scanner. */
+export interface ScanDevice {
+  name: string;
+  label: string;
+}
+export type ScanKind = "color" | "gray" | "lineart";
+export interface ScanOptions {
+  modes: ScanKind[];
+  resolutions: number[];
+  resolution: number;
+}

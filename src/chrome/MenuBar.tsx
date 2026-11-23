@@ -170,7 +170,7 @@ export function MenuList({ label, menuKey, items: fixed, header, level, autoFocu
             aria-haspopup={it.submenu ? "menu" : undefined}
             aria-expanded={it.submenu ? sub?.index === i : undefined}
             className="menu-item"
-            title={isAction(it) ? it.title : undefined}
+            title={isAction(it) ? it.title : state.title && t(state.title)}
             onMouseEnter={() => setSub(it.submenu && on ? { index: i, focus: false } : null)}
             onClick={(e) => {
               e.stopPropagation();

@@ -30,7 +30,7 @@ pub struct DragTemp(pub PathBuf);
 const ICON_PX: u32 = 96;
 
 /// Cria `dir` (e os pais) só para o dono e corrige a permissão se ele já existia.
-fn private_dir(dir: &Path) -> io::Result<()> {
+pub(crate) fn private_dir(dir: &Path) -> io::Result<()> {
     fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
     fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
 }

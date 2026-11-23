@@ -8,6 +8,7 @@ import type {
 // Lote 6
 import type { Device } from "./types";
 import type { LinkInfo, OcrModels, WebKind } from "./types";
+import type { ScanDevice, ScanKind, ScanOptions } from "./types";
 
 /** `invoke` que conta os comandos em andamento por documento (`whenIdle`). */
 const invoke = <T>(...args: Parameters<typeof tauriInvoke>): Promise<T> => track(args[0], args[1], tauriInvoke<T>(...args));
@@ -254,5 +255,12 @@ export const pong = (n: number) => invoke<void>("pong", { n });
 export const declineMerge = (to: string) => invoke<void>("decline_merge", { to });
 export const cancelQuit = () => invoke<void>("cancel_quit");
 export const quitApp = () => invoke<void>("quit_app");
-/** `null` = o usuário cancelou. */
-export const scanImage = (name: string) => invoke<DocInfo | null>("scan_image", { name });
+/** Importar do Scanner (`scanimage` externo). Os `null` = cancelado. */
+export const scanAvailable = () => invoke<boolean>("scan_available");
+export const scanDevices = () => invoke<ScanDevice[] | null>("scan_devices");
+export const scanOptions = (device: string) => invoke<ScanOptions | null>("scan_options", { device });
+export const scanImage = (device: string, mode: ScanKind, resolution: number, name: string) =>
+  invoke<DocInfo | null>("scan_image", { device, mode, resolution, name });
+export const scanCancel = () => invoke<void>("scan_cancel");
+/** Arquivos que outra execução do app pediu para esta janela abrir. */
+export const takeOpenRequests = () => invoke<string[]>("take_open_requests");
