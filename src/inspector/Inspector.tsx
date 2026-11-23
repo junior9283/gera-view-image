@@ -75,8 +75,8 @@ function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) 
     metadata(id, page)
       .then((meta) => {
         if (stale) return;
-        seedKeywords(id, meta.keywords);
-        seedTexts(id, meta.texts);
+        seedKeywords(id, meta.keywords, page);
+        seedTexts(id, meta.texts, page);
         done({ state: "ok", meta });
       })
       .catch(() => done({ state: "error" }));
@@ -118,14 +118,14 @@ function Inspector({ tab: wanted, onTab, onClose }: { tab: Tab; onTab: (t: Tab) 
             {t("inspector.error")}
           </p>
         ) : (
-          <TabContent tab={tab} doc={doc} meta={load.meta} />
+          <TabContent tab={tab} doc={doc} meta={load.meta} page={page} />
         )}
       </div>
     </aside>
   );
 }
 
-function TabContent({ tab, doc, meta }: { tab: Tab; doc: DocInfo; meta: Metadata }) {
+function TabContent({ tab, doc, meta, page }: { tab: Tab; doc: DocInfo; meta: Metadata; page: number }) {
   switch (tab) {
     case "general":
       return <GeneralTab meta={meta} />;
@@ -140,11 +140,11 @@ function TabContent({ tab, doc, meta }: { tab: Tab; doc: DocInfo; meta: Metadata
     case "gps":
       return <GpsTab meta={meta} />;
     case "description":
-      return <DescriptionTab id={doc.id} />;
+      return <DescriptionTab id={doc.id} page={page} />;
     case "crop":
       return <CropTab doc={doc} dpi={meta.general.dpi?.[0] ?? null} />;
     case "keywords":
-      return <KeywordsTab id={doc.id} />;
+      return <KeywordsTab id={doc.id} page={page} />;
     case "annotations":
       return null; // tratada fora (não depende da leitura dos metadados)
     default:
@@ -204,13 +204,14 @@ function GpsTab({ meta }: { meta: Metadata }) {
   );
 }
 
-function KeywordsTab({ id }: { id: DocId }) {
+/** Palavras-chave da página `page`; a lista editada vale em todas. */
+function KeywordsTab({ id, page }: { id: DocId; page: number }) {
   const { t } = useTranslation();
-  const words = useKeywords(id);
+  const words = useKeywords(id, page);
   const [draft, setDraft] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    addKeyword(id, draft);
+    addKeyword(id, draft, page);
     setDraft("");
   };
   return (
@@ -222,7 +223,7 @@ function KeywordsTab({ id }: { id: DocId }) {
           {words.map((w) => (
             <li key={w}>
               <span>{w}</span>
-              <button aria-label={t("inspector.removeKeyword", { word: w })} onClick={() => removeKeyword(id, w)}>
+              <button aria-label={t("inspector.removeKeyword", { word: w })} onClick={() => removeKeyword(id, w, page)}>
                 ×
               </button>
             </li>

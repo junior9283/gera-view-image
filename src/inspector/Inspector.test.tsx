@@ -15,6 +15,7 @@ import { getPendingKeywords, resetKeywordsForTests } from "./keywords";
 import { getPendingTextEdits, resetTextEditsForTests } from "./textEdits";
 import { openInspectorTab, toggleInspector } from "./toggle";
 import { useSelection } from "../store/selection";
+import { useUi } from "../store/ui";
 
 const info: DocInfo = {
   id: 7, path: "/x/a.jpg", name: "a.jpg", format: "jpeg", width: 32, height: 24, frames: 1,
@@ -50,6 +51,7 @@ beforeEach(() => {
   useSelection.setState({ selection: null });
   setAnnotationSource(null);
   useDocs.setState({ docs: [info], activeId: 7 });
+  useUi.setState({ page: null });
 });
 afterEach(cleanup);
 
@@ -244,5 +246,55 @@ describe("Inspector", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Anotações" }));
     const texts = (await screen.findAllByRole("listitem")).map((li) => li.textContent?.trim());
     expect(texts).toEqual(["Texto Olá, açaí", "Retângulo arredondado", "novo.tipo x"]);
+  });
+
+  describe("TIFF de 2 páginas com textos diferentes", () => {
+    const tiff: DocInfo = { ...info, id: 9, path: "/x/páginas.tiff", name: "páginas.tiff", format: "tiff", frames: 2 };
+    const pages = [
+      { description: "Praia de Copacabana", keywords: ["mar"] },
+      { description: "Serra da Mantiqueira", keywords: ["serra", "inverno"] },
+    ];
+    /** Resposta da página 2 segura até `release`, para ver a semente chegar depois da edição. */
+    let release: () => void = () => {};
+    beforeEach(() => {
+      useDocs.setState({ docs: [tiff], activeId: 9 });
+      metadata.mockReset().mockImplementation(async (_id: number, page = 0) => {
+        if (page === 1) await new Promise<void>((r) => (release = r));
+        const p = pages[page];
+        return { ...meta, keywords: p.keywords, texts: { ...meta.texts, description: p.description } };
+      });
+    });
+    const description = () => screen.findByLabelText("Descrição", { selector: "textarea" }) as Promise<HTMLTextAreaElement>;
+
+    it("mostra a descrição e as palavras-chave da página exibida", async () => {
+      await abrir();
+      fireEvent.click(screen.getByRole("tab", { name: "Descrição" }));
+      expect((await description()).value).toBe("Praia de Copacabana");
+      act(() => useUi.getState().setPage(1));
+      await act(async () => release());
+      await waitFor(async () => expect((await description()).value).toBe("Serra da Mantiqueira"));
+      fireEvent.click(screen.getByRole("tab", { name: "Palavras-chave" }));
+      expect(await screen.findByText("inverno")).toBeTruthy();
+      expect(screen.queryByText("mar")).toBeNull();
+      expect(getPendingTextEdits(9)).toBeNull();
+      expect(getPendingKeywords(9)).toBeNull();
+    });
+
+    it("a edição vale para todas as páginas, e a semente da outra página não a apaga", async () => {
+      await abrir();
+      fireEvent.click(screen.getByRole("tab", { name: "Descrição" }));
+      fireEvent.change(await description(), { target: { value: "Céu de junho" } });
+      act(() => useUi.getState().setPage(1));
+      await act(async () => release());
+      await waitFor(() => expect(metadata).toHaveBeenCalledWith(9, 1));
+      expect((await description()).value).toBe("Céu de junho");
+      expect(getPendingTextEdits(9)).toEqual({ description: "Céu de junho" });
+      // Palavra-chave tirada na página 2 parte da lista dela.
+      fireEvent.click(screen.getByRole("tab", { name: "Palavras-chave" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Remover inverno" }));
+      expect(getPendingKeywords(9)).toEqual(["serra"]);
+      act(() => useUi.getState().setPage(0));
+      expect(await screen.findByText("serra")).toBeTruthy();
+    });
   });
 });

@@ -12,17 +12,20 @@ const FIELDS: { field: TextField; multiline: boolean }[] = [
   { field: "altText", multiline: true },
 ];
 
-/** Título, descrição, autor e Descrição da Imagem (texto alternativo): gravados ao salvar. */
-export function DescriptionTab({ id }: { id: DocId }) {
+/**
+ * Título, descrição, autor e Descrição da Imagem (texto alternativo) da página `page`: gravados ao
+ * salvar, em todas as páginas que têm o campo.
+ */
+export function DescriptionTab({ id, page }: { id: DocId; page: number }) {
   const { t } = useTranslation();
-  const texts = useTexts(id);
+  const texts = useTexts(id, page);
   return (
     <form className="inspector-form" onSubmit={(e) => e.preventDefault()}>
       {FIELDS.map(({ field, multiline }) => {
         const common = {
           value: texts[field],
           maxLength: MAX_CHARS,
-          onChange: (e: { target: { value: string } }) => setText(id, field, e.target.value),
+          onChange: (e: { target: { value: string } }) => setText(id, field, e.target.value, page),
         };
         return (
           <label key={field}>
