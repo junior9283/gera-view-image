@@ -409,6 +409,73 @@ fn texto_apagado_nao_volta_ao_exif_em_salvar_exportar_salvar_como_e_duplicar() {
     sem_texto_antigo(&dup_fora, "Duplicar");
 }
 
+/// JPEG de 16x8 com XPKeywords "segredo" e XPSubject (UTF-16, IFD0) e a palavra-chave IPTC "mar".
+fn jpeg_com_xpkeywords(dir: &Path) -> std::path::PathBuf {
+    let xp = |s: &str| {
+        let mut b: Vec<u8> = s.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        b.extend_from_slice(&[0, 0]);
+        b
+    };
+    let entries = [
+        (0x010Fu16, 2u16, b"Gera\0".to_vec()),
+        (0x9C9E, 1, xp("segredo;viagem")),
+        (0x9C9F, 1, xp("Assunto XP antigo")),
+    ];
+    let extra_at = 8 + 2 + 12 * entries.len() + 4;
+    let mut exif = b"II*\0\x08\0\0\0".to_vec();
+    exif.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    let mut tail = Vec::new();
+    for (tag, ty, data) in entries {
+        exif.extend_from_slice(&tag.to_le_bytes());
+        exif.extend_from_slice(&ty.to_le_bytes());
+        exif.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        exif.extend_from_slice(&((extra_at + tail.len()) as u32).to_le_bytes());
+        tail.extend_from_slice(&data);
+    }
+    exif.extend_from_slice(&[0; 4]);
+    exif.extend_from_slice(&tail);
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    let meta = MetaCarry { exif: Some(exif), iptc: Some(iim(&[(25, "mar")])), ..MetaCarry::default() };
+    let path = dir.join("palavras.jpg");
+    fs::write(&path, encode(&rgba, &opts(ExportFormat::Jpeg), &meta).unwrap()).unwrap();
+    assert!(contem(&fs::read(&path).unwrap(), "segredo"), "a origem tem o XPKeywords");
+    path
+}
+
+#[test]
+fn palavras_chave_e_descricao_editadas_tiram_xpkeywords_e_xpsubject_do_exif() {
+    let dir = tmp("insp-xpkeywords");
+    let src = jpeg_com_xpkeywords(&dir);
+    let store = DocStore::new();
+    let id = store.open_documents(&[s(&src)]).remove(0).id;
+    store.wait_ready(id).unwrap();
+    store.set_meta_edits(id, &MetadataEdits { description: Some("Nova".into()), ..Default::default() });
+    assert!(matches!(store.save(id, Some(vec!["praia".into()])).unwrap(), SaveOutcome::Saved(_)));
+    let sem = |path: &Path, onde: &str| {
+        let bytes = fs::read(path).unwrap();
+        for velho in ["segredo", "Assunto XP antigo"] {
+            assert!(!contem(&bytes, velho), "{velho} ficou em {onde}");
+        }
+    };
+    sem(&src, "1º Salvar");
+    let m = read_metadata(&src, &decode(&src).unwrap()).unwrap();
+    assert_eq!(m.keywords, vec!["praia".to_string()]);
+    assert!(campo(&m.exif, "Make").unwrap().contains("Gera"), "o resto do EXIF fica");
+
+    // O front esquece as palavras-chave depois de salvar; o EXIF da abertura ainda tem o antigo.
+    store.set_meta_edits(id, &MetadataEdits::default());
+    store.apply_op(id, Op::FlipH).unwrap();
+    assert!(matches!(store.save(id, None).unwrap(), SaveOutcome::Saved(_)));
+    sem(&src, "2º Salvar");
+    let fora = dir.join("exportado.jpg");
+    store.export(id, &s(&fora), &opts(ExportFormat::Jpeg), None).unwrap();
+    sem(&fora, "Exportar");
+    let dup = store.duplicate(id, "copia").unwrap().id;
+    let dup_fora = dir.join("dup.jpg");
+    store.export(dup, &s(&dup_fora), &opts(ExportFormat::Jpeg), None).unwrap();
+    sem(&dup_fora, "Duplicar");
+}
+
 #[test]
 fn reverter_descarta_so_a_pendencia_e_mantem_o_que_ja_foi_gravado() {
     let dir = tmp("insp-reverter");

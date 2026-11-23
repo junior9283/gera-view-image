@@ -226,6 +226,9 @@ pub struct MetaCarry {
     /// Campos de texto já gravados antes neste documento (marcados com valor vazio): o EXIF de origem
     /// não muda depois de um Salvar, então o texto antigo sai dele de novo a cada gravação.
     pub exif_cleared: Option<MetadataEdits>,
+    /// Palavras-chave editadas agora ou já gravadas antes neste documento: o `XPKeywords` antigo
+    /// sai do EXIF (o texto novo vive no IPTC e no XMP).
+    pub exif_keywords: bool,
     pub dpi: Option<(f32, f32)>,
 }
 
@@ -304,7 +307,7 @@ pub fn encode<'a>(
             exif: meta.exif.as_deref().and_then(|e| {
                 let e = container::exif_set_pixel_dims(&exif_reset_orientation(e), img.dimensions());
                 let clear = metaedit::exif_clear_set(meta.text_edits.as_ref(), meta.exif_cleared.as_ref(), fmt.carries_text());
-                metaedit::exif_for_write(&e, &clear)
+                metaedit::exif_for_write(&e, &clear, meta.exif_keywords)
             }),
             icc: out_icc,
             dpi,

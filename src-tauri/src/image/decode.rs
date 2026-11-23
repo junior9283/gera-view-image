@@ -100,7 +100,7 @@ pub const MAX_DECODE_BYTES: usize = 2 << 30;
 pub const MAX_PAGES: usize = 10_000;
 
 /// Recusa dimensões cujo RGBA8 (somado a `already` bytes de páginas anteriores) passe do teto.
-pub(super) fn check_budget(w: u32, h: u32, already: usize) -> AppResult<usize> {
+pub(crate) fn check_budget(w: u32, h: u32, already: usize) -> AppResult<usize> {
     check_budget_max(w, h, already, MAX_DECODE_BYTES)
 }
 

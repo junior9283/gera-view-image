@@ -138,6 +138,7 @@ fn jpeg_completo(dir: &Path) -> PathBuf {
         iptc_keywords: None,
         text_edits: None,
         exif_cleared: None,
+        exif_keywords: false,
         dpi: None,
     };
     let rgba = DynamicImage::ImageRgb8(gradiente(40, 20)).into_rgba8();

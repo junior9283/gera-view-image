@@ -256,6 +256,7 @@ impl DocStore {
         let bytes = file.and_then(|f| f.page(frame));
         let (iptc, xmp) = bytes.map(metadata::file_iim_xmp).unwrap_or_default();
         let text_edits = self.meta_edits(id);
+        let exif_keywords = keywords.is_some() || self.meta_keywords_cleared(id);
         let meta = if frame == 0 || !source.has_pages() {
             MetaCarry {
                 exif: source.exif.clone(),
@@ -265,6 +266,7 @@ impl DocStore {
                 iptc_keywords: keywords,
                 text_edits,
                 exif_cleared: Some(self.meta_cleared(id)).filter(|c| !c.is_empty()),
+                exif_keywords,
                 dpi,
             }
         } else {
@@ -280,6 +282,7 @@ impl DocStore {
                 iptc_keywords: keywords.filter(|_| has_keywords),
                 text_edits,
                 exif_cleared: absent,
+                exif_keywords,
                 exif,
                 iptc,
                 xmp,
@@ -448,11 +451,15 @@ impl DocStore {
             _ => None,
         };
         let opts = ExportOptions { quality, all_pages: true, ..ExportOptions::new(fmt) };
+        let wrote_keywords = keywords.is_some();
         let out = self.encode_doc(id, &opts, keywords, file, true)?;
         // Lote 5: guarda a versão atual e mantém as etiquetas (xattr `user.*`).
         super::finder::overwrite(Path::new(&path), &out.bytes)?;
         self.add_meta_notes(id, &out.notes);
         self.meta_written(id, fmt.carries_text());
+        if wrote_keywords {
+            self.keywords_written(id);
+        }
         let (_, info) = self.with_doc_mut(id, |d| {
             d.disk = DiskStamp::of(Path::new(&path));
             d.unseen_disk = false;
@@ -478,6 +485,7 @@ impl DocStore {
             return Err(changed_on_disk(&path, removed));
         }
         let page = self.written_page(id, opts)?;
+        let wrote_keywords = keywords.is_some();
         let out = self.encode_doc(id, opts, keywords, SourceFile::read(&path, frames), false)?;
         super::finder::overwrite(&dest_path, &out.bytes)?;
         self.add_meta_notes(id, &out.notes);
@@ -486,6 +494,9 @@ impl DocStore {
             && ExportFormat::for_save(opts.format.source_format()).is_some();
         if adopt || same_file {
             self.meta_written(id, opts.format.carries_text());
+            if wrote_keywords {
+                self.keywords_written(id);
+            }
             self.with_doc_mut(id, |d| {
                 if adopt {
                     d.relocate(&dest_path);

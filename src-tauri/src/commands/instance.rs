@@ -7,7 +7,10 @@ use crate::{doc::windows::WindowRegistry, error::AppResult};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        Mutex, OnceLock,
+        mpsc::{SyncSender, sync_channel},
+    },
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
@@ -100,10 +103,38 @@ impl OpenRequests {
     }
 }
 
-/// Callback do plugin (roda na thread do D-Bus: o trabalho com disco vai para outra).
+/// Pedidos de outra instância à espera da thread de trabalho (o excesso é descartado).
+pub const MAX_QUEUED: usize = 16;
+
+/// Uma thread de trabalho só, com fila de até `cap` trabalhos à espera.
+pub struct Worker<T>(SyncSender<T>);
+
+impl<T: Send + 'static> Worker<T> {
+    pub fn new(cap: usize, f: impl Fn(T) + Send + 'static) -> Self {
+        let (tx, rx) = sync_channel(cap);
+        std::thread::spawn(move || rx.into_iter().for_each(f));
+        Worker(tx)
+    }
+
+    /// Entrega `job` à thread; `false` = fila cheia (descartado).
+    pub fn offer(&self, job: T) -> bool {
+        self.0.try_send(job).is_ok()
+    }
+}
+
+type Request = (AppHandle, Vec<String>, String);
+
+/// Callback do plugin (roda na thread do D-Bus: o trabalho com disco vai para a de trabalho).
 pub fn on_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
-    let app = app.clone();
-    std::thread::spawn(move || deliver(&app, requested_paths(&argv, &cwd)));
+    static WORKER: OnceLock<Worker<Request>> = OnceLock::new();
+    let worker = WORKER.get_or_init(|| {
+        Worker::new(MAX_QUEUED, |(app, argv, cwd): Request| {
+            deliver(&app, requested_paths(&argv, &cwd))
+        })
+    });
+    if !worker.offer((app.clone(), argv, cwd)) {
+        eprintln!("instância única: pedidos demais na fila, este foi descartado");
+    }
 }
 
 fn deliver(app: &AppHandle, paths: Vec<String>) {
@@ -208,7 +239,52 @@ mod tests {
         );
         let long = format!("{}/{}", "a".repeat(MAX_ARG), "a.png");
         assert!(requested_paths(&args(&[&long]), cwd).is_empty());
+        // Caminho que existe e resolve, só comprido demais: o teto é o que o recusa.
+        let a = d.join("a.png");
+        let base = d.to_str().unwrap().len() + "/a.png".len();
+        let pad = |n: usize| format!("{}{}/a.png", d.display(), "/.".repeat(n));
+        let at_max = pad((MAX_ARG - base) / 2);
+        let over = pad((MAX_ARG - base) / 2 + 1);
+        assert!(at_max.len() <= MAX_ARG && over.len() > MAX_ARG);
+        assert_eq!(std::fs::canonicalize(&over).unwrap(), a, "o caminho comprido existe");
+        assert_eq!(requested_paths(&args(&[&at_max]), cwd), vec![a.to_str().unwrap().to_string()]);
+        assert!(requested_paths(&args(&[&over]), cwd).is_empty());
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn pedidos_vao_para_uma_thread_so_com_fila_limitada() {
+        use std::sync::{Arc, mpsc};
+        use std::time::Duration;
+        let (started_tx, started_rx) = mpsc::channel();
+        let (go_tx, go_rx) = mpsc::channel::<()>();
+        let go_rx = Mutex::new(go_rx);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let s = seen.clone();
+        let w = Worker::new(2, move |n: u32| {
+            started_tx.send(n).unwrap();
+            go_rx.lock().unwrap().recv().unwrap();
+            s.lock().unwrap().push((n, std::thread::current().id()));
+        });
+        assert!(w.offer(0));
+        let wait = Duration::from_secs(5);
+        assert_eq!(started_rx.recv_timeout(wait), Ok(0), "a thread está ocupada com o 0");
+        assert!(w.offer(1) && w.offer(2), "cabem na fila");
+        assert!(!w.offer(3), "fila cheia: descartado");
+        for _ in 0..3 {
+            go_tx.send(()).unwrap();
+        }
+        assert_eq!(started_rx.recv_timeout(wait), Ok(1));
+        assert_eq!(started_rx.recv_timeout(wait), Ok(2));
+        assert!(started_rx.recv_timeout(Duration::from_millis(200)).is_err(), "o 3 nunca roda");
+        drop(w);
+        let deadline = std::time::Instant::now() + wait;
+        while seen.lock().unwrap().len() < 3 && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.iter().map(|(n, _)| *n).collect::<Vec<_>>(), [0, 1, 2]);
+        assert!(seen.iter().all(|(_, t)| *t == seen[0].1), "uma thread só");
     }
 
     #[test]

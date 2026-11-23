@@ -348,6 +348,10 @@ struct TextMeta {
     cleared: MetadataEdits,
     /// `cleared` da origem da abertura, enquanto a origem atual é outra (disco ou versão).
     original_cleared: MetadataEdits,
+    /// As palavras-chave editadas já foram gravadas no arquivo: o XPKeywords do EXIF de origem sai
+    /// de novo a cada gravação (e `original_keywords` é o mesmo para a origem da abertura).
+    keywords_cleared: bool,
+    original_keywords: bool,
     /// Avisos da última gravação (códigos de `metaedit::notes`), à espera do front.
     notes: Vec<&'static str>,
 }
@@ -460,6 +464,16 @@ impl DocStore {
         self.meta_text(|m| m.get(&id).map(|t| t.cleared.clone()).unwrap_or_default())
     }
 
+    /// As palavras-chave editadas acabaram de ser gravadas no arquivo do documento.
+    pub fn keywords_written(&self, id: DocId) {
+        self.meta_text(|m| m.entry(id).or_default().keywords_cleared = true);
+    }
+
+    /// O XPKeywords do EXIF de origem é antigo (as palavras-chave já foram gravadas)?
+    pub fn meta_keywords_cleared(&self, id: DocId) -> bool {
+        self.meta_text(|m| m.get(&id).is_some_and(|t| t.keywords_cleared))
+    }
+
     /// O documento acabou de ser gravado no próprio arquivo. Em formato que guarda o texto, as
     /// edições passam a estar no arquivo; nos outros só o que apaga, e tudo continua pendente.
     pub fn meta_written(&self, id: DocId, carries_text: bool) {
@@ -505,6 +519,8 @@ impl DocStore {
                 t.notes.clear();
                 let all = std::mem::take(&mut t.cleared).over(&std::mem::take(&mut t.original_cleared));
                 *(if to_original { &mut t.cleared } else { &mut t.original_cleared }) = all;
+                let kw = std::mem::take(&mut t.keywords_cleared) | std::mem::take(&mut t.original_keywords);
+                *(if to_original { &mut t.keywords_cleared } else { &mut t.original_keywords }) = kw;
             }
         });
     }
@@ -516,9 +532,13 @@ impl DocStore {
 
     /// O documento `to` nasce de `from` (Duplicar): leva o que `from` já gravou no EXIF.
     pub(super) fn inherit_meta(&self, from: DocId, to: DocId) {
-        let cleared = self.meta_cleared(from);
-        if !cleared.is_empty() {
-            self.meta_text(|m| m.entry(to).or_default().cleared = cleared);
+        let (cleared, keywords) = (self.meta_cleared(from), self.meta_keywords_cleared(from));
+        if !cleared.is_empty() || keywords {
+            self.meta_text(|m| {
+                let t = m.entry(to).or_default();
+                t.cleared = cleared;
+                t.keywords_cleared = keywords;
+            });
         }
     }
 
