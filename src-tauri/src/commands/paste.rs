@@ -202,6 +202,15 @@ fn check_annotations(data: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// O desenho das anotações (PNG vindo da interface), em RGBA. As dimensões do cabeçalho passam
+/// pelo teto de memória da decodificação antes de alocar.
+fn annotations_image(png: &[u8]) -> AppResult<RgbaImage> {
+    let reader = || ::image::ImageReader::with_format(std::io::Cursor::new(png), ::image::ImageFormat::Png);
+    let (w, h) = reader().into_dimensions()?;
+    decode::check_budget(w, h, 0)?;
+    Ok(reader().decode()?.into_rgba8())
+}
+
 /// Copia anotações: `data` (JSON) fica aqui e `png`, o desenho, vai para a área de transferência.
 #[tauri::command]
 pub async fn copy_annotations(
@@ -211,12 +220,7 @@ pub async fn copy_annotations(
     png: Vec<u8>,
 ) -> AppResult<()> {
     check_annotations(&data)?;
-    let img = blocking(move || {
-        ::image::load_from_memory_with_format(&png, ::image::ImageFormat::Png)
-            .map(|i| i.into_rgba8())
-            .map_err(AppError::from)
-    })
-    .await?;
+    let img = blocking(move || annotations_image(&png)).await?;
     let (w, h) = img.dimensions();
     let annotations = Copied::new(data, &img);
     app.clipboard()
@@ -312,6 +316,23 @@ mod tests {
             check_annotations(&"a".repeat(MAX_ANNOTATIONS + 1)).unwrap_err().code(),
             "unsupported"
         );
+    }
+
+    /// PNG de 1x1 com o IHDR trocado para dizer `w`x`h` (CRC refeito): só o cabeçalho mente.
+    fn png_dizendo(w: u32, h: u32) -> Vec<u8> {
+        let mut png = png_bytes(&solid(1, 1, [1, 2, 3, 255])).unwrap();
+        png[16..20].copy_from_slice(&w.to_be_bytes());
+        png[20..24].copy_from_slice(&h.to_be_bytes());
+        let crc = crc32fast::hash(&png[12..29]);
+        png[29..33].copy_from_slice(&crc.to_be_bytes());
+        png
+    }
+
+    #[test]
+    fn desenho_das_anotacoes_respeita_o_teto_antes_de_alocar() {
+        assert_eq!(annotations_image(&png_dizendo(1, 1)).unwrap().dimensions(), (1, 1));
+        let e = annotations_image(&png_dizendo(40_000, 40_000)).unwrap_err();
+        assert!(e.to_string().contains("grande demais"), "{e}");
     }
 
     #[test]

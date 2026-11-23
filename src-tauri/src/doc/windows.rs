@@ -14,6 +14,9 @@ use std::{
 pub const MAIN_WINDOW: &str = "main";
 /// Prefixo das janelas novas (`doc-1`, `doc-2`...; o mesmo glob da capability). Nunca reutilizado.
 const PREFIX: &str = "doc-";
+/// Teto do estado da interface numa entrega (desfazer, anotações com imagens coladas...): o mesmo
+/// das anotações copiadas (`paste::MAX_ANNOTATIONS`). Acima disso, mover é recusado.
+pub const MAX_STATE: usize = 64 << 20;
 
 /// Documentos entregues a uma janela que ainda não os retirou.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -179,12 +182,12 @@ impl WindowRegistry {
         Ok(())
     }
 
-    /// A janela pode usar o documento? Um sem dono (criado por um comando que não chamou `claim`)
-    /// passa a ser da primeira que o usar.
+    /// A janela pode usar o documento? Só a dona. Um documento sem dono (criado e ainda não
+    /// reivindicado) não é de ninguém: só `claim` dá a posse, então outra janela não o toma no meio.
     pub fn access(&self, label: &str, id: DocId) -> AppResult<()> {
         let mut s = self.lock();
         s.get(label)?;
-        if s.owners.entry(id).or_insert_with(|| label.to_string()) == label {
+        if s.owners.get(&id).is_some_and(|l| l == label) {
             return Ok(());
         }
         Err(AppError::Unsupported(format!("documento {} é de outra janela", id.0)))
@@ -201,6 +204,9 @@ impl WindowRegistry {
         let refused = |why: &str| Err(AppError::Unsupported(format!("mover documentos: {why}")));
         if ids.is_empty() || from == to {
             return refused("nada a mover");
+        }
+        if state.len() > MAX_STATE {
+            return refused("estado grande demais");
         }
         if s.get(from)?.sealed.is_some() || s.get(to)?.sealed.is_some() {
             return refused("janela fechando");
@@ -337,10 +343,25 @@ mod tests {
     }
 
     #[test]
-    fn documento_sem_dono_e_da_primeira_que_o_usa() {
+    fn documento_sem_dono_nao_e_de_ninguem() {
+        // Entre criar e reivindicar, outra janela não pode tomá-lo; só `claim` dá a posse.
         let (r, w) = two();
-        assert!(r.access(&w, DocId(9)).is_ok());
+        assert!(r.access(&w, DocId(9)).is_err());
         assert!(r.access(MAIN_WINDOW, DocId(9)).is_err());
+        assert_eq!(r.owner(DocId(9)), None);
+        r.claim(MAIN_WINDOW, &[DocId(9)]).unwrap();
+        assert!(r.access(MAIN_WINDOW, DocId(9)).is_ok());
+        assert!(r.access(&w, DocId(9)).is_err());
+    }
+
+    #[test]
+    fn estado_grande_demais_nao_entra_na_caixa() {
+        let (r, w) = two();
+        let big = "x".repeat(MAX_STATE + 1);
+        assert!(r.transfer(MAIN_WINDOW, &w, vec![A], big).is_err());
+        assert_eq!(r.owner(A).as_deref(), Some(MAIN_WINDOW), "nada mudou de dono");
+        assert!(!r.has_inbox(&w));
+        assert!(r.transfer(MAIN_WINDOW, &w, vec![A], "x".repeat(MAX_STATE)).is_ok());
     }
 
     #[test]
