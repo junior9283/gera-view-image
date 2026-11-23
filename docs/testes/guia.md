@@ -3,6 +3,8 @@
 ## Comandos
 - `npm run test:release` (script de versão, `node --test`), `npm run lint`, `npm run typecheck`, `npm test` (Vitest/jsdom, `vmThreads`), `npm run test:rust`.
 - Área de transferência de arquivos (ida e volta pelo GTK): `xvfb-run -a cargo test --test clipfiles -- --ignored`, com HOME e XDG_* temporários. Nunca na sessão do usuário: troca o que ele copiou.
+- Instância única (duas execuções, um processo): `scripts/single-instance.sh <binário>` (Xvfb, barramento e HOME/XDG próprios).
+- Scanner: os testes de `commands::scan` usam o `scanimage` falso `src-tauri/tests/fixtures/fake-scanimage`. Com o SANE instalado, o backend `test` (imagem sintética, sem hardware) roda no teste ignorado: crie uma pasta com `dll.conf` contendo `test` e uma cópia de `/etc/sane.d/test.conf` e rode `SANE_CONFIG_DIR=<pasta> cargo test --lib scanimage_real -- --ignored`.
 - Build: `npm run tauri build -- --bundles deb,rpm,appimage` (exporte `TAURI_SIGNING_PRIVATE_KEY` e `_PASSWORD` a partir de `~/.tauri/gera-view-image.*` para gerar os `.sig`) (não usar `tauri dev` em paralelo: porta 1420).
 
 ## Marco 0: validação WebKitGTK (spec §13.2)
