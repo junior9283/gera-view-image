@@ -19,6 +19,7 @@ import { DEFAULT_STYLE, type Annotation } from "./model";
 import { installHistory, resetHistoryForTests } from "./history";
 import { addAnnotation, commit, deleteSelected, moveSelected, restyleSelected } from "./actions";
 import { getItems, resetMarkupForTests, useMarkup } from "./store";
+import { useUi } from "../store/ui";
 
 const info = (over: Partial<DocInfo> = {}): DocInfo => ({
   id: 1, path: "/a.png", name: "a.png", format: "png", width: 100, height: 80, frames: 1,
@@ -162,5 +163,46 @@ describe("desfazer unificado", () => {
     addAnnotation(1, rect("a"));
     expect(globalHistory.canUndo(1)).toBe(false);
     uninstall = installHistory();
+  });
+});
+
+describe("desfazer em outra página (TIFF)", () => {
+  const tiff = (over: Partial<DocInfo> = {}) => info({ path: "/páginas.tiff", name: "páginas.tiff", format: "tiff", frames: 3, ...over });
+  beforeEach(() => {
+    const bump = () => tiff({ rev: ++ipc.rev, dirty: true });
+    ipc.applyOp.mockImplementation(async () => bump());
+    ipc.undo.mockImplementation(async () => bump());
+    ipc.redo.mockImplementation(async () => bump());
+    resetDocsForTests();
+    useDocs.getState().add([tiff()]);
+    useDocs.setState({ activeId: 1 });
+    useUi.getState().setPage(2);
+  });
+  afterEach(() => useUi.getState().setPage(null));
+
+  it("Ctrl+Z e refazer levam a vista à página onde a operação agiu", async () => {
+    await useDocs.getState().applyOp(1, { type: "flipH" });
+    expect(ipc.applyOp).toHaveBeenLastCalledWith(1, { type: "flipH" }, 2);
+    useUi.getState().setPage(0);
+    await globalHistory.undo(1);
+    expect(useUi.getState().page).toBe(2);
+    useUi.getState().setPage(1);
+    await globalHistory.redo(1);
+    expect(useUi.getState().page).toBe(2);
+  });
+
+  it("operação pedida para outra página leva a vista a ela, não à exibida", async () => {
+    await useDocs.getState().applyOp(1, { type: "flipH" }, 1);
+    await globalHistory.undo(1);
+    expect(useUi.getState().page).toBe(1);
+  });
+
+  it("documento que não está na tela não muda a página da vista", async () => {
+    await useDocs.getState().applyOp(1, { type: "flipH" });
+    useDocs.getState().add([info({ id: 2, path: "/b.png", name: "b.png" })]);
+    useDocs.setState({ activeId: 2 });
+    useUi.getState().setPage(null);
+    await globalHistory.undo(1);
+    expect(useUi.getState().page).toBeNull();
   });
 });
