@@ -317,7 +317,12 @@ pub fn encode<'a>(
     if let Some(d) = new_dpi
         && (meta.exif.is_some() || fmt.dpi_in_exif())
     {
-        meta.exif = container::exif_with_dpi(meta.exif.as_deref(), d).filter(fits).or(meta.exif);
+        // EXIF que não pode ser ajustado com segurança sai inteiro (aviso `exifDropped`).
+        meta.exif = match container::exif_with_dpi(meta.exif.as_deref(), d) {
+            Some(e) if fits(&e) => Some(e),
+            Some(_) => meta.exif,
+            None => None,
+        };
     }
     meta.exif = meta.exif.filter(fits);
     let with_alpha = opts.alpha && fmt.keeps_alpha() && img.has_alpha();

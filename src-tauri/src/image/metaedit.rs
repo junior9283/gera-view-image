@@ -90,6 +90,31 @@ impl MetadataEdits {
         }
     }
 
+    /// Separa as edições pelo que a página `has` tem: os campos que ela tem (com o valor editado)
+    /// e os que não tem, marcados como apagados, para só tirar algum resto deles do EXIF sem criar
+    /// o campo. Cada lado é `None` quando fica vazio.
+    pub fn split_present(&self, has: &Texts) -> (Option<MetadataEdits>, Option<MetadataEdits>) {
+        let split = |v: &Option<String>, present: bool| match v {
+            Some(t) if present => (Some(t.clone()), None),
+            Some(_) => (None, Some(String::new())),
+            None => (None, None),
+        };
+        let (title, title_gone) = split(&self.title, has.title.is_some());
+        let (description, description_gone) = split(&self.description, has.description.is_some());
+        let (author, author_gone) = split(&self.author, has.author.is_some());
+        let (alt_text, alt_text_gone) = split(&self.alt_text, has.alt_text.is_some());
+        let some = |e: MetadataEdits| Some(e).filter(|e| !e.is_empty());
+        (
+            some(MetadataEdits { title, description, author, alt_text }),
+            some(MetadataEdits {
+                title: title_gone,
+                description: description_gone,
+                author: author_gone,
+                alt_text: alt_text_gone,
+            }),
+        )
+    }
+
     /// Marca (valor vazio) cada campo que `self` edita: o que já foi gravado no arquivo.
     pub fn as_cleared(&self) -> MetadataEdits {
         let mark = |v: &Option<String>| v.as_ref().map(|_| String::new());
@@ -286,7 +311,13 @@ pub fn notes(meta: &MetaCarry, opts: &ExportOptions) -> Vec<&'static str> {
         }
     }
     let set = exif_clear_set(meta.text_edits.as_ref(), meta.exif_cleared.as_ref(), carries);
-    if meta.exif.as_deref().is_some_and(|e| exif_for_write(e, &set).is_none()) {
+    // Sem limpeza segura, ou com uma resolução nova que não pode ir para ele: o EXIF sai inteiro.
+    let new_dpi = opts.dpi.filter(|d| d.is_finite());
+    let dropped = |e: &[u8]| match exif_for_write(e, &set) {
+        None => true,
+        Some(w) => new_dpi.is_some_and(|d| super::container::exif_with_dpi(Some(&w), d).is_none()),
+    };
+    if meta.exif.as_deref().is_some_and(dropped) {
         out.push("exifDropped");
     } else if opts.format == ExportFormat::Jpeg && meta.exif.as_ref().is_some_and(|e| e.len() > JPEG_EXIF_MAX) {
         out.push("exifTooBig");

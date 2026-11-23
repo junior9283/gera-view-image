@@ -255,3 +255,15 @@ Formato: sintoma, causa, correção, teste, lição.
 - **Causa:** o colar do clipboard de anotações (frente nova) centrava pelo `width`/`height` do documento.
 - **Correção:** `insert` (`src/markup/clipboard.ts`) usa `shownSize`; o resto do encontro (seleção arrastável, prévia ao vivo, Copiar anotações, prova de cor) já recebia o tamanho da página.
 - **Teste:** "colar numa página menor que a primeira centra a anotação dentro dela" (`src/markup/pageSizes.test.ts`), `src/viewer/pages.test.tsx` e `prova_de_cor_vale_na_pagina_exibida_no_tamanho_dela` (`src-tauri/src/doc/proof.rs`).
+
+### Texto e palavra-chave antigos ficavam nas páginas 2+ de um TIFF (privacidade)
+- **Sintoma:** trocar/remover uma palavra-chave ou trocar título, descrição ou autor mudava só a página 1; o valor antigo continuava nos bytes das outras, invisível no Inspetor.
+- **Causa:** `render_for_write` (`doc/file.rs`) só levava às páginas 2+ as edições que apagam.
+- **Correção:** cada campo editado vale em todas as páginas que o têm (`metadata::page_texts` + `MetadataEdits::split_present`); onde a página não tem o campo, nada é criado e só o resto dele no EXIF sai (`exif_cleared`).
+- **Teste:** `edicao_de_texto_e_palavras_chave_vale_em_todas_as_paginas`, `texto_apagado_sai_de_todas_as_paginas` (`src-tauri/tests/paginas.rs`).
+- **Lição:** editar num documento de várias páginas é editar todas; o teste procura o valor antigo nos bytes do arquivo inteiro.
+
+### Páginas 2+ de um TIFF com DPI e metadados errados
+- **Sintoma:** impressão, PDF e Ajustar Tamanho usavam o DPI da página 1 em todas; com o disco com outro número de páginas, as páginas 2+ perdiam EXIF/XMP/IPTC.
+- **Correção:** `Decoded::page_dpi`/`dpi_of`; `SourceFile` casa as páginas por índice até o mínimo.
+- **Teste:** `cada_pagina_tem_o_proprio_dpi`, `paginas_do_disco_diferentes_das_do_documento_casam_por_indice` (`src-tauri/tests/paginas.rs`).

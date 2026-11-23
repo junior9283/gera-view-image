@@ -643,6 +643,38 @@ fn exif_que_nao_cabe_no_jpeg_avisa() {
     assert!(grava(sem, "jpg").is_empty(), "remover metadados é uma escolha");
 }
 
+/// IFD0 apontado para dentro do cabeçalho (offset < 8): zerar a tabela antiga apagaria o próprio
+/// cabeçalho. O bloco é recusado (quem chama descarta o EXIF).
+#[test]
+fn exif_com_ifd0_sobre_o_cabecalho_e_recusado() {
+    for at in 0u32..8 {
+        let mut b = b"II*\0".to_vec();
+        b.extend(at.to_le_bytes());
+        b.resize(1024, 0);
+        assert_eq!(exif_with_dpi(Some(&b), 300.0), None, "IFD0 em {at}");
+    }
+    let mut ok = b"II*\0\x08\0\0\0".to_vec();
+    ok.resize(1024, 0);
+    assert!(exif_with_dpi(Some(&ok), 300.0).is_some());
+}
+
+/// Resolução nova num EXIF cuja tabela não pode ser movida com segurança (IFD0 sobre o cabeçalho):
+/// o EXIF sai inteiro, com aviso, em vez de sair danificado ou com a resolução antiga.
+#[test]
+fn exif_que_nao_aceita_a_resolucao_nova_sai_com_aviso() {
+    use gera_view_image_lib::image::metaedit::notes;
+    let rgba = DynamicImage::ImageRgb8(gradiente(16, 8)).into_rgba8();
+    let mut exif = b"II*\0\x02\0\0\0".to_vec();
+    exif.resize(1024, 0);
+    let meta = MetaCarry { exif: Some(exif), ..MetaCarry::default() };
+    let o = ExportOptions { dpi: Some(300.0), ..opts(ExportFormat::Jpeg) };
+    let dir = tmp("insp-exif-dpi");
+    let out = dir.join("ação.jpg");
+    fs::write(&out, encode(&rgba, &o, &meta).unwrap()).unwrap();
+    assert!(decode(&out).unwrap().exif.is_none(), "EXIF danificado gravado");
+    assert_eq!(notes(&meta, &o), ["exifDropped"]);
+}
+
 /// O que uma gravação levaria, para o aviso de perda antes de gravar.
 #[test]
 fn metadados_dizem_que_blocos_o_arquivo_tem() {

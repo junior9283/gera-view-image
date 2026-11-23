@@ -689,7 +689,8 @@
       "exifTooBig": "The EXIF (date, camera, location) is larger than the 64 KB a JPEG accepts and was not written. To keep it, export as TIFF, PNG or WebP.",
       "xmpRebuilt": "The file's XMP could not be edited safely and was rebuilt: it holds only title, description, author and alt text, and the rest of the XMP (such as rating) was not kept.",
       "exifDropped": "The old text could not be removed from the EXIF safely, so the whole EXIF (date, camera, location) was not written.",
-      "textNotSaved": "This format does not store title, description, author or alt text: the new text was not written. Export as JPEG, TIFF, PNG or WebP."
+      "textNotSaved": "This format does not store title, description, author or alt text: the new text was not written. Export as JPEG, TIFF, PNG or WebP.",
+      "tiffValueDropped": "A metadata value of this image is larger than 64 MB and was not written to one of the TIFF pages."
     },
     "keywordsNotSaved": "Keywords, title, description and author were not saved: this format does not store IPTC/XMP. Export as JPEG, TIFF, PNG or WebP.",
     "exported": "Exported: {{name}}",

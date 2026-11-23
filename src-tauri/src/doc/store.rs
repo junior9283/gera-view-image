@@ -239,6 +239,7 @@ impl Document {
             icc: None,
             exif: None,
             dpi: None,
+            page_dpi: Vec::new(),
         };
         let mut d = Document::new(id, path, empty, (0, 0), false);
         d.info.writable = false;

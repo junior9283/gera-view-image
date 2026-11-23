@@ -58,12 +58,19 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - TIFF que só abre pelo leitor de uma página (ou com páginas demais) não é mais aberto pela metade: com mais de uma página, o app mostra o erro em vez de abrir só a primeira, que o Salvar gravaria sozinha.
 - EXIF maior que o limite de 64 KB do JPEG saía sem aviso; agora o app avisa, e os avisos de metadados dizem de que documento são.
 - Reiniciar depois de instalar uma atualização descartava as alterações não salvas sem perguntar.
+- Privacidade: num TIFF de várias páginas, trocar ou remover uma palavra-chave, ou trocar o título, a descrição ou o autor, mudava só a primeira página, e o valor antigo continuava escondido nas outras (sem aparecer no Inspetor). Agora a edição vale para todas as páginas que têm o campo; nas que não têm, nada é criado.
+- TIFF de várias páginas: cada página usa a própria resolução (ppp) para imprimir, exportar em PDF, Ajustar Tamanho e gravar; antes todas usavam a da primeira. Quando o arquivo no disco tem outro número de páginas, cada página ainda leva os metadados da página correspondente, até onde houver, em vez de perder os de todas a partir da segunda.
+- Gravar um TIFF de várias páginas com um metadado grande demais (acima de 64 MB) avisa que ele ficou de fora, em vez de descartá-lo em silêncio.
+- EXIF com estrutura fora do comum: ao gravar com outra resolução, o EXIF que não pode ser ajustado com segurança sai inteiro, com aviso (antes podia sair danificado ou com a resolução antiga). Da mesma forma, um JPEG cujo EXIF tem a segunda tabela (a da miniatura) fora do comum agora perde o EXIF com aviso ao gravar, em vez de levar a miniatura antiga.
+- JPEG XL com transparência e canais extras (como profundidade) abre com a cor e a transparência; antes era recusado. HEIC/AVIF de 8 bits marcados como PQ/HLG continuam abrindo mesmo quando a libheif não os converte para 16 bits.
+- ICNS com vários ícones quebrados desiste depois de três tentativas, em vez de tentar todos.
+- Colar (Ctrl+V) depois de copiar anotações não lê mais a área de transferência duas vezes. Um gerenciador de área de transferência que regrava a imagem copiada (outro formato ou outra compressão) faz o Colar trazer o desenho como uma camada, e não as anotações editáveis.
 - O OpenEXR exportado com transparência segue a especificação (cor pré-multiplicada pelo alfa). Antes, outros programas mostravam as bordas claras demais.
 
 ### Limitações conhecidas (o que falta para a 1.0)
 - HDR: OpenEXR, Radiance, PQ e HLG são sempre mostrados em SDR, e gravar por cima perde o alcance original. QOI não abre, do JPEG XL só o primeiro quadro, o JPEG XL em CMYK é recusado e metadados comprimidos (caixas `brob`) do JPEG XL são ignorados.
 - Prova de Cor: sem simulação do branco do papel nem da tinta preta, e sem aviso de gama.
-- TIFF de várias páginas: os formatos de uma página (PNG, JPEG e os demais, exceto o Exportar como PDF…) gravam só a página exibida, com aviso antes. O título, a descrição e as palavras-chave editados vão para a primeira página (apagar vale para todas), e um arquivo acima de 2 GB não é gravado de uma vez.
+- TIFF de várias páginas: os formatos de uma página (PNG, JPEG e os demais, exceto o Exportar como PDF…) gravam só a página exibida, com aviso antes. Um arquivo acima de 2 GB não é gravado de uma vez.
 
 ## [0.4.1] - 2026-11-22
 
