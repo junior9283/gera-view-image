@@ -32,7 +32,7 @@ const doc: DocInfo = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // O addRecent do Exportar emite prefs; fixa o idioma para o i18n não voltar ao do sistema (en).
+  // Fixa o idioma para o i18n não voltar ao do sistema (en).
   setPrefs({ language: "pt-BR" });
   resetKeywordsForTests();
   resetHeicProbeForTests();
