@@ -196,6 +196,8 @@ export function Viewport() {
         paint.current();
       } catch (e) {
         console.error("falha ao desenhar a imagem:", e);
+        // Quem espera esta revisão aparecer (a prévia do Ajustar Cor depois do OK) para de esperar.
+        if (canvas.current) canvas.current.dataset.failed = `${id}:${rev}`;
       }
     }, have ? 40 : 0);
     return () => clearTimeout(timer);

@@ -147,17 +147,18 @@ function Layer({ doc, preview, frame, scale, panX, panY, imageW, imageH }: Layer
     paintBuffer(cv.current, viewSize, shown && dest ? { canvas: shown.canvas, dest } : null, checker);
   });
 
-  // Depois do OK: some quando o visor mostrar a imagem já ajustada.
+  // Depois do OK: some quando o visor mostrar a imagem já ajustada, ou não conseguir desenhá-la.
   useEffect(() => {
     const base = baseCanvas(cv.current);
     if (frozenRev === null || !base) return;
-    const check = () => {
-      const [shownId, shownRev] = (base.dataset.shown ?? "").split(":").map(Number);
-      if (shownId === id && shownRev > frozenRev) clearPreview();
+    const newer = (mark: string | undefined) => {
+      const [docId, rev] = (mark ?? "").split(":").map(Number);
+      return docId === id && rev > frozenRev;
     };
+    const check = () => (newer(base.dataset.shown) || newer(base.dataset.failed)) && clearPreview();
     check();
     const watch = new MutationObserver(check);
-    watch.observe(base, { attributes: true, attributeFilter: ["data-shown"] });
+    watch.observe(base, { attributes: true, attributeFilter: ["data-shown", "data-failed"] });
     return () => watch.disconnect();
   }, [id, frozenRev]);
 

@@ -224,6 +224,33 @@ describe("restaura", () => {
     expect(base().style.visibility).toBe("");
   });
 
+  it("OK numa imagem que demora a desenhar: a prévia fica até a revisão nova aparecer, sem prazo curto", async () => {
+    ipc.applyOp.mockImplementation(async () => doc(1, { rev: 2 }));
+    open();
+    expose(1);
+    await tick();
+    fireEvent.click(screen.getByText("OK"));
+    await tick(0);
+    await tick(10_000);
+    expect(layer()).toBeTruthy();
+    await act(async () => base().setAttribute("data-shown", "1:2"));
+    await tick(0);
+    expect(layer()).toBeNull();
+  });
+
+  it("OK e o visor não consegue desenhar a revisão nova: a prévia sai (sem ficar presa)", async () => {
+    ipc.applyOp.mockImplementation(async () => doc(1, { rev: 2 }));
+    open();
+    expose(1);
+    await tick();
+    fireEvent.click(screen.getByText("OK"));
+    await tick(0);
+    await act(async () => base().setAttribute("data-failed", "1:2"));
+    await tick(0);
+    expect(layer()).toBeNull();
+    expect(base().style.visibility).toBe("");
+  });
+
   it("OK com pedidos no meio: nada mais é pedido nem mostrado (a imagem já teria o ajuste)", async () => {
     let finish!: (b: Buf) => void;
     ipc.previewAdjust.mockImplementation(() => new Promise((r) => (finish = r)));

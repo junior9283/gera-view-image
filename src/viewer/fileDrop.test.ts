@@ -60,7 +60,7 @@ describe("soltar arquivos", () => {
   });
 
   it("arrasto sem arquivos (texto, link) não mostra a marca de soltura", async () => {
-    const hover = vi.fn(() => true);
+    const hover = vi.fn<(at: { x: number; y: number } | null) => boolean>(() => true);
     const off = registerDropHover(hover);
     const { result } = renderHook(() => useFileDrop());
     await act(async () => {});
