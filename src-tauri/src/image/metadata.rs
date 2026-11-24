@@ -4,9 +4,9 @@ use super::{
     decode::Decoded,
     formatinfo::{self, Section},
     makernote::{self, Maker},
-    metaedit::{self, Texts, xml_unescape},
+    metaedit::{self, Cleared, Texts, xml_unescape},
 };
-use crate::{commands::describe::MetadataEdits, error::AppResult};
+use crate::error::AppResult;
 use ::image::{ImageDecoder, ImageFormat, ImageReader};
 use exif::{Context, In, Reader, Tag, Value};
 use rayon::prelude::*;
@@ -83,22 +83,17 @@ pub struct Carried {
 
 /// Lê os metadados de `path`. `decoded` traz EXIF, ICC e DPI já extraídos na abertura.
 pub fn read_metadata(path: &Path, decoded: &Decoded) -> AppResult<Metadata> {
-    read_metadata_with(path, decoded, &MetadataEdits::default(), false)
+    read_metadata_with(path, decoded, &Cleared::default())
 }
 
-/// Como `read_metadata`, sem os textos do EXIF que `cleared` marca e sem o XPKeywords se
-/// `keywords_cleared` (já gravados no arquivo, mas ainda presentes no EXIF guardado na abertura). EXIF que não dá para limpar não é mostrado.
-pub fn read_metadata_with(
-    path: &Path,
-    decoded: &Decoded,
-    cleared: &MetadataEdits,
-    keywords_cleared: bool,
-) -> AppResult<Metadata> {
+/// Como `read_metadata`, sem o que `cleared` marca do EXIF (já gravado no arquivo, mas ainda presente
+/// no EXIF guardado na abertura). EXIF que não dá para limpar não é mostrado.
+pub fn read_metadata_with(path: &Path, decoded: &Decoded, cleared: &Cleared) -> AppResult<Metadata> {
     let exif = decoded.exif.as_deref().and_then(|e| {
-        if cleared.is_empty() && !keywords_cleared {
+        if cleared.text.is_empty() && !cleared.keywords {
             Some(e.to_vec())
         } else {
-            metaedit::exif_without_saved_text(e, cleared, keywords_cleared)
+            metaedit::exif_without_text(e, &cleared.text, cleared.keywords)
         }
     });
     let exif = exif.as_deref();

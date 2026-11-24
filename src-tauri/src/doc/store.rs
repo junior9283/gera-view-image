@@ -16,7 +16,7 @@ use crate::{
     error::{AppError, AppResult},
     image::{
         decode::{self, Decoded},
-        icc, ops,
+        icc, metaedit::Cleared, ops,
         thumb,
     },
 };
@@ -477,19 +477,19 @@ impl DocStore {
         self.meta_text(|m| m.get(&id).and_then(|t| t.pending.clone()))
     }
 
-    /// Campos que já foram gravados no arquivo do documento (valor vazio): o EXIF não pode ter o antigo.
-    pub fn meta_cleared(&self, id: DocId) -> MetadataEdits {
-        self.meta_text(|m| m.get(&id).map(|t| t.cleared.clone()).unwrap_or_default())
+    /// O que já foi gravado no arquivo do documento (campos de texto com valor vazio e palavras-chave):
+    /// o EXIF de origem não pode mostrar nem gravar o antigo.
+    pub fn meta_cleared(&self, id: DocId) -> Cleared {
+        self.meta_text(|m| {
+            m.get(&id)
+                .map(|t| Cleared { text: t.cleared.clone(), keywords: t.keywords_cleared })
+                .unwrap_or_default()
+        })
     }
 
     /// As palavras-chave editadas acabaram de ser gravadas no arquivo do documento.
     pub fn keywords_written(&self, id: DocId) {
         self.meta_text(|m| m.entry(id).or_default().keywords_cleared = true);
-    }
-
-    /// O XPKeywords do EXIF de origem é antigo (as palavras-chave já foram gravadas)?
-    pub fn meta_keywords_cleared(&self, id: DocId) -> bool {
-        self.meta_text(|m| m.get(&id).is_some_and(|t| t.keywords_cleared))
     }
 
     /// O documento acabou de ser gravado no próprio arquivo. Em formato que guarda o texto, as
@@ -550,12 +550,12 @@ impl DocStore {
 
     /// O documento `to` nasce de `from` (Duplicar): leva o que `from` já gravou no EXIF.
     pub(super) fn inherit_meta(&self, from: DocId, to: DocId) {
-        let (cleared, keywords) = (self.meta_cleared(from), self.meta_keywords_cleared(from));
-        if !cleared.is_empty() || keywords {
+        let cleared = self.meta_cleared(from);
+        if !cleared.text.is_empty() || cleared.keywords {
             self.meta_text(|m| {
                 let t = m.entry(to).or_default();
-                t.cleared = cleared;
-                t.keywords_cleared = keywords;
+                t.cleared = cleared.text;
+                t.keywords_cleared = cleared.keywords;
             });
         }
     }

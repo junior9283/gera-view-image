@@ -245,16 +245,21 @@ pub fn texts_of(xmp: Option<&str>, iptc: &[(String, String)], exif: &[(String, S
 
 // ---------- EXIF ----------
 
+/// O que um Salvar já gravou no arquivo do documento e o EXIF de origem ainda guarda de antes.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Cleared {
+    /// Campos de texto (valor vazio).
+    pub text: MetadataEdits,
+    /// As palavras-chave: o XPKeywords antigo também sai.
+    pub keywords: bool,
+}
+
 /// Bloco EXIF sem o valor antigo dos campos editados em `e`: título (XPTitle, ImageTitle),
 /// descrição (ImageDescription, XPComment, XPSubject, UserComment) e autor (Artist, XPAuthor, Photographer),
 /// no IFD0, no IFD1 e no sub-IFD Exif. O resto do EXIF fica. `None` quando a limpeza não pode ser
 /// feita com segurança: quem chama descarta o EXIF inteiro em vez de deixar o texto antigo passar.
-pub fn exif_without_text(tiff: &[u8], e: &MetadataEdits) -> Option<Vec<u8>> {
-    scrub_texts(tiff, e, false, false)
-}
-
-/// Como `exif_without_text`, e sem o XPKeywords se as palavras-chave já foram gravadas.
-pub fn exif_without_saved_text(tiff: &[u8], e: &MetadataEdits, keywords: bool) -> Option<Vec<u8>> {
+/// `keywords`: o XPKeywords antigo também sai.
+pub fn exif_without_text(tiff: &[u8], e: &MetadataEdits, keywords: bool) -> Option<Vec<u8>> {
     scrub_texts(tiff, e, keywords, false)
 }
 
@@ -602,7 +607,7 @@ mod tests {
             description: Some(String::new()),
             ..Default::default()
         };
-        let out = exif_without_text(&orig, &e).unwrap();
+        let out = exif_without_text(&orig, &e, false).unwrap();
         for velho in ["Antigo Autor", "Autor XP antigo", "Descricao antiga", "Comentario XP antigo"] {
             assert!(!tem(&out, velho), "{velho} ainda no EXIF");
         }
@@ -633,14 +638,14 @@ mod tests {
     #[test]
     fn exif_sem_edicao_volta_igual_e_malformado_cai() {
         let orig = exif_com_textos();
-        assert_eq!(exif_without_text(&orig, &MetadataEdits::default()), Some(orig.clone()));
+        assert_eq!(exif_without_text(&orig, &MetadataEdits::default(), false), Some(orig.clone()));
         let e = MetadataEdits { author: Some("x".into()), ..Default::default() };
         for n in 0..orig.len() {
-            let _ = exif_without_text(&orig[..n], &e);
+            let _ = exif_without_text(&orig[..n], &e, false);
         }
         let mut forjado = orig.clone();
         forjado[8..10].copy_from_slice(&u16::MAX.to_le_bytes());
-        assert_eq!(exif_without_text(&forjado, &e), None, "bloco ilegível: o EXIF inteiro cai");
+        assert_eq!(exif_without_text(&forjado, &e, false), None, "bloco ilegível: o EXIF inteiro cai");
     }
 
     #[test]

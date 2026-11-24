@@ -18,8 +18,7 @@ pub async fn metadata(store: State<'_, DocStore>, id: DocId, frame: Option<u32>)
         let page = frame.filter(|&f| f > 0).and_then(|f| source.frames.get(f as usize));
         let size = page.map_or(full_size, |p| p.dimensions());
         // O EXIF de origem não muda depois de um Salvar: o que já foi gravado fica fora da leitura.
-        let (cleared, keywords) = (store.meta_cleared(id), store.meta_keywords_cleared(id));
-        let mut m = read_metadata_with(std::path::Path::new(&path), &source, &cleared, keywords)?;
+        let mut m = read_metadata_with(std::path::Path::new(&path), &source, &store.meta_cleared(id))?;
         // Durante a prévia reduzida os quadros são menores que o original.
         (m.general.width, m.general.height) = size;
         // Com Atribuir Perfil…, vale o perfil atribuído.

@@ -257,7 +257,8 @@ impl DocStore {
         let bytes = file.and_then(|f| f.page(frame));
         let (iptc, xmp) = bytes.map(metadata::file_iim_xmp).unwrap_or_default();
         let text_edits = self.meta_edits(id);
-        let exif_keywords = keywords.is_some() || self.meta_keywords_cleared(id);
+        let cleared = self.meta_cleared(id);
+        let exif_keywords = keywords.is_some() || cleared.keywords;
         let meta = if frame == 0 || !source.has_pages() {
             MetaCarry {
                 exif: source.exif.clone(),
@@ -266,7 +267,7 @@ impl DocStore {
                 xmp,
                 iptc_keywords: keywords,
                 text_edits,
-                exif_cleared: Some(self.meta_cleared(id)).filter(|c| !c.is_empty()),
+                exif_cleared: Some(cleared.text).filter(|c| !c.is_empty()),
                 exif_keywords,
                 dpi,
             }

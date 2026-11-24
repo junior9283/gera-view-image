@@ -387,7 +387,7 @@ fn texto_apagado_nao_volta_ao_exif_em_salvar_exportar_salvar_como_e_duplicar() {
 
     // A aba também não mostra o valor antigo.
     let source = store.with_doc(id, |d| d.source.clone()).unwrap();
-    let m = read_metadata_with(&src, &source, &store.meta_cleared(id), false).unwrap();
+    let m = read_metadata_with(&src, &source, &store.meta_cleared(id)).unwrap();
     assert_eq!(m.texts.author.as_deref(), Some("Ana"));
     assert_eq!(m.texts.description, None);
     assert!(campo(&m.exif, "Make").unwrap().contains("Gera"));
@@ -465,7 +465,7 @@ fn palavras_chave_e_descricao_editadas_tiram_xpkeywords_e_xpsubject_do_exif() {
     // A aba EXIF do Inspetor depois de salvar não mostra o XPKeywords antigo (o EXIF de origem
     // do documento ainda o guarda).
     let source = store.with_doc(id, |d| d.source.clone()).unwrap();
-    let aberto = read_metadata_with(&src, &source, &store.meta_cleared(id), store.meta_keywords_cleared(id)).unwrap();
+    let aberto = read_metadata_with(&src, &source, &store.meta_cleared(id)).unwrap();
     for rows in [&aberto.exif, secao(&aberto, "tiff")] {
         assert!(!rows.iter().any(|(k, _)| k == "Tag(Tiff, 40094)") /* XPKeywords */, "{rows:?}");
     }
@@ -493,17 +493,17 @@ fn reverter_descarta_so_a_pendencia_e_mantem_o_que_ja_foi_gravado() {
     store.wait_ready(id).unwrap();
     store.set_meta_edits(id, &edicao_autor_e_descricao());
     store.save(id, None).unwrap();
-    assert!(!store.meta_cleared(id).is_empty());
+    assert!(!store.meta_cleared(id).text.is_empty());
     store.set_meta_edits(id, &MetadataEdits { title: Some("pendente".into()), ..Default::default() });
     store.revert(id, RevertTarget::Original).unwrap();
     // O EXIF da abertura continua com o texto antigo: os marcadores ficam para limpá-lo de novo.
-    assert!(!store.meta_cleared(id).is_empty());
+    assert!(!store.meta_cleared(id).text.is_empty());
     assert_eq!(store.meta_edits(id), None);
     let fora = dir.join("depois-de-reverter.jpg");
     store.export(id, &s(&fora), &opts(ExportFormat::Jpeg), None).unwrap();
     sem_texto_antigo(&fora, "Exportar depois de Reverter");
     store.close(id).unwrap();
-    assert!(store.meta_cleared(id).is_empty());
+    assert!(store.meta_cleared(id).text.is_empty());
 }
 
 /// O PSD leva XMP e IPTC: o autor novo vai neles e o antigo sai do EXIF.
@@ -533,7 +533,7 @@ fn apagar_e_gravar_em_avif_vira_marcador() {
     store.wait_ready(id).unwrap();
     store.set_meta_edits(id, &MetadataEdits { author: Some(String::new()), title: Some("novo".into()), ..Default::default() });
     store.meta_written(id, false);
-    let c = store.meta_cleared(id);
+    let c = store.meta_cleared(id).text;
     assert_eq!((c.author.as_deref(), c.title), (Some(""), None));
     assert_eq!(store.meta_edits(id).and_then(|e| e.title).as_deref(), Some("novo"), "o texto novo segue pendente");
 }
@@ -550,9 +550,9 @@ fn reverter_ao_original_depois_de_trocar_a_origem_nao_traz_o_texto_de_volta() {
     store.set_meta_edits(id, &edicao_autor_e_descricao());
     store.save(id, None).unwrap();
     store.revert(id, RevertTarget::LastSaved).unwrap();
-    assert!(store.meta_cleared(id).is_empty(), "a origem agora é a do disco, já limpa");
+    assert!(store.meta_cleared(id).text.is_empty(), "a origem agora é a do disco, já limpa");
     store.revert(id, RevertTarget::Original).unwrap();
-    assert!(!store.meta_cleared(id).is_empty());
+    assert!(!store.meta_cleared(id).text.is_empty());
     let fora = dir.join("depois.jpg");
     store.export(id, &s(&fora), &opts(ExportFormat::Jpeg), None).unwrap();
     sem_texto_antigo(&fora, "Exportar depois de voltar à origem da abertura");
@@ -574,7 +574,7 @@ fn avif_e_heic_so_apagam_e_o_novo_texto_fica_pendente() {
     assert!(contem(&exif, "Antigo Autor"), "AVIF não guarda o autor novo: o antigo fica, com a pendência");
     assert!(store.meta_edits(id).is_some(), "a edição segue pendente");
     // exportar para outro arquivo não marca nada como gravado no documento
-    assert!(store.meta_cleared(id).is_empty());
+    assert!(store.meta_cleared(id).text.is_empty());
 }
 
 #[test]
