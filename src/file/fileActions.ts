@@ -65,7 +65,8 @@ export async function saveDoc(d: DocInfo): Promise<boolean> {
     return false;
   };
   // Antes de achatar: cancelar o Exportar não pode deixar nada mudado.
-  if (await ipc.saveNeedsExport(d.id)) return toExport();
+  // `!d.writable` é só atalho (poupa o IPC): a sondagem do Rust também responde sim para ele.
+  if (!d.writable || (await ipc.saveNeedsExport(d.id))) return toExport();
   // Um TIFF de várias páginas é gravado inteiro.
   const allPages = hasPages(d);
   if (!(await confirmLosses(d, { format: exportFormatOf(d.format), stripMetadata: false, allPages }))) return false;

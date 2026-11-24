@@ -474,8 +474,9 @@ impl DocStore {
         }
         Ok(unseen
             && format == SourceFormat::Tiff
-            && fsio::read_regular(p)
-                .map_or(true, |b| container::tiff_pages(&b).map_or(true, |pages| pages.len() > frames as usize)))
+            && fsio::read_regular(p).is_ok_and(|b| {
+                container::tiff_pages(&b).is_none_or(|pages| pages.len() > frames as usize)
+            }))
     }
 
     /// Salvar (Ctrl+S): grava no próprio arquivo, de forma atômica, se o formato permitir (um TIFF
