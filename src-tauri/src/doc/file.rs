@@ -4,11 +4,12 @@
 //! carimbo da abertura (ou do último salvar) e falha com `changed_on_disk`.
 use super::{
     color::Profile,
-    model::{DocId, DocInfo, Op},
+    model::{DocId, DocInfo, Op, SourceFormat},
     store::{DeepBase, DiskStamp, DocStore, Document, Pixels, RenderState, not_found},
 };
 use crate::{
     error::{AppError, AppResult},
+    fsio,
     image::{
         decode::{self, Decoded},
         container::{self, TiffJoin},
@@ -421,7 +422,9 @@ impl DocStore {
     }
 
     /// O que Salvar precisa para gravar no próprio arquivo, ou `None` se tiver de virar Exportar
-    /// (formato sem gravação, ou o arquivo no disco virou outra coisa). Não altera nada.
+    /// (formato sem gravação, ou o arquivo no disco virou outra coisa). Não altera nada. É a
+    /// checagem completa de `save`, que decide de verdade e protege contra a corrida entre a
+    /// sondagem de `save_needs_export` e a gravação.
     fn save_plan(&self, id: DocId) -> AppResult<Option<(String, ExportFormat, Option<SourceFile>)>> {
         let (path, format, writable, frames, unseen) = self.with_doc(id, |d| {
             (d.info.path.clone(), d.info.format, d.info.writable, d.info.frames, d.unseen_disk)
@@ -448,10 +451,31 @@ impl DocStore {
     }
 
     /// Salvar vai virar Exportar? A interface pergunta antes de achatar anotações: cancelar o
-    /// Exportar não pode deixar o documento mudado.
+    /// Exportar não pode deixar o documento mudado. Sondagem leve, sem decodificar nada: só o
+    /// começo do arquivo (formato) e, num TIFF com páginas novas no disco, a contagem delas. O
+    /// que só uma decodificação mostraria fica para `save_plan`, dentro de `save`.
     pub fn save_needs_export(&self, id: DocId) -> AppResult<bool> {
         self.wait_ready(id)?;
-        Ok(self.save_plan(id)?.is_none())
+        let (path, format, writable, frames, unseen) = self.with_doc(id, |d| {
+            (d.info.path.clone(), d.info.format, d.info.writable, d.info.frames, d.unseen_disk)
+        })?;
+        if ExportFormat::for_save(format).is_none() || !writable {
+            return Ok(true);
+        }
+        if let Some(removed) = self.disk_change(id)? {
+            return Err(changed_on_disk(&path, removed));
+        }
+        let p = Path::new(&path);
+        let Ok(head) = fsio::read_head(p, 64) else {
+            return Ok(false); // sem arquivo para conferir: `save` decide
+        };
+        if decode::detect_format(p, &head) != Some(format) {
+            return Ok(true);
+        }
+        Ok(unseen
+            && format == SourceFormat::Tiff
+            && fsio::read_regular(p)
+                .map_or(true, |b| container::tiff_pages(&b).map_or(true, |pages| pages.len() > frames as usize)))
     }
 
     /// Salvar (Ctrl+S): grava no próprio arquivo, de forma atômica, se o formato permitir (um TIFF
