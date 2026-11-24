@@ -32,8 +32,9 @@ pub struct Decoded {
     pub dpi: Option<(f32, f32)>,
     /// Resolução de cada página de um TIFF de várias; vazio nos outros formatos (ver `dpi_of`).
     pub page_dpi: Vec<Option<(f32, f32)>>,
-    /// Perfil ICC de cada página de um TIFF de várias; vazio nos outros formatos (ver `icc_of`).
-    pub page_icc: Vec<Option<Vec<u8>>>,
+    /// Perfil ICC das páginas 2+ de um TIFF de várias (o da primeira é `icc`); vazio nos outros
+    /// formatos. Páginas com o mesmo perfil compartilham os bytes (ver `icc_of`).
+    pub page_icc: Vec<Option<std::sync::Arc<[u8]>>>,
 }
 
 impl Decoded {
@@ -54,7 +55,7 @@ impl Decoded {
     /// Perfil da página `frame`: o dela num TIFF de várias páginas (sem perfil = sRGB), senão o da
     /// imagem.
     pub fn icc_of(&self, frame: u32) -> Option<&[u8]> {
-        match self.page_icc.get(frame as usize) {
+        match (frame as usize).checked_sub(1).and_then(|i| self.page_icc.get(i)) {
             Some(p) => p.as_deref(),
             None => self.icc.as_deref(),
         }
@@ -566,7 +567,8 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
         l
     });
     let mut frames = Vec::new();
-    let mut page_icc = Vec::new();
+    let mut first_icc: Option<Vec<u8>> = None;
+    let mut page_icc: Vec<Option<std::sync::Arc<[u8]>>> = Vec::new();
     let mut page_dpi = Vec::new();
     let mut total = 0;
     loop {
@@ -575,7 +577,17 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
         total = check_budget_max(w, h, total, max)?;
         let color = dec.colortype().map_err(map)?;
         let orientation = dec.find_tag_unsigned::<u8>(Tag::Orientation).ok().flatten();
-        page_icc.push(dec.get_tag_u8_vec(Tag::IccProfile).ok());
+        let icc = dec.get_tag_u8_vec(Tag::IccProfile).ok();
+        if frames.is_empty() {
+            first_icc = icc;
+        } else {
+            // Páginas com o perfil da anterior (o comum) repartem os bytes em vez de copiá-los.
+            let same = |p: &Option<std::sync::Arc<[u8]>>| p.as_deref() == icc.as_deref();
+            page_icc.push(match page_icc.last() {
+                Some(p) if same(p) => p.clone(),
+                _ => icc.map(Into::into),
+            });
+        }
         page_dpi.push(tiff_dpi(&mut dec));
         let to8 = |v: Vec<u16>| v.into_iter().map(|x| (x >> 8) as u8).collect::<Vec<u8>>();
         let (data, channels) = match (dec.read_image().map_err(map)?, color) {
@@ -619,7 +631,7 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
         delays_ms: vec![0; n],
         plays: 0,
         format: SourceFormat::Tiff,
-        icc: page_icc.first().cloned().flatten(),
+        icc: first_icc,
         exif: None,
         dpi: page_dpi.first().copied().flatten(),
         page_dpi,
