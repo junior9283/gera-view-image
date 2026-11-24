@@ -86,6 +86,7 @@ export const metadata = (id: DocId, frame = 0) => invoke<Metadata>("metadata", {
 // ---------- Arquivo (Task 11) ----------
 
 /** `keywords`: palavras-chave editadas no inspetor (`null` = manter as do arquivo). */
+export const saveNeedsExport = (id: DocId) => invoke<boolean>("save_needs_export", { id });
 export const save = (id: DocId, keywords: string[] | null) => invoke<SaveOutcome>("save", { id, keywords });
 
 export const exportDoc = (id: DocId, dest: string, opts: ExportOptions, keywords: string[] | null) =>

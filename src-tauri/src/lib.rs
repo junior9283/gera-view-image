@@ -7,6 +7,11 @@ pub mod theme;
 
 use tauri::{Manager, RunEvent};
 
+/// Algum argumento pede só a versão (`--version`/`-V`). Aceita nomes que não são UTF-8.
+pub fn wants_version(mut args: impl Iterator<Item = std::ffi::OsString>) -> bool {
+    args.any(|a| a == "--version" || a == "-V")
+}
+
 pub fn run() {
     commands::mark_start();
     // Antes de qualquer thread/janela: o WebKitGTK lê estas variáveis ao iniciar.
@@ -69,6 +74,7 @@ pub fn run() {
             commands::edit::auto_levels,
             commands::meta::metadata,
             commands::file::save,
+            commands::file::save_needs_export,
             commands::file::export,
             commands::file::estimate_size,
             commands::file::heic_encoder_available,
@@ -222,5 +228,17 @@ fn shutdown(app: &tauri::AppHandle) {
     app.state::<commands::scan::Scans>().cancel_all();
     if let Some(temp) = app.try_state::<commands::scan::ScanTemp>() {
         commands::drag::cleanup(&temp.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
+    #[test]
+    fn versao_com_argumento_que_nao_e_utf8() {
+        let ruim = OsString::from_vec(vec![b'a', 0xff, 0xfe]);
+        assert!(super::wants_version([ruim.clone(), "-V".into()].into_iter()));
+        assert!(!super::wants_version([ruim, "foto.png".into()].into_iter()));
     }
 }

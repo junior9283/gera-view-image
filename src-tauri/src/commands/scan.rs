@@ -290,19 +290,43 @@ fn stop(child: &mut Child) {
     let _ = child.wait();
 }
 
-/// Lê tudo de `r`, guardando até `max` bytes (o processo não trava com o cano cheio).
-fn drain(mut r: impl Read + Send + 'static, max: usize) -> std::thread::JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        let (mut kept, mut buf) = (Vec::new(), [0u8; 8192]);
-        while let Ok(n) = r.read(&mut buf) {
-            if n == 0 {
-                break;
+/// Quanto esperar o cano fechar depois que o processo terminou: um neto em outra sessão
+/// (`setsid`) pode segurá-lo para sempre, e a thread de leitura nunca é junta sem prazo.
+const READ_GRACE: Duration = Duration::from_secs(2);
+
+/// Leitura de um cano em thread própria, guardando até `max` bytes (o processo não trava com
+/// o cano cheio).
+struct Drain {
+    kept: std::sync::Arc<Mutex<Vec<u8>>>,
+    done: std::sync::mpsc::Receiver<()>,
+}
+
+impl Drain {
+    fn start(mut r: impl Read + Send + 'static, max: usize) -> Self {
+        let kept = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let (tx, done) = std::sync::mpsc::channel();
+        let shared = kept.clone();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 8192];
+            while let Ok(n) = r.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                let mut kept = lock(&shared);
+                let room = max.saturating_sub(kept.len()).min(n);
+                kept.extend_from_slice(&buf[..room]);
             }
-            let room = max.saturating_sub(kept.len()).min(n);
-            kept.extend_from_slice(&buf[..room]);
-        }
-        kept
-    })
+            let _ = tx.send(());
+        });
+        Drain { kept, done }
+    }
+
+    /// O que foi lido até o cano fechar ou até `READ_GRACE` (a thread solta termina sozinha).
+    fn finish(this: Option<Self>) -> Vec<u8> {
+        let Some(d) = this else { return Vec::new() };
+        let _ = d.done.recv_timeout(READ_GRACE);
+        std::mem::take(&mut *lock(&d.kept))
+    }
 }
 
 /// Como um processo terminou.
@@ -343,8 +367,8 @@ impl Scans {
         // A saída em arquivo é olhada a cada volta do laço: acima do teto, o processo morre.
         let max = self.max_output();
         let over = |f: &File| f.metadata().is_ok_and(|m| m.len() > max);
-        let out = child.stdout.take().map(|o| drain(o, MAX_TEXT));
-        let err = child.stderr.take().map(|e| drain(e, MAX_TEXT));
+        let out = child.stdout.take().map(|o| Drain::start(o, MAX_TEXT));
+        let err = child.stderr.take().map(|e| Drain::start(e, MAX_TEXT));
         let token = self.next.fetch_add(1, Ordering::Relaxed);
         if let Some(mut old) = self
             .lock_running()
@@ -377,10 +401,7 @@ impl Scans {
                 }
             }
         };
-        let join = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
-            h.and_then(|h| h.join().ok()).unwrap_or_default()
-        };
-        let (stdout, stderr) = (join(out), join(err));
+        let (stdout, stderr) = (Drain::finish(out), Drain::finish(err));
         Ok(status.map(|status| Finished {
             status,
             stdout,
@@ -521,11 +542,9 @@ fn failure(stderr: &[u8]) -> AppError {
     ))
 }
 
+/// O limite em MiB vai como mensagem do código `too_large`; a interface monta o texto.
 fn too_big(max: u64) -> AppError {
-    AppError::Unsupported(format!(
-        "digitalização grande demais (o limite é {} MiB)",
-        max >> 20
-    ))
+    AppError::TooLarge((max >> 20).to_string())
 }
 
 /// Lê a digitalização sem passar de `max` bytes e só aceita PNG.
@@ -871,8 +890,7 @@ All options specific to device `test:0':
         let e = scans
             .scan("main", &fake(), "fake:flood", ScanKind::Color, 300, &out)
             .unwrap_err();
-        assert_eq!(e.code(), "unsupported");
-        assert!(e.to_string().contains("grande demais"), "{e}");
+        assert_eq!((e.code(), e.to_string().as_str()), ("too_large", "1"));
         assert!(started.elapsed() < Duration::from_secs(20));
         assert!(scans.lock_running().is_empty(), "o processo foi morto");
         // Sem poder parar no meio de uma escrita, passa no máximo o que cabe entre duas olhadas.
@@ -888,7 +906,7 @@ All options specific to device `test:0':
         let e = scans
             .scan("main", &fake(), "fake:ok", ScanKind::Color, 300, &dir.join("a.png"))
             .unwrap_err();
-        assert!(e.to_string().contains("grande demais"), "{e}");
+        assert_eq!(e.code(), "too_large", "{e}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -999,6 +1017,24 @@ All options specific to device `test:0':
             .unwrap();
         assert_eq!(e.to_string(), TIMEOUT);
         assert!(scans.lock_running().is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Um neto em outra sessão (`setsid`) escapa do `kill` do grupo e segura o cano: o fim do
+    /// processo não pode esperar o cano fechar (E-m7).
+    #[test]
+    fn neto_que_segura_o_cano_nao_prende_a_leitura() {
+        let dir = out_dir("neto");
+        let sh = dir.join("neto.sh");
+        std::fs::write(&sh, "#!/bin/sh\necho oi\nsetsid sleep 8 &\nexit 0\n").unwrap();
+        std::fs::set_permissions(&sh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let started = Instant::now();
+        let done = Scans::default()
+            .run("main", &sh, &[], None, Duration::from_secs(30))
+            .unwrap()
+            .unwrap();
+        assert!(started.elapsed() < Duration::from_secs(6), "esperou o neto");
+        assert_eq!(String::from_utf8_lossy(&done.stdout).trim(), "oi");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

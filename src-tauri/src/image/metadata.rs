@@ -83,14 +83,23 @@ pub struct Carried {
 
 /// Lê os metadados de `path`. `decoded` traz EXIF, ICC e DPI já extraídos na abertura.
 pub fn read_metadata(path: &Path, decoded: &Decoded) -> AppResult<Metadata> {
-    read_metadata_with(path, decoded, &MetadataEdits::default())
+    read_metadata_with(path, decoded, &MetadataEdits::default(), false)
 }
 
-/// Como `read_metadata`, sem os textos do EXIF que `cleared` marca (já gravados no arquivo, mas
-/// ainda presentes no EXIF guardado na abertura). EXIF que não dá para limpar não é mostrado.
-pub fn read_metadata_with(path: &Path, decoded: &Decoded, cleared: &MetadataEdits) -> AppResult<Metadata> {
+/// Como `read_metadata`, sem os textos do EXIF que `cleared` marca e sem o XPKeywords se
+/// `keywords_cleared` (já gravados no arquivo, mas ainda presentes no EXIF guardado na abertura). EXIF que não dá para limpar não é mostrado.
+pub fn read_metadata_with(
+    path: &Path,
+    decoded: &Decoded,
+    cleared: &MetadataEdits,
+    keywords_cleared: bool,
+) -> AppResult<Metadata> {
     let exif = decoded.exif.as_deref().and_then(|e| {
-        if cleared.is_empty() { Some(e.to_vec()) } else { metaedit::exif_without_text(e, cleared) }
+        if cleared.is_empty() && !keywords_cleared {
+            Some(e.to_vec())
+        } else {
+            metaedit::exif_without_saved_text(e, cleared, keywords_cleared)
+        }
     });
     let exif = exif.as_deref();
     let bytes = std::fs::read(path)?;

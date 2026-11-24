@@ -1012,6 +1012,7 @@
     "noDevice": "Nenhum scanner encontrado.",
     "failed": "Não foi possível digitalizar: {{message}}",
     "timeout": "O scanner demorou demais e a digitalização foi interrompida.",
+    "tooLarge": "A digitalização é grande demais (o limite é {{mib}} MiB).",
     "missing": "Requer o scanimage (pacote sane-utils ou sane-backends), que não foi encontrado."
   }
 }

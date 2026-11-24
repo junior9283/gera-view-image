@@ -253,6 +253,11 @@ pub fn exif_without_text(tiff: &[u8], e: &MetadataEdits) -> Option<Vec<u8>> {
     scrub_texts(tiff, e, false, false)
 }
 
+/// Como `exif_without_text`, e sem o XPKeywords se as palavras-chave já foram gravadas.
+pub fn exif_without_saved_text(tiff: &[u8], e: &MetadataEdits, keywords: bool) -> Option<Vec<u8>> {
+    scrub_texts(tiff, e, keywords, false)
+}
+
 /// Bloco EXIF a gravar: sem o texto antigo dos campos de `e` (como `exif_without_text`) e sem a
 /// miniatura embutida, que mostraria a imagem de antes das edições. `keywords`: as palavras-chave
 /// foram editadas, então o XPKeywords antigo também sai.

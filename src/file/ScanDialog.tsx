@@ -39,7 +39,14 @@ function ScanForm() {
 
   const fail = (e: unknown) => {
     const msg = messageOf(e);
-    setError(msg === "timeout" ? t("scan.timeout") : t("scan.failed", { message: msg }));
+    const code = (e as { code?: unknown } | null)?.code;
+    setError(
+      code === "too_large"
+        ? t("scan.tooLarge", { mib: msg })
+        : msg === "timeout"
+          ? t("scan.timeout")
+          : t("scan.failed", { message: msg }),
+    );
   };
 
   const cancel = () => {

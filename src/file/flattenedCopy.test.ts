@@ -9,6 +9,7 @@ const ipc = vi.hoisted(() => ({
   applyOp: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   closeDocument: vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => {}),
   save: vi.fn(),
+  saveNeedsExport: vi.fn(async () => false),
   exportDoc: vi.fn(),
 }));
 vi.mock("../ipc/commands", () => ipc);

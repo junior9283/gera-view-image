@@ -65,7 +65,7 @@ export async function saveDoc(d: DocInfo): Promise<boolean> {
     return false;
   };
   // Antes de achatar: cancelar o Exportar não pode deixar nada mudado.
-  if (!d.writable) return toExport();
+  if (!d.writable || (await ipc.saveNeedsExport(d.id))) return toExport();
   // Um TIFF de várias páginas é gravado inteiro.
   const allPages = hasPages(d);
   if (!(await confirmLosses(d, { format: exportFormatOf(d.format), stripMetadata: false, allPages }))) return false;

@@ -139,6 +139,10 @@ describe("Importar do Scanner", () => {
     fireEvent.click(screen.getByRole("button", { name: "Digitalizar" }));
     await flush();
     expect(screen.getByRole("alert").textContent).toBe("O scanner demorou demais e a digitalização foi interrompida.");
+    ipc.scanImage.mockRejectedValueOnce({ code: "too_large", message: "512" });
+    fireEvent.click(screen.getByRole("button", { name: "Digitalizar" }));
+    await flush();
+    expect(screen.getByRole("alert").textContent).toBe("A digitalização é grande demais (o limite é 512 MiB).");
   });
 
   it("lendo as opções do dispositivo, o estado é anunciado", async () => {

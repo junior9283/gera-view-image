@@ -418,15 +418,14 @@ impl DocStore {
         self.with_doc(id, |d| (all && d.source.has_pages()).then_some(d.info.frames))
     }
 
-    /// Salvar (Ctrl+S): grava no próprio arquivo, de forma atômica, se o formato permitir (um TIFF
-    /// leva todas as páginas). `keywords`: palavras-chave editadas no inspetor (substituem as do arquivo).
-    pub fn save(&self, id: DocId, keywords: Option<Vec<String>>) -> AppResult<SaveOutcome> {
-        self.wait_ready(id)?;
+    /// O que Salvar precisa para gravar no próprio arquivo, ou `None` se tiver de virar Exportar
+    /// (formato sem gravação, ou o arquivo no disco virou outra coisa). Não altera nada.
+    fn save_plan(&self, id: DocId) -> AppResult<Option<(String, ExportFormat, Option<SourceFile>)>> {
         let (path, format, writable, frames, unseen) = self.with_doc(id, |d| {
             (d.info.path.clone(), d.info.format, d.info.writable, d.info.frames, d.unseen_disk)
         })?;
         let Some(fmt) = ExportFormat::for_save(format).filter(|_| writable) else {
-            return Ok(SaveOutcome::NeedsExport);
+            return Ok(None);
         };
         if let Some(removed) = self.disk_change(id)? {
             return Err(changed_on_disk(&path, removed));
@@ -440,9 +439,26 @@ impl DocStore {
                     .map_or(true, |d| d.frames.len() > frames as usize)
             };
             if !same || (unseen && loses(f)) {
-                return Ok(SaveOutcome::NeedsExport);
+                return Ok(None);
             }
         }
+        Ok(Some((path, fmt, file)))
+    }
+
+    /// Salvar vai virar Exportar? A interface pergunta antes de achatar anotações: cancelar o
+    /// Exportar não pode deixar o documento mudado.
+    pub fn save_needs_export(&self, id: DocId) -> AppResult<bool> {
+        self.wait_ready(id)?;
+        Ok(self.save_plan(id)?.is_none())
+    }
+
+    /// Salvar (Ctrl+S): grava no próprio arquivo, de forma atômica, se o formato permitir (um TIFF
+    /// leva todas as páginas). `keywords`: palavras-chave editadas no inspetor (substituem as do arquivo).
+    pub fn save(&self, id: DocId, keywords: Option<Vec<String>>) -> AppResult<SaveOutcome> {
+        self.wait_ready(id)?;
+        let Some((path, fmt, file)) = self.save_plan(id)? else {
+            return Ok(SaveOutcome::NeedsExport);
+        };
         let bytes = file.as_ref().map(|f| f.bytes.as_slice());
         let quality = match fmt {
             ExportFormat::Jpeg => bytes.and_then(encode::jpeg_quality),

@@ -40,12 +40,22 @@ pub fn requested_paths(argv: &[String], cwd: &str) -> Vec<String> {
             continue;
         };
         let Ok(real) = std::fs::canonicalize(&path) else {
+            // O plugin entrega argv como texto: um nome que não é UTF-8 chega com U+FFFD e
+            // já não existe com esse nome.
+            if arg.contains('\u{FFFD}') {
+                eprintln!("instância única: nome de arquivo que não é UTF-8, não foi aberto");
+            }
             continue;
         };
         let regular = std::fs::metadata(&real).is_ok_and(|m| m.file_type().is_file());
-        if let (true, Some(s)) = (regular, real.to_str())
-            && !out.iter().any(|p| p == s)
-        {
+        if !regular {
+            continue;
+        }
+        let Some(s) = real.to_str() else {
+            eprintln!("instância única: caminho que não é UTF-8, não foi aberto");
+            continue;
+        };
+        if !out.iter().any(|p| p == s) {
             out.push(s.to_string());
         }
     }
@@ -139,8 +149,14 @@ pub fn on_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
 
 fn deliver(app: &AppHandle, paths: Vec<String>) {
     let requests = app.state::<OpenRequests>();
-    // Sem janela que possa receber (o app está saindo): nada a fazer.
+    // Sem janela que possa receber (o app está saindo): não há para onde levar os arquivos.
     let Some(label) = requests.target(&app.state::<WindowRegistry>()) else {
+        if !paths.is_empty() {
+            eprintln!(
+                "instância única: o app está saindo, {} arquivo(s) pedido(s) não foram abertos",
+                paths.len()
+            );
+        }
         return;
     };
     super::window::raise(app, &label);

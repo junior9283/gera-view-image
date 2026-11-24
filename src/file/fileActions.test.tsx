@@ -5,6 +5,7 @@ import type { DocInfo } from "../ipc/types";
 
 const ipc = vi.hoisted(() => ({
   save: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
+  saveNeedsExport: vi.fn(async () => false),
   exportDoc: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   estimateSize: vi.fn(async () => 2048),
   pathExists: vi.fn(async () => false),
@@ -72,6 +73,17 @@ describe("saveDoc", () => {
   it("formato que não regrava abre Exportar em modo Salvar", async () => {
     ipc.save.mockResolvedValue({ type: "needsExport" });
     expect(await saveDoc(doc)).toBe(false);
+    expect(useFileUi.getState().dialog).toEqual({ kind: "export", id: 1, mode: "save" });
+  });
+
+  it("se o Rust já sabe que vira Exportar, não achata as anotações à toa (T-m3)", async () => {
+    const before = vi.fn(async () => {});
+    const off = registerBeforeSave(before);
+    ipc.saveNeedsExport.mockResolvedValueOnce(true);
+    expect(await saveDoc(doc)).toBe(false);
+    off();
+    expect(before).not.toHaveBeenCalled();
+    expect(ipc.save).not.toHaveBeenCalled();
     expect(useFileUi.getState().dialog).toEqual({ kind: "export", id: 1, mode: "save" });
   });
 });

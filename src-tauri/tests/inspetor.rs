@@ -387,7 +387,7 @@ fn texto_apagado_nao_volta_ao_exif_em_salvar_exportar_salvar_como_e_duplicar() {
 
     // A aba também não mostra o valor antigo.
     let source = store.with_doc(id, |d| d.source.clone()).unwrap();
-    let m = read_metadata_with(&src, &source, &store.meta_cleared(id)).unwrap();
+    let m = read_metadata_with(&src, &source, &store.meta_cleared(id), false).unwrap();
     assert_eq!(m.texts.author.as_deref(), Some("Ana"));
     assert_eq!(m.texts.description, None);
     assert!(campo(&m.exif, "Make").unwrap().contains("Gera"));
@@ -461,6 +461,14 @@ fn palavras_chave_e_descricao_editadas_tiram_xpkeywords_e_xpsubject_do_exif() {
     let m = read_metadata(&src, &decode(&src).unwrap()).unwrap();
     assert_eq!(m.keywords, vec!["praia".to_string()]);
     assert!(campo(&m.exif, "Make").unwrap().contains("Gera"), "o resto do EXIF fica");
+
+    // A aba EXIF do Inspetor depois de salvar não mostra o XPKeywords antigo (o EXIF de origem
+    // do documento ainda o guarda).
+    let source = store.with_doc(id, |d| d.source.clone()).unwrap();
+    let aberto = read_metadata_with(&src, &source, &store.meta_cleared(id), store.meta_keywords_cleared(id)).unwrap();
+    for rows in [&aberto.exif, secao(&aberto, "tiff")] {
+        assert!(!rows.iter().any(|(k, _)| k == "Tag(Tiff, 40094)") /* XPKeywords */, "{rows:?}");
+    }
 
     // O front esquece as palavras-chave depois de salvar; o EXIF da abertura ainda tem o antigo.
     store.set_meta_edits(id, &MetadataEdits::default());

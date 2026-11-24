@@ -1012,6 +1012,7 @@
     "noDevice": "No scanner found.",
     "failed": "Couldn't scan: {{message}}",
     "timeout": "The scanner took too long and scanning was stopped.",
+    "tooLarge": "The scan is too large (the limit is {{mib}} MiB).",
     "missing": "Requires scanimage (sane-utils or sane-backends package), which wasn't found."
   }
 }

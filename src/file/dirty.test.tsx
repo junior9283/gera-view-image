@@ -7,6 +7,7 @@ const ipc = vi.hoisted(() => ({
   // registerFileCommands também liga a instância única e o scanner.
   takeOpenRequests: async () => [], scanAvailable: async () => false,
   save: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
+  saveNeedsExport: vi.fn(async () => false),
   exportDoc: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   revert: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   applyOp: vi.fn(),

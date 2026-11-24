@@ -32,6 +32,13 @@ pub async fn save(
     blocking(move || store.save(id, keywords)).await
 }
 
+/// Salvar viraria Exportar? (sem gravar nem achatar nada)
+#[tauri::command]
+pub async fn save_needs_export(store: State<'_, DocStore>, id: DocId) -> AppResult<bool> {
+    let store = store.inner().clone();
+    blocking(move || store.save_needs_export(id)).await
+}
+
 #[tauri::command]
 pub async fn export(
     store: State<'_, DocStore>,

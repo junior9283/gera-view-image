@@ -3,10 +3,8 @@
 
 fn main() {
     // `--version` responde sem abrir janela (usado no smoke dos pacotes no CI).
-    if std::env::args()
-        .skip(1)
-        .any(|a| a == "--version" || a == "-V")
-    {
+    // `args_os`: `args()` entra em pânico com um nome de arquivo que não é UTF-8.
+    if gera_view_image_lib::wants_version(std::env::args_os().skip(1)) {
         println!("gera-view-image {}", env!("CARGO_PKG_VERSION"));
         return;
     }

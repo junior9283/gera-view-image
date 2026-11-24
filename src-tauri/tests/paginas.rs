@@ -541,6 +541,7 @@ fn salvar_nao_apaga_paginas_que_apareceram_no_disco() {
     store.apply_op(id, Op::FlipH).unwrap();
     mistas(&path);
     store.accept_disk(id).unwrap();
+    assert!(store.save_needs_export(id).unwrap(), "a pergunta prévia concorda com Salvar");
     assert!(matches!(store.save(id, None).unwrap(), SaveOutcome::NeedsExport));
     assert_eq!(tamanhos(&path), TAMANHOS, "o arquivo ficou como estava");
 }
@@ -554,6 +555,7 @@ fn salvar_nao_grava_por_cima_de_outro_formato() {
     store.apply_op(id, Op::FlipH).unwrap();
     mistas(&path);
     store.accept_disk(id).unwrap();
+    assert!(store.save_needs_export(id).unwrap(), "a pergunta prévia concorda com Salvar");
     assert!(matches!(store.save(id, None).unwrap(), SaveOutcome::NeedsExport));
     assert_eq!(tamanhos(&path), TAMANHOS);
 }
