@@ -776,21 +776,13 @@ fn closes_stranded(result: &MessageDialogResult, close_label: &str) -> bool {
 /// Há uma pergunta de janela presa na tela; solta ao fim dela ou se o diálogo nem chegar a rodar.
 static ASKING: AtomicBool = AtomicBool::new(false);
 
-struct AskingGuard;
-
-impl Drop for AskingGuard {
-    fn drop(&mut self) {
-        ASKING.store(false, Ordering::SeqCst);
-    }
-}
-
 /// Pergunta, pelo sistema, se fecha a janela que não terminou de abrir. Cancelar é o primeiro
 /// botão (o que o teclado aciona de cara): fechar exige escolher "Fechar".
 fn confirm_stranded(app: &AppHandle, label: &str) {
     if ASKING.swap(true, Ordering::SeqCst) {
         return;
     }
-    let guard = AskingGuard;
+    let guard = super::FlagGuard(&ASKING);
     let locale = system_locale();
     let t = |k: &str| text(&locale, &format!("tabs.stuck.{k}"));
     let close = t("close");
@@ -875,7 +867,7 @@ mod tests {
     #[test]
     fn pergunta_solta_a_trava_se_o_dialogo_nao_roda() {
         ASKING.store(true, Ordering::SeqCst);
-        drop(AskingGuard); // o fecho do `show` foi descartado sem executar
+        drop(crate::commands::FlagGuard(&ASKING)); // o fecho do `show` foi descartado sem executar
         assert!(!ASKING.load(Ordering::SeqCst));
     }
 

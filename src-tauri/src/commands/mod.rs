@@ -17,6 +17,7 @@ pub mod finder; // Lote 5
 pub mod fonts; // Lote 10
 pub mod ocr; // Lote 3
 pub mod paste; // Lote 2
+pub mod pipe;
 pub mod print; // Lote 11
 pub mod scan; // Lote 12 (Importar do Scanner)
 pub mod segment; // Lote 4
@@ -25,6 +26,15 @@ pub mod sidebar; // Lote 7
 pub mod window; // Lote 12
 
 use crate::error::{AppError, AppResult};
+/// Solta uma flag global ao sair do escopo (também por erro ou pânico).
+pub struct FlagGuard(pub &'static std::sync::atomic::AtomicBool);
+
+impl Drop for FlagGuard {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 use std::{
     collections::BTreeMap,
     sync::{Mutex, OnceLock, atomic::AtomicU64},

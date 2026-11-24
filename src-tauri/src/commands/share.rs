@@ -3,7 +3,7 @@
 //! Tudo que fala com D-Bus, subprocesso ou GIO roda em `blocking` (fora da thread do GTK) e com
 //! prazo: o portal pela `method_timeout` da conexão, os subprocessos por `run_with_timeout`. Ver
 //! `docs/testes/armadilhas.md` (portal travado congelava a janela).
-use super::blocking;
+use super::{blocking, pipe::Drain};
 use crate::{
     doc::{model::DocId, store::DocStore},
     error::{AppError, AppResult},
@@ -28,6 +28,8 @@ const PORTAL_TIMEOUT: Duration = Duration::from_secs(5);
 /// `kdeconnect-cli` ativa o daemon pelo D-Bus na primeira chamada.
 const KDECONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const KDECONNECT: &str = "kdeconnect-cli";
+/// Saída guardada de um subprocesso (o resto é lido e descartado).
+const MAX_OUT: usize = 1 << 20;
 
 /// App que abre o tipo do arquivo (`id` = nome do .desktop).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -126,6 +128,7 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> AppResult<String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()?;
+    let out = child.stdout.take().map(|o| Drain::start(o, MAX_OUT));
     let start = Instant::now();
     let status = loop {
         if let Some(s) = child.try_wait()? {
@@ -138,11 +141,7 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> AppResult<String> {
         }
         std::thread::sleep(Duration::from_millis(25));
     };
-    let mut out = String::new();
-    if let Some(mut s) = child.stdout.take() {
-        use std::io::Read;
-        s.read_to_string(&mut out)?;
-    }
+    let out = String::from_utf8_lossy(&out.map_or_else(Vec::new, Drain::finish)).into_owned();
     if !status.success() {
         return Err(AppError::Io(format!("saiu com {status}")));
     }
@@ -277,6 +276,16 @@ mod tests {
 
     fn app(id: &str, name: &str) -> AppEntry {
         AppEntry { id: id.into(), name: name.into(), icon: None }
+    }
+
+    /// Um neto em outra sessão (`setsid`) que segura a saída não prende `run_with_timeout`.
+    #[test]
+    fn neto_que_segura_a_saida_nao_prende_o_comando() {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "echo oi; setsid sleep 8 & exit 0"]);
+        let started = Instant::now();
+        assert_eq!(run_with_timeout(cmd, Duration::from_secs(30)).unwrap().trim(), "oi");
+        assert!(started.elapsed() < Duration::from_secs(6));
     }
 
     #[test]

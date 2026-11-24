@@ -96,13 +96,7 @@ pub async fn download_ocr_models(app: AppHandle) -> AppResult<()> {
         return Err(AppError::Unsupported("ocr: download em andamento".into()));
     }
     // Limpa o estado mesmo com erro ou pânico no meio do download.
-    struct Busy;
-    impl Drop for Busy {
-        fn drop(&mut self) {
-            STATE.downloading.store(false, Ordering::SeqCst);
-        }
-    }
-    let _busy = Busy;
+    let _busy = super::FlagGuard(&STATE.downloading);
     download(&app).await
 }
 

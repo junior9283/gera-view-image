@@ -20,6 +20,7 @@ use gera_view_image_lib::{
         decode::Decoded,
         encode::{ExportFormat, ExportOptions, MetaCarry, encode},
         print_layout::{Orientation, PrintFit, PrintOptions},
+        thumb,
     },
 };
 use image::{Rgb, RgbImage, Rgba, RgbaImage};
@@ -187,7 +188,7 @@ fn visor_mostra_cada_pagina_do_tiff_com_o_seu_perfil() {
     tiff_perfil_e_resolucao_por_pagina(&tiff);
     let store = DocStore::new();
     let id = abre(&store, &tiff);
-    let px = |buf: Vec<u8>| [buf[8], buf[9], buf[10]];
+    let px = |buf: Vec<u8>| -> [u8; 3] { buf[thumb::HEADER_LEN..][..3].try_into().unwrap() };
     let p1 = px(store.render_screen(id, 0, 60, 30, None).unwrap());
     let p2 = px(store.render_screen(id, 1, 60, 30, None).unwrap());
     assert_eq!(p2, [215, 93, 31], "sem perfil: sRGB, sem conversão");

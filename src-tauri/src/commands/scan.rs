@@ -2,7 +2,7 @@
 //! shell. Os argumentos vão em vetor; o dispositivo e o modo só valem se vieram do próprio
 //! `scanimage` nesta janela (`scan_devices`/`scan_options`). Tudo o que ele escreve é entrada não
 //! confiável: nomes com controles são descartados e o PNG passa pelo decodificador do app.
-use super::{blocking, window::claimed_one};
+use super::{blocking, pipe::Drain, window::claimed_one};
 use crate::{
     doc::{
         model::{DocInfo, SourceFormat},
@@ -290,45 +290,6 @@ fn stop(child: &mut Child) {
     let _ = child.wait();
 }
 
-/// Quanto esperar o cano fechar depois que o processo terminou: um neto em outra sessão
-/// (`setsid`) pode segurá-lo para sempre, e a thread de leitura nunca é junta sem prazo.
-const READ_GRACE: Duration = Duration::from_secs(2);
-
-/// Leitura de um cano em thread própria, guardando até `max` bytes (o processo não trava com
-/// o cano cheio).
-struct Drain {
-    kept: std::sync::Arc<Mutex<Vec<u8>>>,
-    done: std::sync::mpsc::Receiver<()>,
-}
-
-impl Drain {
-    fn start(mut r: impl Read + Send + 'static, max: usize) -> Self {
-        let kept = std::sync::Arc::new(Mutex::new(Vec::new()));
-        let (tx, done) = std::sync::mpsc::channel();
-        let shared = kept.clone();
-        std::thread::spawn(move || {
-            let mut buf = [0u8; 8192];
-            while let Ok(n) = r.read(&mut buf) {
-                if n == 0 {
-                    break;
-                }
-                let mut kept = lock(&shared);
-                let room = max.saturating_sub(kept.len()).min(n);
-                kept.extend_from_slice(&buf[..room]);
-            }
-            let _ = tx.send(());
-        });
-        Drain { kept, done }
-    }
-
-    /// O que foi lido até o cano fechar ou até `READ_GRACE` (a thread solta termina sozinha).
-    fn finish(this: Option<Self>) -> Vec<u8> {
-        let Some(d) = this else { return Vec::new() };
-        let _ = d.done.recv_timeout(READ_GRACE);
-        std::mem::take(&mut *lock(&d.kept))
-    }
-}
-
 /// Como um processo terminou.
 pub struct Finished {
     pub status: ExitStatus,
@@ -401,7 +362,7 @@ impl Scans {
                 }
             }
         };
-        let (stdout, stderr) = (Drain::finish(out), Drain::finish(err));
+        let (stdout, stderr) = (out.map_or_else(Vec::new, Drain::finish), err.map_or_else(Vec::new, Drain::finish));
         Ok(status.map(|status| Finished {
             status,
             stdout,
