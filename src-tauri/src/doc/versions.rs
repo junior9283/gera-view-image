@@ -209,7 +209,7 @@ pub fn snapshot(root: &Path, path: &Path, max: u64) -> io::Result<Option<String>
     if !meta.is_file() || meta.len() > max {
         return Ok(None);
     }
-    let bytes = fs::read(path)?;
+    let bytes = crate::fsio::read_regular(path)?;
     let dir = doc_dir(root, path, true)?;
     if let Some(last) = entries(&dir).first()
         && last.size == bytes.len() as u64

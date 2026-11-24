@@ -97,7 +97,7 @@ pub fn read_metadata_with(path: &Path, decoded: &Decoded, cleared: &Cleared) -> 
         }
     });
     let exif = exif.as_deref();
-    let bytes = std::fs::read(path)?;
+    let bytes = crate::fsio::read_regular(path)?;
     let fs_meta = std::fs::metadata(path)?;
     let (width, height) = decoded
         .frames

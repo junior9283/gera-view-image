@@ -18,7 +18,6 @@ use std::{
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
     io::{Cursor, Read},
-    os::unix::fs::OpenOptionsExt,
     panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex, OnceLock, RwLock},
@@ -157,14 +156,7 @@ fn read_icc(path: &Path, inside: impl Fn(&Path) -> bool, accept: Accept) -> Opti
     if !inside(&real) || !has_icc_extension(&real) {
         return None;
     }
-    let f = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
-        .open(&real)
-        .ok()?;
-    if !f.metadata().ok()?.is_file() {
-        return None;
-    }
+    let f = crate::fsio::open_regular_with(&real, libc::O_NOFOLLOW).ok()?;
     let mut bytes = Vec::new();
     f.take(MAX_ICC_BYTES + 1).read_to_end(&mut bytes).ok()?;
     accept(&bytes).then_some(bytes)

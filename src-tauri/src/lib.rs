@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod doc;
 pub mod error;
+pub mod fsio;
 pub mod image;
 pub mod platform;
 pub mod theme;

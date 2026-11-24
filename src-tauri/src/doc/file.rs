@@ -130,7 +130,7 @@ impl SourceFile {
         if path.is_empty() {
             return None;
         }
-        let bytes = std::fs::read(path).ok()?;
+        let bytes = crate::fsio::read_regular(Path::new(path)).ok()?;
         let pages = container::tiff_pages(&bytes)
             .filter(|p| p.len() > 1 && frames > 1)
             .unwrap_or_default();

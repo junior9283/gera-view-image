@@ -338,7 +338,7 @@ fn looks_like_svg(head: &[u8]) -> bool {
 
 /// Decodifica o arquivo inteiro (todos os quadros/páginas).
 pub fn decode(path: &Path) -> AppResult<Decoded> {
-    let bytes = std::fs::read(path)?;
+    let bytes = crate::fsio::read_regular(path)?;
     decode_bytes(path, &bytes)
 }
 

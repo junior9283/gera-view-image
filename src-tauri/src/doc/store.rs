@@ -380,25 +380,8 @@ enum Opened {
     },
 }
 
-/// Lê só arquivo regular: FIFO/dispositivo é recusado sem esperar (`O_NONBLOCK` no open).
-fn read_regular(path: &Path) -> AppResult<Vec<u8>> {
-    use std::io::Read;
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut f = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC)
-        .open(path)?;
-    let meta = f.metadata()?;
-    if !meta.is_file() {
-        return Err(AppError::Unsupported(format!("{} não é um arquivo regular", path.display())));
-    }
-    let mut bytes = Vec::with_capacity(usize::try_from(meta.len()).unwrap_or(0));
-    f.read_to_end(&mut bytes)?;
-    Ok(bytes)
-}
-
 fn open_file(path: &Path, budget: &DecodeBudget) -> AppResult<Opened> {
-    let bytes = read_regular(path)?;
+    let bytes = crate::fsio::read_regular(path)?;
     let format = decode::detect_format(path, &bytes);
     let estimate = || decode::estimate_bytes(path, &bytes);
     if format == Some(SourceFormat::Raw)
@@ -1029,10 +1012,8 @@ mod tests {
     /// aqui: numa regressão, a leitura sem fim consumiria a memória.
     #[test]
     fn so_arquivo_regular_abre_fifo_nao_trava() {
-        let dir = std::env::temp_dir().join(format!("gvi-fifo-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let fifo = dir.join("pipe.png");
+        let dir = crate::image::test_util::TempDir::new("fifo");
+        let fifo = dir.path().join("pipe.png");
         let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
         // SAFETY: caminho C válido e terminado em NUL.
         assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
@@ -1045,7 +1026,6 @@ mod tests {
             .recv_timeout(std::time::Duration::from_secs(10))
             .expect("open_documents travou num FIFO");
         assert_eq!(infos[0].error.as_deref(), Some("unsupported"));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// Região de 1 px lógico durante a prévia (escala 1/4): o lado escalado arredonda

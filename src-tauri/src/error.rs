@@ -57,6 +57,7 @@ impl From<std::io::Error> for AppError {
         match e.kind() {
             NotFound => AppError::NotFound(e.to_string()),
             PermissionDenied => AppError::Permission(e.to_string()),
+            Unsupported => AppError::Unsupported(e.to_string()),
             UnexpectedEof | InvalidData => AppError::Corrupt(e.to_string()),
             _ => AppError::Io(e.to_string()),
         }

@@ -66,13 +66,11 @@ pub fn normalize_tags(tags: &[String]) -> AppResult<Vec<String>> {
     Ok(out)
 }
 
+use crate::fsio::open_regular as open_regular_io;
+
 /// Abre o arquivo do documento (o que o usuário abriu) e confere que é um arquivo regular.
 fn open_regular(path: &Path) -> AppResult<fs::File> {
-    let f = fs::File::open(path)?;
-    if !f.metadata()?.is_file() {
-        return Err(AppError::Unsupported(format!("{} não é um arquivo", path.display())));
-    }
-    Ok(f)
+    Ok(open_regular_io(path)?)
 }
 
 fn xattr_error(e: std::io::Error) -> AppError {
