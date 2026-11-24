@@ -594,7 +594,7 @@ fn exif_ilegivel_com_edicao_pendente_e_descartado_em_vez_de_vazar() {
 
 #[test]
 fn autor_ja_apagado_nao_volta_ao_exif_do_avif_quando_ha_autor_novo_pendente() {
-    let dir = tmp("insp-avif-marcador");
+    let dir = tmp("insp-avif-autor-pendente");
     let src = jpeg_com_exif_antigo(&dir);
     let store = DocStore::new();
     let id = store.open_documents(&[s(&src)]).remove(0).id;
