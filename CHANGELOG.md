@@ -5,6 +5,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+## [1.0.0] - 2026-11-24
+
 ### Corrigido
 - Abrir um FIFO ou outro arquivo que não é regular (por exemplo, arrastado ou passado na linha de comando) não trava mais o app: vira um erro no documento, sem esperar por um escritor.
 - Abrir arquivos pelo gerenciador com um nome que não é UTF-8 não derruba mais o app (a linha de comando lia os argumentos como texto); um pedido de outra instância que não pode ser atendido (nome que não é UTF-8, app saindo) agora é registrado em vez de sumir em silêncio.
