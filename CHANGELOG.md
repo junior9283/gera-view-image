@@ -11,7 +11,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Importar do Scanner: um programa filho que segure a saída aberta depois do `scanimage` terminar não prende mais o app (a leitura espera no máximo 2 s). O aviso "digitalização grande demais" passa a sair no idioma do app (português e inglês).
 - Salvar não achata mais as anotações quando o arquivo no disco mudou de formato e o Salvar vira Exportar; cancelar o Exportar deixa o documento como estava.
 - Inspetor: depois de salvar as palavras-chave, a aba EXIF não mostra mais o `XPKeywords` antigo.
-- TIFF de várias páginas: cada página imprime e vai ao PDF com o próprio perfil de cor; antes valia o da primeira, que tingia as páginas sem perfil.
+- TIFF de várias páginas: cada página aparece no visor, nas miniaturas e na prévia do Ajustar Cor, e também imprime e vai ao PDF, com o próprio perfil de cor; antes valia o da primeira, que tingia as páginas sem perfil.
 - Fechar uma janela que não terminou de abrir: o botão padrão da pergunta é Cancelar, e a pergunta não fica travada se o diálogo falhar.
 
 ### Limitações conhecidas

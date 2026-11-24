@@ -60,9 +60,10 @@ impl Document {
 }
 
 impl DocStore {
-    /// Converte o RGBA de uma prévia do documento `id` para o perfil de exibição.
-    pub fn to_display(&self, id: DocId, rgba: &mut [u8]) {
-        let p = self.with_doc(id, Document::profile).ok().flatten();
+    /// Converte o RGBA de uma prévia da página `frame` do documento `id` para o perfil de exibição
+    /// (cada página de um TIFF tem o seu perfil embutido).
+    pub fn to_display(&self, id: DocId, frame: u32, rgba: &mut [u8]) {
+        let p = self.with_doc(id, |d| d.profile_for(frame)).ok().flatten();
         icc::to_display(rgba, p.as_ref().map(Profile::bytes));
     }
 

@@ -949,7 +949,7 @@ impl DocStore {
         region: Option<Rect>,
     ) -> AppResult<Vec<u8>> {
         let (mut buf, _) = self.render_view_state(id, frame, max_w, max_h, region)?;
-        self.to_display(id, &mut buf[thumb::HEADER_LEN..]);
+        self.to_display(id, frame, &mut buf[thumb::HEADER_LEN..]);
         Ok(buf)
     }
 

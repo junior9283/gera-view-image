@@ -179,6 +179,22 @@ fn tiff_perfil_e_resolucao_por_pagina(path: &Path) {
     fs::write(path, out.into_inner()).unwrap();
 }
 
+/// O visor (e a miniatura) mostram cada página com o perfil dela: a sem perfil fica como está.
+#[test]
+fn visor_mostra_cada_pagina_do_tiff_com_o_seu_perfil() {
+    let dir = tmp("visor-tiff-perfil");
+    let tiff = dir.join("t.tiff");
+    tiff_perfil_e_resolucao_por_pagina(&tiff);
+    let store = DocStore::new();
+    let id = abre(&store, &tiff);
+    let px = |buf: Vec<u8>| [buf[8], buf[9], buf[10]];
+    let p1 = px(store.render_screen(id, 0, 60, 30, None).unwrap());
+    let p2 = px(store.render_screen(id, 1, 60, 30, None).unwrap());
+    assert_eq!(p2, [215, 93, 31], "sem perfil: sRGB, sem conversão");
+    assert_ne!(p1, p2, "Display P3 muda a cor na tela");
+    assert_eq!(px(store.thumbnail(id, 1, 16).unwrap()), [215, 93, 31]);
+}
+
 /// Cada página de um TIFF imprime com a própria resolução; o perfil é o da 1ª página e não pode
 /// tingir a que não tem perfil.
 #[test]

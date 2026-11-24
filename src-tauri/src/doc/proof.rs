@@ -4,7 +4,7 @@
 use super::{
     color::Profile,
     model::{DocId, Rect},
-    store::{DocStore, Document},
+    store::DocStore,
 };
 use crate::{
     error::AppResult,
@@ -17,9 +17,9 @@ use crate::{
 
 impl DocStore {
     /// Como `to_display`, passando pelo perfil de prova do documento, se houver.
-    pub fn to_screen(&self, id: DocId, rgba: &mut [u8]) {
+    pub fn to_screen(&self, id: DocId, frame: u32, rgba: &mut [u8]) {
         let (profile, proof) = self
-            .with_doc(id, |d| (Document::profile(d), d.proof.clone()))
+            .with_doc(id, |d| (d.profile_for(frame), d.proof.clone()))
             .unwrap_or_default();
         let doc = profile.as_ref().map(Profile::bytes);
         if !proof.is_some_and(|p| proof::to_display(rgba, doc, &p)) {
@@ -37,7 +37,7 @@ impl DocStore {
         region: Option<Rect>,
     ) -> AppResult<Vec<u8>> {
         let (mut buf, _) = self.render_view_state(id, frame, max_w, max_h, region)?;
-        self.to_screen(id, &mut buf[thumb::HEADER_LEN..]);
+        self.to_screen(id, frame, &mut buf[thumb::HEADER_LEN..]);
         Ok(buf)
     }
 

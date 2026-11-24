@@ -121,9 +121,10 @@ pub async fn preview_adjust(
     let store = store.inner().clone();
     blocking(move || {
         let (w, h) = cap_size(max_w, max_h, PREVIEW_MAX_PIXELS);
-        let mut buf = store.preview_region(id, frame.unwrap_or(0), w, h, region)?.to_vec();
+        let frame = frame.unwrap_or(0);
+        let mut buf = store.preview_region(id, frame, w, h, region)?.to_vec();
         color::adjust_view_buffer(&mut buf, &adjust);
-        store.to_screen(id, &mut buf[thumb::HEADER_LEN..]);
+        store.to_screen(id, frame, &mut buf[thumb::HEADER_LEN..]);
         Ok(buf)
     })
     .await
