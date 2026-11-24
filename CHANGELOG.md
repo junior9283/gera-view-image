@@ -5,6 +5,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Corrigido
+- Abrir um FIFO ou outro arquivo que não é regular (por exemplo, arrastado ou passado na linha de comando) não trava mais o app: vira um erro no documento, sem esperar por um escritor.
+- Abrir arquivos pelo gerenciador com um nome que não é UTF-8 não derruba mais o app (a linha de comando lia os argumentos como texto); um pedido de outra instância que não pode ser atendido (nome que não é UTF-8, app saindo) agora é registrado em vez de sumir em silêncio.
+- Importar do Scanner: um programa filho que segure a saída aberta depois do `scanimage` terminar não prende mais o app (a leitura espera no máximo 2 s). O aviso "digitalização grande demais" passa a sair no idioma do app (português e inglês).
+- Salvar não achata mais as anotações quando o arquivo no disco mudou de formato e o Salvar vira Exportar; cancelar o Exportar deixa o documento como estava.
+- Inspetor: depois de salvar as palavras-chave, a aba EXIF não mostra mais o `XPKeywords` antigo.
+- TIFF de várias páginas: cada página imprime e vai ao PDF com o próprio perfil de cor; antes valia o da primeira, que tingia as páginas sem perfil.
+- Fechar uma janela que não terminou de abrir: o botão padrão da pergunta é Cancelar, e a pergunta não fica travada se o diálogo falhar.
+
+### Limitações conhecidas
+- Diferenças aceitas em relação ao Pré-Visualização: QOI não abre (o Pré-Visualização também não abre) e imagens HDR aparecem mapeadas para SDR em telas SDR.
+
 ## [0.5.0] - 2026-11-23
 
 ### Adicionado
