@@ -47,7 +47,8 @@ export function notify(text: string): void {
   emit([...toasts, { id, text }].slice(-MAX_TOASTS));
 }
 
-const codeOf = (e: unknown): string | null => {
+/** Código do `AppError` do Rust (`code`), se `e` for um. */
+export const codeOf = (e: unknown): string | null => {
   const code = (e as { code?: unknown } | null)?.code;
   return typeof code === "string" ? code : null;
 };

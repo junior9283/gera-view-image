@@ -3,7 +3,7 @@ import { create } from "zustand";
 import i18n from "../i18n";
 import * as ipc from "../ipc/commands";
 import type { LinkInfo, WebKind } from "../ipc/types";
-import { notify } from "../chrome/notify";
+import { codeOf, notify } from "../chrome/notify";
 import { getPrefs, setPrefs } from "../store/prefs";
 import { selectedOrAllText, useLiveText } from "./store";
 
@@ -31,7 +31,7 @@ export async function startSpeaking(): Promise<void> {
     await ipc.speak(selectedOrAllText());
     speaking = true;
   } catch (e) {
-    if ((e as { code?: string })?.code !== "unsupported") throw e;
+    if (codeOf(e) !== "unsupported") throw e;
     notify(i18n.t("livetext.speechMissing"));
   }
 }

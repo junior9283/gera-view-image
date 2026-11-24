@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
+import { codeOf } from "../chrome/notify";
 import * as ipc from "../ipc/commands";
 import type { ScanDevice, ScanKind, ScanOptions } from "../ipc/types";
 import { useModal } from "../lib/modal";
@@ -39,14 +40,9 @@ function ScanForm() {
 
   const fail = (e: unknown) => {
     const msg = messageOf(e);
-    const code = (e as { code?: unknown } | null)?.code;
-    setError(
-      code === "too_large"
-        ? t("scan.tooLarge", { mib: msg })
-        : msg === "timeout"
-          ? t("scan.timeout")
-          : t("scan.failed", { message: msg }),
-    );
+    if (codeOf(e) === "too_large") return setError(t("scan.tooLarge", { mib: msg }));
+    if (msg === "timeout") return setError(t("scan.timeout"));
+    setError(t("scan.failed", { message: msg }));
   };
 
   const cancel = () => {

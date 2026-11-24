@@ -1,7 +1,7 @@
 // Lote 4: Remover Fundo e Copiar Objeto. A máscara do sujeito vem do backend (`segment_subject`,
 // U²-Netp em Rust); o modelo é baixado uma vez, depois de o usuário aceitar.
 import { create } from "zustand";
-import { notify, notifyError } from "../chrome/notify";
+import { codeOf, notify, notifyError } from "../chrome/notify";
 import i18n from "../i18n";
 import * as ipc from "../ipc/commands";
 import type { DocInfo, Mask } from "../ipc/types";
@@ -78,7 +78,7 @@ async function subjectOf(doc: DocInfo, page: number): Promise<(Mask & { type: "b
     return mask;
   } catch (e) {
     if (token !== run) return null;
-    if ((e as { code?: string } | null)?.code === "empty_selection") notify(i18n.t("subject.none"));
+    if (codeOf(e) === "empty_selection") notify(i18n.t("subject.none"));
     else notifyError(e);
     return null;
   } finally {
