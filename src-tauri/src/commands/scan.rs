@@ -1035,7 +1035,7 @@ All options specific to device `test:0':
             .unwrap();
         assert!(started.elapsed() < Duration::from_secs(6), "esperou o neto");
         assert_eq!(String::from_utf8_lossy(&done.stdout).trim(), "oi");
-        std::fs::remove_dir_all(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// `scanimage` de verdade com o backend `test` do SANE (imagem sintética, sem hardware):
