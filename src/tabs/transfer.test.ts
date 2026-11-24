@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocInfo, Incoming } from "../ipc/types";
 
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {};
@@ -68,6 +68,7 @@ beforeEach(() => {
   useMarkup.setState({ docs: {}, selected: {} });
   document.body.innerHTML = "";
 });
+afterEach(resetTabsForTests);
 
 describe("Mover Aba para Nova Janela", () => {
   it("leva a aba ativa, ou as miniaturas escolhidas, e nunca todas", () => {
@@ -159,8 +160,7 @@ describe("Mover Aba para Nova Janela", () => {
     let finish!: () => void;
     void track("apply_op", { id: 1 }, new Promise<void>((r) => (finish = r)));
     const move = moveTabToNewWindow();
-    await new Promise((r) => setTimeout(r, 60));
-    expect(useTabs.getState().veil).toBe("moving");
+    await vi.waitFor(() => expect(useTabs.getState().veil).toBe("moving"));
     expect(sent("new_window")).toEqual([]);
     finish();
     await move;

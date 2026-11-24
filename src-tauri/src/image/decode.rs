@@ -32,6 +32,8 @@ pub struct Decoded {
     pub dpi: Option<(f32, f32)>,
     /// Resolução de cada página de um TIFF de várias; vazio nos outros formatos (ver `dpi_of`).
     pub page_dpi: Vec<Option<(f32, f32)>>,
+    /// Perfil ICC de cada página de um TIFF de várias; vazio nos outros formatos (ver `icc_of`).
+    pub page_icc: Vec<Option<Vec<u8>>>,
 }
 
 impl Decoded {
@@ -45,6 +47,16 @@ impl Decoded {
             exif: None,
             dpi: None,
             page_dpi: Vec::new(),
+            page_icc: Vec::new(),
+        }
+    }
+
+    /// Perfil da página `frame`: o dela num TIFF de várias páginas (sem perfil = sRGB), senão o da
+    /// imagem.
+    pub fn icc_of(&self, frame: u32) -> Option<&[u8]> {
+        match self.page_icc.get(frame as usize) {
+            Some(p) => p.as_deref(),
+            None => self.icc.as_deref(),
         }
     }
 
@@ -511,6 +523,7 @@ fn frames_of<'a>(
         exif: None,
         dpi: None,
         page_dpi: Vec::new(),
+        page_icc: Vec::new(),
     })
 }
 
@@ -553,7 +566,7 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
         l
     });
     let mut frames = Vec::new();
-    let mut icc = None;
+    let mut page_icc = Vec::new();
     let mut page_dpi = Vec::new();
     let mut total = 0;
     loop {
@@ -562,9 +575,7 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
         total = check_budget_max(w, h, total, max)?;
         let color = dec.colortype().map_err(map)?;
         let orientation = dec.find_tag_unsigned::<u8>(Tag::Orientation).ok().flatten();
-        if frames.is_empty() {
-            icc = dec.get_tag_u8_vec(Tag::IccProfile).ok();
-        }
+        page_icc.push(dec.get_tag_u8_vec(Tag::IccProfile).ok());
         page_dpi.push(tiff_dpi(&mut dec));
         let to8 = |v: Vec<u16>| v.into_iter().map(|x| (x >> 8) as u8).collect::<Vec<u8>>();
         let (data, channels) = match (dec.read_image().map_err(map)?, color) {
@@ -608,10 +619,11 @@ fn decode_tiff_max(bytes: &[u8], max: usize) -> AppResult<Decoded> {
         delays_ms: vec![0; n],
         plays: 0,
         format: SourceFormat::Tiff,
-        icc,
+        icc: page_icc.first().cloned().flatten(),
         exif: None,
         dpi: page_dpi.first().copied().flatten(),
         page_dpi,
+        page_icc,
     })
 }
 

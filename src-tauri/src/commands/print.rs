@@ -56,7 +56,7 @@ fn page_pixels<T>(
     f: impl FnOnce(&RgbaImage) -> T,
 ) -> AppResult<T> {
     let px: Pixels = store.render_full(item.id, item.frame)?;
-    Ok(f(&store.to_srgb(item.id, Cow::Borrowed(&*px))))
+    Ok(f(&store.to_srgb_page(item.id, item.frame, Cow::Borrowed(&*px))))
 }
 
 /// PDF com uma página por imagem, em sRGB, do tamanho dela na resolução do documento.

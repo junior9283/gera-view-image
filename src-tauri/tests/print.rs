@@ -157,6 +157,57 @@ fn pdf_converte_para_srgb_leva_alfa_e_as_operacoes() {
     }
 }
 
+/// TIFF de duas páginas de 60×30 com a mesma cor: a 1ª a 144 ppp e com perfil Display P3, a 2ª a
+/// 72 ppp e sem perfil (sRGB).
+fn tiff_perfil_e_resolucao_por_pagina(path: &Path) {
+    use tiff::{
+        encoder::{Rational, TiffEncoder, colortype::RGB8},
+        tags::{ResolutionUnit, Tag},
+    };
+    let mut out = std::io::Cursor::new(Vec::new());
+    let mut e = TiffEncoder::new(&mut out).unwrap();
+    let px = RgbImage::from_pixel(60, 30, Rgb([215, 93, 31]));
+    for (dpi, p3) in [(144, true), (72, false)] {
+        let mut img = e.new_image::<RGB8>(60, 30).unwrap();
+        img.resolution(ResolutionUnit::Inch, Rational { n: dpi, d: 1 });
+        if p3 {
+            let icc = gera_view_image_lib::image::icc::profile_bytes("display-p3").unwrap();
+            img.encoder().write_tag(Tag::IccProfile, &icc[..]).unwrap();
+        }
+        img.write_data(px.as_raw()).unwrap();
+    }
+    fs::write(path, out.into_inner()).unwrap();
+}
+
+/// Cada página de um TIFF imprime com a própria resolução; o perfil é o da 1ª página e não pode
+/// tingir a que não tem perfil.
+#[test]
+fn tiff_imprime_cada_pagina_com_a_sua_resolucao_e_o_seu_perfil() {
+    let dir = tmp("pdf-tiff-pagina");
+    let tiff = dir.join("t.tiff");
+    tiff_perfil_e_resolucao_por_pagina(&tiff);
+    let store = DocStore::new();
+    let id = abre(&store, &tiff);
+    let dpis: Vec<_> = items(&store, &[id]).unwrap().iter().map(|i| i.size.dpi).collect();
+    assert_eq!(dpis, vec![Some((144.0, 144.0)), Some((72.0, 72.0))]);
+    let dest = dir.join("t.pdf");
+    write_pdf(&store, &[id], &dest).unwrap();
+    let text: String = fs::read(&dest).unwrap().iter().map(|&c| c as char).collect();
+    assert!(text.contains("/MediaBox [0 0 30.0000 15.0000]"), "1ª página a 144 ppp");
+    assert!(text.contains("/MediaBox [0 0 60.0000 30.0000]"), "2ª página a 72 ppp");
+    if let Some(p1) = pagina(&dest, 1, 144) {
+        // Display P3 → sRGB muda a cor; a página sem perfil fica como está.
+        let mut want = [215u8, 93, 31, 255];
+        assert!(gera_view_image_lib::image::icc::convert_rgba8(
+            &mut want,
+            &gera_view_image_lib::image::icc::profile_bytes("display-p3").unwrap(),
+            gera_view_image_lib::image::icc::srgb_icc()
+        ));
+        perto(p1.get_pixel(30, 15), [want[0], want[1], want[2]], 2);
+        perto(pagina(&dest, 2, 72).unwrap().get_pixel(30, 15), [215, 93, 31], 2);
+    }
+}
+
 /// Anotações de uma página só saem nela, na impressão e no PDF.
 #[test]
 fn anotacao_so_sai_na_sua_pagina() {

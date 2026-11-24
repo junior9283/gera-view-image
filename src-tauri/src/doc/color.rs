@@ -10,8 +10,8 @@ use std::{borrow::Cow, sync::Arc};
 /// Perfil ICC que descreve os pixels do documento.
 #[derive(Clone)]
 pub enum Profile {
-    /// O que veio no arquivo (`Decoded::icc`), sem copiar os bytes.
-    Embedded(Arc<Decoded>),
+    /// O que veio no arquivo para a página dada (`Decoded::icc_of`), sem copiar os bytes.
+    Embedded(Arc<Decoded>, u32),
     /// O de Atribuir Perfil….
     Assigned(Arc<Vec<u8>>),
 }
@@ -19,7 +19,7 @@ pub enum Profile {
 impl Profile {
     pub fn bytes(&self) -> &[u8] {
         match self {
-            Profile::Embedded(d) => d.icc.as_deref().unwrap_or_default(),
+            Profile::Embedded(d, frame) => d.icc_of(*frame).unwrap_or_default(),
             Profile::Assigned(b) => b,
         }
     }
@@ -28,13 +28,18 @@ impl Profile {
 impl Document {
     /// Último Atribuir Perfil… válido, senão o perfil embutido; `None` = sRGB presumido.
     pub fn profile(&self) -> Option<Profile> {
+        self.profile_for(0)
+    }
+
+    /// Como `profile`, para a página `frame` (cada página de um TIFF tem o seu perfil embutido).
+    pub fn profile_for(&self, frame: u32) -> Option<Profile> {
         let assigned = self.ops.iter().rev().find_map(|op| match op {
             Op::AssignProfile { profile } => icc::known_profile(profile),
             _ => None,
         });
         match assigned {
             Some(b) => Some(Profile::Assigned(b)),
-            None if self.source.icc.is_some() => Some(Profile::Embedded(self.source.clone())),
+            None if self.source.icc_of(frame).is_some() => Some(Profile::Embedded(self.source.clone(), frame)),
             None => None,
         }
     }
@@ -70,7 +75,12 @@ impl DocStore {
 
     /// Pixels do documento `id` em sRGB (ver [`icc::to_srgb`]).
     pub fn to_srgb<'a>(&self, id: DocId, img: Cow<'a, RgbaImage>) -> Cow<'a, RgbaImage> {
-        let p = self.with_doc(id, Document::profile).ok().flatten();
+        self.to_srgb_page(id, 0, img)
+    }
+
+    /// Como `to_srgb`, para os pixels da página `frame` (o perfil embutido é o dela).
+    pub fn to_srgb_page<'a>(&self, id: DocId, frame: u32, img: Cow<'a, RgbaImage>) -> Cow<'a, RgbaImage> {
+        let p = self.with_doc(id, |d| d.profile_for(frame)).ok().flatten();
         icc::to_srgb(img, p.as_ref().map(Profile::bytes))
     }
 

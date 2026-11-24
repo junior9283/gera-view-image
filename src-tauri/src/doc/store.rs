@@ -240,6 +240,7 @@ impl Document {
             exif: None,
             dpi: None,
             page_dpi: Vec::new(),
+            page_icc: Vec::new(),
         };
         let mut d = Document::new(id, path, empty, (0, 0), false);
         d.info.writable = false;

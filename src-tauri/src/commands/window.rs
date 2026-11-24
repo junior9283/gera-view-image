@@ -27,7 +27,7 @@ use tauri::{
     AppHandle, Emitter, Manager, State, WebviewWindow, WebviewWindowBuilder, WindowEvent,
     ipc::{Invoke, InvokeBody},
 };
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 
 /// Há documentos na caixa da janela (`take_documents`).
 pub const INCOMING_EVENT: &str = "docs-incoming";
@@ -768,24 +768,42 @@ fn system_locale() -> String {
     var("LC_ALL").or_else(|| var("LC_MESSAGES")).or_else(|| var("LANG")).unwrap_or_default()
 }
 
-/// Pergunta, pelo sistema, se fecha a janela que não terminou de abrir.
+/// Só o botão "Fechar" fecha; Cancelar, Esc e qualquer falha do diálogo mantêm a janela.
+fn closes_stranded(result: &MessageDialogResult, close_label: &str) -> bool {
+    matches!(result, MessageDialogResult::Custom(s) if s == close_label)
+}
+
+/// Há uma pergunta de janela presa na tela; solta ao fim dela ou se o diálogo nem chegar a rodar.
+static ASKING: AtomicBool = AtomicBool::new(false);
+
+struct AskingGuard;
+
+impl Drop for AskingGuard {
+    fn drop(&mut self) {
+        ASKING.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Pergunta, pelo sistema, se fecha a janela que não terminou de abrir. Cancelar é o primeiro
+/// botão (o que o teclado aciona de cara): fechar exige escolher "Fechar".
 fn confirm_stranded(app: &AppHandle, label: &str) {
-    static ASKING: AtomicBool = AtomicBool::new(false);
     if ASKING.swap(true, Ordering::SeqCst) {
         return;
     }
+    let guard = AskingGuard;
     let locale = system_locale();
     let t = |k: &str| text(&locale, &format!("tabs.stuck.{k}"));
+    let close = t("close");
     let (handle, label) = (app.clone(), label.to_string());
     app.dialog()
         .message(t("body"))
         .title(t("title"))
         .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(t("close"), t("cancel")))
-        .show(move |close| {
-            ASKING.store(false, Ordering::SeqCst);
+        .buttons(MessageDialogButtons::OkCancelCustom(t("cancel"), close.clone()))
+        .show_with_result(move |result| {
+            drop(guard);
             // Abriu enquanto se perguntava: agora ela mesma pergunta.
-            if close
+            if closes_stranded(&result, &close)
                 && !handle.state::<WindowRegistry>().is_ready(&label)
                 && let Some(w) = handle.get_webview_window(&label)
             {
@@ -843,6 +861,22 @@ mod tests {
         let blank = || Decoded::single(RgbaImage::new(2, 2), SourceFormat::Png);
         let infos = (0..n).map(|_| store.insert_decoded("", blank())).collect();
         (store, infos)
+    }
+
+    #[test]
+    fn so_o_botao_fechar_fecha_a_janela_presa() {
+        let r = |s: &str| MessageDialogResult::Custom(s.into());
+        assert!(closes_stranded(&r("Fechar"), "Fechar"));
+        for no in [r("Cancelar"), MessageDialogResult::Cancel, MessageDialogResult::Ok, MessageDialogResult::No] {
+            assert!(!closes_stranded(&no, "Fechar"), "{no:?}");
+        }
+    }
+
+    #[test]
+    fn pergunta_solta_a_trava_se_o_dialogo_nao_roda() {
+        ASKING.store(true, Ordering::SeqCst);
+        drop(AskingGuard); // o fecho do `show` foi descartado sem executar
+        assert!(!ASKING.load(Ordering::SeqCst));
     }
 
     #[test]

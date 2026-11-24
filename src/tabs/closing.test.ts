@@ -59,7 +59,10 @@ const requestClose = () => {
 
 await installWindowEvents();
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  resetTabsForTests();
+});
 
 beforeEach(() => {
   for (const k of Object.keys(handlers)) delete handlers[k];

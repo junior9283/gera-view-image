@@ -39,7 +39,10 @@ beforeEach(() => {
   resetUnsavedForTests();
   setPrefs({ language: "pt-BR" });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTabsForTests();
+});
 
 describe("barra de abas", () => {
   const show = (...docs: DocInfo[]) => {
