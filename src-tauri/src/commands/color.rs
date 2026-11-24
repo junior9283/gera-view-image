@@ -50,7 +50,7 @@ pub async fn document_profile(
     store: State<'_, DocStore>,
     id: DocId,
 ) -> AppResult<Option<ColorProfile>> {
-    let p = store.with_doc(id, |d| d.profile_name())?;
+    let p = store.with_doc(id, |d| d.profile_name(0))?;
     Ok(p.map(|(id, name)| ColorProfile { id, name }))
 }
 

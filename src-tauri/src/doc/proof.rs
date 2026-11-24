@@ -19,7 +19,7 @@ impl DocStore {
     /// Como `to_display`, passando pelo perfil de prova do documento, se houver.
     pub fn to_screen(&self, id: DocId, frame: u32, rgba: &mut [u8]) {
         let (profile, proof) = self
-            .with_doc(id, |d| (d.profile_for(frame), d.proof.clone()))
+            .with_doc(id, |d| (d.profile(frame), d.proof.clone()))
             .unwrap_or_default();
         let doc = profile.as_ref().map(Profile::bytes);
         if !proof.is_some_and(|p| proof::to_display(rgba, doc, &p)) {

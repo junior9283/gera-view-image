@@ -249,9 +249,10 @@ impl DocStore {
     ) -> AppResult<(Pixels, MetaCarry, RenderState)> {
         let (px, _, _, state) = self.pixels(id, frame, false)?;
         let (source, dpi, resized, icc, assigned) = self.with_doc(id, |d| {
-            let icc = d.profile().map(|p| p.bytes().to_vec());
+            let profile = d.profile(frame);
             let dpi = d.dpi(frame);
-            (d.source.clone(), dpi, dpi != d.source.dpi_of(frame), icc, matches!(d.profile(), Some(Profile::Assigned(_))))
+            let assigned = matches!(profile, Some(Profile::Assigned(_)));
+            (d.source.clone(), dpi, dpi != d.source.dpi_of(frame), profile.map(|p| p.bytes().to_vec()), assigned)
         })?;
         let bytes = file.and_then(|f| f.page(frame));
         let (iptc, xmp) = bytes.map(metadata::file_iim_xmp).unwrap_or_default();
@@ -714,7 +715,7 @@ pub fn render_png(store: &DocStore, id: DocId) -> AppResult<Vec<u8>> {
         codecs::png::{CompressionType, FilterType, PngEncoder},
     };
     let px = store.render_full(id, 0)?;
-    let px = store.to_srgb(id, std::borrow::Cow::Borrowed(&*px));
+    let px = store.to_srgb(id, 0, std::borrow::Cow::Borrowed(&*px));
     let mut out = Vec::new();
     PngEncoder::new_with_quality(&mut out, CompressionType::Fast, FilterType::Adaptive)
         .write_image(

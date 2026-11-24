@@ -12,7 +12,7 @@ pub async fn metadata(store: State<'_, DocStore>, id: DocId, frame: Option<u32>)
     let store = store.inner().clone();
     blocking(move || {
         let (path, source, full_size, profile) = store.with_doc(id, |d| {
-            (d.info.path.clone(), d.source.clone(), d.full_size, d.profile_name())
+            (d.info.path.clone(), d.source.clone(), d.full_size, d.profile_name(frame.unwrap_or(0)))
         })?;
         // Cada página de um TIFF tem o próprio tamanho.
         let page = frame.filter(|&f| f > 0).and_then(|f| source.frames.get(f as usize));

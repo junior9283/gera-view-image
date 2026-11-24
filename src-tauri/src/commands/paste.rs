@@ -59,12 +59,12 @@ pub fn copied_region(
     png: Option<Vec<u8>>,
 ) -> AppResult<RgbaImage> {
     let img = store.render_full(id, frame)?;
-    let png = png.map(|png| store.png_from_display(id, png));
+    let png = png.map(|png| store.png_from_display(id, frame, png));
     let region = flattened_region(&img, mask, png).ok_or(AppError::EmptySelection)?;
     if !icc::enabled() {
         return Ok(region);
     }
-    Ok(store.to_srgb(id, Cow::Owned(region)).into_owned())
+    Ok(store.to_srgb(id, frame, Cow::Owned(region)).into_owned())
 }
 
 /// Região de `img` com as anotações (`png`, no tamanho da imagem) compostas por cima.

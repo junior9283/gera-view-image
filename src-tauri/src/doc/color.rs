@@ -26,13 +26,9 @@ impl Profile {
 }
 
 impl Document {
-    /// Último Atribuir Perfil… válido, senão o perfil embutido; `None` = sRGB presumido.
-    pub fn profile(&self) -> Option<Profile> {
-        self.profile_for(0)
-    }
-
-    /// Como `profile`, para a página `frame` (cada página de um TIFF tem o seu perfil embutido).
-    pub fn profile_for(&self, frame: u32) -> Option<Profile> {
+    /// Último Atribuir Perfil… válido, senão o perfil embutido na página `frame` (cada página de
+    /// um TIFF tem o seu); `None` = sRGB presumido.
+    pub fn profile(&self, frame: u32) -> Option<Profile> {
         let assigned = self.ops.iter().rev().find_map(|op| match op {
             Op::AssignProfile { profile } => icc::known_profile(profile),
             _ => None,
@@ -44,8 +40,8 @@ impl Document {
         }
     }
 
-    /// `(id, nome)` do perfil de [`Document::profile`]; `id` vazio quando é o embutido.
-    pub fn profile_name(&self) -> Option<(String, String)> {
+    /// `(id, nome)` do perfil de [`Document::profile`] da página `frame`; `id` vazio quando é o embutido.
+    pub fn profile_name(&self, frame: u32) -> Option<(String, String)> {
         let id = self.ops.iter().rev().find_map(|op| match op {
             Op::AssignProfile { profile } => Some(profile.as_str()),
             _ => None,
@@ -53,7 +49,7 @@ impl Document {
         let builtin = icc::BUILTIN.iter().find(|(b, _)| Some(*b) == id);
         let name = match builtin {
             Some((_, name)) => name.to_string(),
-            None => icc::describe(self.profile()?.bytes())?,
+            None => icc::describe(self.profile(frame)?.bytes())?,
         };
         Some((id.unwrap_or_default().to_string(), name))
     }
@@ -63,25 +59,20 @@ impl DocStore {
     /// Converte o RGBA de uma prévia da página `frame` do documento `id` para o perfil de exibição
     /// (cada página de um TIFF tem o seu perfil embutido).
     pub fn to_display(&self, id: DocId, frame: u32, rgba: &mut [u8]) {
-        let p = self.with_doc(id, |d| d.profile_for(frame)).ok().flatten();
+        let p = self.with_doc(id, |d| d.profile(frame)).ok().flatten();
         icc::to_display(rgba, p.as_ref().map(Profile::bytes));
     }
 
     /// PNG das anotações (desenhado pela interface sobre a prévia, em cores de tela) levado ao
     /// espaço do documento `id`, para compor sobre os pixels dele.
-    pub fn png_from_display(&self, id: DocId, png: Vec<u8>) -> Vec<u8> {
-        let p = self.with_doc(id, Document::profile).ok().flatten();
+    pub fn png_from_display(&self, id: DocId, frame: u32, png: Vec<u8>) -> Vec<u8> {
+        let p = self.with_doc(id, |d| d.profile(frame)).ok().flatten();
         icc::png_from_display(&png, p.as_ref().map(Profile::bytes)).unwrap_or(png)
     }
 
-    /// Pixels do documento `id` em sRGB (ver [`icc::to_srgb`]).
-    pub fn to_srgb<'a>(&self, id: DocId, img: Cow<'a, RgbaImage>) -> Cow<'a, RgbaImage> {
-        self.to_srgb_page(id, 0, img)
-    }
-
-    /// Como `to_srgb`, para os pixels da página `frame` (o perfil embutido é o dela).
-    pub fn to_srgb_page<'a>(&self, id: DocId, frame: u32, img: Cow<'a, RgbaImage>) -> Cow<'a, RgbaImage> {
-        let p = self.with_doc(id, |d| d.profile_for(frame)).ok().flatten();
+    /// Pixels da página `frame` do documento `id` em sRGB (ver [`icc::to_srgb`]).
+    pub fn to_srgb<'a>(&self, id: DocId, frame: u32, img: Cow<'a, RgbaImage>) -> Cow<'a, RgbaImage> {
+        let p = self.with_doc(id, |d| d.profile(frame)).ok().flatten();
         icc::to_srgb(img, p.as_ref().map(Profile::bytes))
     }
 
@@ -125,7 +116,7 @@ mod tests {
 
     fn icc_of(store: &DocStore, id: DocId) -> Option<Vec<u8>> {
         store
-            .with_doc(id, |d| d.profile().map(|p| p.bytes().to_vec()))
+            .with_doc(id, |d| d.profile(0).map(|p| p.bytes().to_vec()))
             .unwrap()
     }
 
@@ -266,7 +257,7 @@ mod tests {
     #[test]
     fn nome_do_perfil_atual() {
         let (store, id) = store_with(Some(p3()));
-        let name = |store: &DocStore| store.with_doc(id, |d| d.profile_name()).unwrap();
+        let name = |store: &DocStore| store.with_doc(id, |d| d.profile_name(0)).unwrap();
         assert_eq!(name(&store), Some((String::new(), "Display P3".into())));
         let profile = "adobe-rgb".to_string();
         store.apply_op(id, Op::AssignProfile { profile }).unwrap();

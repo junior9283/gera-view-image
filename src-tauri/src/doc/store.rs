@@ -770,7 +770,7 @@ impl DocStore {
             Op::Composite { png, frame } => {
                 self.wait_ready(id)?;
                 Op::Composite {
-                    png: self.png_from_display(id, png),
+                    png: self.png_from_display(id, frame.unwrap_or(0), png),
                     frame,
                 }
             }
