@@ -578,7 +578,9 @@ fn avif_pq_e_hlg_viram_sdr() {
     for (transferencia, curva) in [(16, pq as fn(f32) -> f32), (18, hlg)] {
         let d = abre("a.avif", &avif(9, transferencia));
         // As primárias ficam: só a curva muda.
-        assert_eq!(d.icc, cru.icc, "{transferencia}");
+        // O cabeçalho ICC (bytes 24..36) leva a hora da criação: pode virar o segundo entre as duas.
+        let sem_data = |i: &Option<Vec<u8>>| i.clone().map(|mut v| { v[24..36].fill(0); v });
+        assert_eq!(sem_data(&d.icc), sem_data(&cru.icc), "{transferencia}");
         let (a, b) = (cru.frames[0].get_pixel(0, 0).0, d.frames[0].get_pixel(0, 0).0);
         assert_ne!(a, b, "{transferencia}");
         let lin: Vec<f32> = a[..3].iter().map(|&v| curva(v as f32 / 255.0)).collect();
